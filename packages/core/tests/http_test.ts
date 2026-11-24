@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import {
   httpDownload,
@@ -24,7 +25,7 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("httpText returns the body and forwards headers", async () => {
+test("httpText returns the body and forwards headers", async () => {
   const { fetch, calls } = fakeFetch("hello");
   const options: HttpOptions = {
     fetch,
@@ -35,7 +36,7 @@ Deno.test("httpText returns the body and forwards headers", async () => {
   assertEquals(calls[0].init?.headers, { Authorization: "Bearer x" });
 });
 
-Deno.test("httpJson parses the body", async () => {
+test("httpJson parses the body", async () => {
   const { fetch } = fakeFetch('{"tag":"v1.2.3"}');
   const data = await httpJson<{ tag: string }>("https://example.com/r", {
     fetch,
@@ -43,7 +44,7 @@ Deno.test("httpJson parses the body", async () => {
   assertEquals(data.tag, "v1.2.3");
 });
 
-Deno.test("a non-2xx status throws HttpError carrying the status", async () => {
+test("a non-2xx status throws HttpError carrying the status", async () => {
   const { fetch } = fakeFetch("nope", 404);
   const error = await assertRejects(
     () => httpText("https://example.com/missing", { fetch }),
@@ -56,7 +57,7 @@ Deno.test("a non-2xx status throws HttpError carrying the status", async () => {
   }
 });
 
-Deno.test("HttpError redacts userinfo and credential query params from the URL", () => {
+test("HttpError redacts userinfo and credential query params from the URL", () => {
   const e = new HttpError(
     500,
     "https://user:pw@host.example/x?key=abc&client_secret=cs&refresh_token=rt&q=ok",
@@ -71,7 +72,7 @@ Deno.test("HttpError redacts userinfo and credential query params from the URL",
   assertEquals(e.url.includes("q=ok"), true); // a non-credential param is kept
 });
 
-Deno.test("httpDownload streams the body to a file", async () => {
+test("httpDownload streams the body to a file", async () => {
   const { fetch } = fakeFetch("file-contents");
   await withTemp(async (dir) => {
     const dest = `${dir}/out.txt`;
@@ -80,7 +81,7 @@ Deno.test("httpDownload streams the body to a file", async () => {
   });
 });
 
-Deno.test("httpDownload of a non-2xx status throws before writing", async () => {
+test("httpDownload of a non-2xx status throws before writing", async () => {
   const { fetch } = fakeFetch("err", 500);
   await withTemp(async (dir) => {
     const dest = `${dir}/out.txt`;
@@ -93,7 +94,7 @@ Deno.test("httpDownload of a non-2xx status throws before writing", async () => 
   });
 });
 
-Deno.test("httpDownload handles an empty (null) body", async () => {
+test("httpDownload handles an empty (null) body", async () => {
   // A 204 response has a null body; the file is created but empty.
   const impl =
     (() =>

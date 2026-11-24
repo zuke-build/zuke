@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   GhRepoArchiveSettings,
@@ -18,7 +19,7 @@ import {
 } from "../mod.ts";
 import { parseRepositories } from "../src/repo.ts";
 
-Deno.test("repo clone puts the git flags after the separator", () => {
+test("repo clone puts the git flags after the separator", () => {
   // gh takes no --depth of its own; it forwards what follows `--` to git.
   assertEquals(
     new GhRepoCloneSettings().repository("acme/app").directory("vendor/app")
@@ -59,7 +60,7 @@ Deno.test("repo clone puts the git flags after the separator", () => {
   );
 });
 
-Deno.test("repo create insists on a name and a visibility", () => {
+test("repo create insists on a name and a visibility", () => {
   assertEquals(
     new GhRepoCreateSettings()
       .name("acme/app")
@@ -145,7 +146,7 @@ Deno.test("repo create insists on a name and a visibility", () => {
   );
 });
 
-Deno.test("repo list and view render their filters", () => {
+test("repo list and view render their filters", () => {
   assertEquals(
     new GhRepoListSettings()
       .owner("acme")
@@ -196,7 +197,7 @@ Deno.test("repo list and view render their filters", () => {
   assertEquals(new GhRepoViewSettings().argv().slice(1), ["repo", "view"]);
 });
 
-Deno.test("repo fork keeps its git flags to the clone", () => {
+test("repo fork keeps its git flags to the clone", () => {
   assertEquals(
     new GhRepoForkSettings().repository("acme/app").org("mine").forkName("app2")
       .defaultBranchOnly().remote().remoteName("fork").clone().gitArgs(
@@ -227,7 +228,7 @@ Deno.test("repo fork keeps its git flags to the clone", () => {
   );
 });
 
-Deno.test("repo sync renders its source and branch", () => {
+test("repo sync renders its source and branch", () => {
   assertEquals(
     new GhRepoSyncSettings().destination("mine/app").source("acme/app").branch(
       "master",
@@ -246,7 +247,7 @@ Deno.test("repo sync renders its source and branch", () => {
   assertEquals(new GhRepoSyncSettings().argv().slice(1), ["repo", "sync"]);
 });
 
-Deno.test("repo edit renders its toggles in gh's own spelling", () => {
+test("repo edit renders its toggles in gh's own spelling", () => {
   // gh's booleans are tri-state: bare turns one on, `=false` turns it off.
   assertEquals(
     new GhRepoEditSettings()
@@ -306,7 +307,7 @@ Deno.test("repo edit renders its toggles in gh's own spelling", () => {
   );
 });
 
-Deno.test("every repo edit toggle renders under its own flag", () => {
+test("every repo edit toggle renders under its own flag", () => {
   // One case per toggle, so a flag mistyped in one of them cannot hide behind
   // its neighbours.
   assertEquals(
@@ -334,7 +335,7 @@ Deno.test("every repo edit toggle renders under its own flag", () => {
   );
 });
 
-Deno.test("repo create can start from a template, and list can keep only forks", () => {
+test("repo create can start from a template, and list can keep only forks", () => {
   assertEquals(
     new GhRepoCreateSettings().name("app").visibility("internal").template(
       "acme/tpl",
@@ -355,7 +356,7 @@ Deno.test("repo create can start from a template, and list can keep only forks",
   );
 });
 
-Deno.test("the destructive repo commands make the build mean them", () => {
+test("the destructive repo commands make the build mean them", () => {
   assertEquals(
     new GhRepoRenameSettings().newName("app2").repo("acme/app").yes().argv()
       .slice(1),
@@ -405,7 +406,7 @@ Deno.test("the destructive repo commands make the build mean them", () => {
   );
 });
 
-Deno.test("repo set-default sets, views, or forgets — one of the three", () => {
+test("repo set-default sets, views, or forgets — one of the three", () => {
   assertEquals(
     new GhRepoSetDefaultSettings().repository("acme/app").argv().slice(1),
     ["repo", "set-default", "acme/app"],
@@ -435,7 +436,7 @@ Deno.test("repo set-default sets, views, or forgets — one of the three", () =>
   );
 });
 
-Deno.test("the repo group refuses a --repo flag gh does not give it", () => {
+test("the repo group refuses a --repo flag gh does not give it", () => {
   // gh names the repository as an operand across this group, and only `rename`
   // also takes -R. Rendering --repo anywhere else would fail with gh's own
   // "unknown flag", so the settings say so first and name the operand to use.
@@ -514,7 +515,7 @@ Deno.test("the repo group refuses a --repo flag gh does not give it", () => {
   );
 });
 
-Deno.test("parseRepositories reads gh's JSON array", () => {
+test("parseRepositories reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     {
       name: "zuke",
@@ -539,14 +540,14 @@ Deno.test("parseRepositories reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseRepositories treats anything but an array of objects as empty", () => {
+test("parseRepositories treats anything but an array of objects as empty", () => {
   assertEquals(parseRepositories("[]"), []);
   assertEquals(parseRepositories("no repositories found"), []);
   assertEquals(parseRepositories('{"name":"zuke"}'), []);
   assertEquals(parseRepositories('[{"isPrivate":"false"}]'), [{}]);
 });
 
-Deno.test("the pinned repository field set is what the entry documents", () => {
+test("the pinned repository field set is what the entry documents", () => {
   assertEquals(REPO_LIST_FIELDS.includes("nameWithOwner"), true);
   assertEquals(REPO_LIST_FIELDS.includes("isArchived"), true);
   assertEquals(REPO_LIST_FIELDS.length, 8);

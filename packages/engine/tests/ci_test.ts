@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { CiFile, target } from "@zuke/core";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { ciFileOf, type ManifestCi } from "../src/ci.ts";
@@ -111,7 +112,7 @@ const FULL = {
   },
 };
 
-Deno.test("parseCi carries every field of a cicd spec, with targets as names", () => {
+test("parseCi carries every field of a cicd spec, with targets as names", () => {
   // A round trip: the parsed entry holds exactly the fields given, no more.
   const [entry] = parsed([FULL]);
   assertEquals<unknown>(entry, {
@@ -129,7 +130,7 @@ Deno.test("parseCi carries every field of a cicd spec, with targets as names", (
   );
 });
 
-Deno.test("parseCi names the malformed field", () => {
+test("parseCi names the malformed field", () => {
   const refuse = (entry: Record<string, unknown>, message: string) =>
     assertThrows(() => parsed([{ name: "ci", ...entry }]), Error, message);
   refuse({ name: "a b" }, '"name" must be an identifier');
@@ -210,7 +211,7 @@ Deno.test("parseCi names the malformed field", () => {
   );
 });
 
-Deno.test("ciFileOf resolves the invoked targets and answers pins from the map", () => {
+test("ciFileOf resolves the invoked targets and answers pins from the map", () => {
   const lint = target();
   const test = target().dependsOn(lint);
   const targets = new Map([["lint", lint], ["test", test]]);

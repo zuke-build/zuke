@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -35,7 +36,7 @@ import {
   BrewUntapSettings,
 } from "../mod.ts";
 
-Deno.test("brew install: names, then every flag in the manual's order", () => {
+test("brew install: names, then every flag in the manual's order", () => {
   assertEquals(
     new BrewInstallSettings().formulae("app").argv(),
     ["brew", "install", "app"],
@@ -56,7 +57,7 @@ Deno.test("brew install: names, then every flag in the manual's order", () => {
   );
 });
 
-Deno.test("brew uninstall and test", () => {
+test("brew uninstall and test", () => {
   assertEquals(
     new BrewUninstallSettings().formulae("app").formula().force()
       .ignoreDependencies().argv(),
@@ -83,7 +84,7 @@ Deno.test("brew uninstall and test", () => {
   );
 });
 
-Deno.test("brew audit, style and livecheck: names are optional", () => {
+test("brew audit, style and livecheck: names are optional", () => {
   assertEquals(new BrewAuditSettings().argv(), ["brew", "audit"]);
   assertEquals(
     new BrewAuditSettings().formulae("app").strict().online().new().formula()
@@ -103,7 +104,7 @@ Deno.test("brew audit, style and livecheck: names are optional", () => {
   );
 });
 
-Deno.test("brew tap, untap, tap-new and --repository", () => {
+test("brew tap, untap, tap-new and --repository", () => {
   assertEquals(
     new BrewTapSettings().name("acme/tap").argv(),
     ["brew", "tap", "acme/tap"],
@@ -156,7 +157,7 @@ Deno.test("brew tap, untap, tap-new and --repository", () => {
   );
 });
 
-Deno.test("brew info always asks for --json=v2", () => {
+test("brew info always asks for --json=v2", () => {
   assertEquals(
     new BrewInfoSettings().formulae("app").argv(),
     ["brew", "info", "--json=v2", "app"],
@@ -167,7 +168,7 @@ Deno.test("brew info always asks for --json=v2", () => {
   );
 });
 
-Deno.test("brew: the generic builder and the escape hatches", () => {
+test("brew: the generic builder and the escape hatches", () => {
   assertEquals(
     new BrewSettings().command("doctor").flag("quiet").argv(),
     ["brew", "doctor", "--quiet"],
@@ -178,7 +179,7 @@ Deno.test("brew: the generic builder and the escape hatches", () => {
   );
 });
 
-Deno.test("brew: a command that needs a name refuses to run without one", () => {
+test("brew: a command that needs a name refuses to run without one", () => {
   const cases: Array<[() => string[], string]> = [
     [() => new BrewInstallSettings().argv(), "brew install requires .formulae"],
     [
@@ -196,7 +197,7 @@ Deno.test("brew: a command that needs a name refuses to run without one", () => 
   }
 });
 
-Deno.test("brew: an operand that would read as an option is refused", () => {
+test("brew: an operand that would read as an option is refused", () => {
   for (const operand of ["--force", "-v", ""]) {
     assertThrows(
       () => new BrewInstallSettings().formulae("app", operand).argv(),
@@ -211,7 +212,7 @@ Deno.test("brew: an operand that would read as an option is refused", () => {
   );
 });
 
-Deno.test("brew: every task reaches execution", async () => {
+test("brew: every task reaches execution", async () => {
   const tasks: Array<() => Promise<unknown>> = [
     () => BrewTasks.run((s) => missingTool(s).command("doctor")),
     () => BrewTasks.install((s) => missingTool(s).formulae("app")),
@@ -230,7 +231,7 @@ Deno.test("brew: every task reaches execution", async () => {
   for (const task of tasks) await assertRejects(task, ToolNotFoundError);
 });
 
-Deno.test("brew: resolves its binary from PATH", async () => {
+test("brew: resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new BrewInstallSettings().formulae("app"),
     "brew",

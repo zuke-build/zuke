@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { testPlan } from "./_fakes.ts";
 import { assertEquals } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
@@ -26,7 +27,7 @@ import { withTemp } from "./_temp.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 
-Deno.test("the settlement stops when the cancel changes hands during the drain", async () => {
+test("the settlement stops when the cancel changes hands during the drain", async () => {
   // The window this closes: this process initiated the cancellation, but
   // marking the run `cancelling` drains every pending write, and a conflict in
   // that drain can reveal another process's `zuke cancel` already landed. The

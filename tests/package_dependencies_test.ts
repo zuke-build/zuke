@@ -7,6 +7,7 @@
  * AGENTS.md states, enforced here so it cannot erode one import at a time.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 
@@ -26,7 +27,7 @@ function workspaceImports(pkg: string): string[] {
     .sort();
 }
 
-Deno.test("a package depends on @zuke/core alone unless its exemption is listed", () => {
+test("a package depends on @zuke/core alone unless its exemption is listed", () => {
   for (const pkg of PACKAGES) {
     assertEquals(
       workspaceImports(pkg),
@@ -37,7 +38,7 @@ Deno.test("a package depends on @zuke/core alone unless its exemption is listed"
   }
 });
 
-Deno.test("every exemption names workspace packages, and publishes after them", () => {
+test("every exemption names workspace packages, and publishes after them", () => {
   for (const [pkg, deps] of Object.entries(PACKAGE_DEPENDENCIES)) {
     assertEquals(PACKAGES.includes(pkg), true, `${pkg} is not a package`);
     for (const dep of deps) {

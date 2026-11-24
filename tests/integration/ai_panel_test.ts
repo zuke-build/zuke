@@ -8,6 +8,7 @@
  * its gate neither stops the second from reviewing nor lets the body run.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -57,7 +58,7 @@ function fakeGithub(responses: string[]) {
   return { fetch: impl, posted };
 }
 
-Deno.test("two reviewers of one target post one comment, and both review when the first fails", async () => {
+test("two reviewers of one target post one comment, and both review when the first fails", async () => {
   const github = fakeGithub([
     // The security review trips its gate.
     claude({

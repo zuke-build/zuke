@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -21,11 +22,11 @@ import {
   NpmVersionSettings,
 } from "../mod.ts";
 
-Deno.test("the default binary is npm", () => {
+test("the default binary is npm", () => {
   assertEquals(new NpmInstallSettings().argv()[0], "npm");
 });
 
-Deno.test("install: bare, packages, --save-dev, --save-exact", () => {
+test("install: bare, packages, --save-dev, --save-exact", () => {
   assertEquals(new NpmInstallSettings().argv().slice(1), ["install"]);
   assertEquals(
     new NpmInstallSettings()
@@ -38,7 +39,7 @@ Deno.test("install: bare, packages, --save-dev, --save-exact", () => {
   );
 });
 
-Deno.test("ci: bare and with --omit flags", () => {
+test("ci: bare and with --omit flags", () => {
   assertEquals(new NpmCiSettings().argv().slice(1), ["ci"]);
   assertEquals(
     new NpmCiSettings().omit("dev").omit("optional").argv().slice(1),
@@ -46,7 +47,7 @@ Deno.test("ci: bare and with --omit flags", () => {
   );
 });
 
-Deno.test("run: script required; workspace, --if-present, forwarded args", () => {
+test("run: script required; workspace, --if-present, forwarded args", () => {
   assertThrows(
     () => new NpmRunSettings().argv(),
     Error,
@@ -64,14 +65,14 @@ Deno.test("run: script required; workspace, --if-present, forwarded args", () =>
   );
 });
 
-Deno.test("run: no -- separator when there are no script args", () => {
+test("run: no -- separator when there are no script args", () => {
   assertEquals(new NpmRunSettings().script("build").argv().slice(1), [
     "run",
     "build",
   ]);
 });
 
-Deno.test("run: --workspaces runs every workspace and composes with --if-present", () => {
+test("run: --workspaces runs every workspace and composes with --if-present", () => {
   assertEquals(
     new NpmRunSettings().script("build").workspaces().argv().slice(1),
     ["run", "--workspaces", "build"],
@@ -84,7 +85,7 @@ Deno.test("run: --workspaces runs every workspace and composes with --if-present
   );
 });
 
-Deno.test("run: .workspace() and .workspaces() are mutually exclusive", () => {
+test("run: .workspace() and .workspaces() are mutually exclusive", () => {
   assertThrows(
     () =>
       new NpmRunSettings().script("build").workspace("app").workspaces().argv(),
@@ -93,7 +94,7 @@ Deno.test("run: .workspace() and .workspaces() are mutually exclusive", () => {
   );
 });
 
-Deno.test("exec: command required; --yes, --package, forwarded args", () => {
+test("exec: command required; --yes, --package, forwarded args", () => {
   assertThrows(
     () => new NpmExecSettings().argv(),
     Error,
@@ -111,7 +112,7 @@ Deno.test("exec: command required; --yes, --package, forwarded args", () => {
   );
 });
 
-Deno.test("publish: tag, access, --dry-run, otp", () => {
+test("publish: tag, access, --dry-run, otp", () => {
   assertEquals(new NpmPublishSettings().argv().slice(1), ["publish"]);
   assertEquals(
     new NpmPublishSettings()
@@ -130,7 +131,7 @@ Deno.test("publish: tag, access, --dry-run, otp", () => {
   );
 });
 
-Deno.test("version: bump required; message and --no-git-tag-version", () => {
+test("version: bump required; message and --no-git-tag-version", () => {
   assertThrows(
     () => new NpmVersionSettings().argv(),
     Error,
@@ -147,7 +148,7 @@ Deno.test("version: bump required; message and --no-git-tag-version", () => {
   );
 });
 
-Deno.test("every NpmTasks function reaches execution", async () => {
+test("every NpmTasks function reaches execution", async () => {
   await assertRejects(() => NpmTasks.install(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.ci(missingTool), ToolNotFoundError);
   await assertRejects(
@@ -165,7 +166,7 @@ Deno.test("every NpmTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("npm: conforms to the wrapper contract", async () => {
+test("npm: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new NpmInstallSettings(), "npm", {
     resolution: "path",
   });

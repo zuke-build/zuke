@@ -10,6 +10,7 @@
  * observable in one test.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -42,7 +43,7 @@ async function runStatus(dir: string, id: string): Promise<string> {
   return got === null ? "" : got.record.status;
 }
 
-Deno.test("a .waitsFor() gate inside a forEach fails loudly, never stranding the run", async () => {
+test("a .waitsFor() gate inside a forEach fails loudly, never stranding the run", async () => {
   await withStateDir(async (dir) => {
     class CD extends Build {
       deployBatch = target().forEach(
@@ -72,7 +73,7 @@ Deno.test("a .waitsFor() gate inside a forEach fails loudly, never stranding the
   });
 });
 
-Deno.test("a signal gate suspends, then resume delivers the signal and continues", async () => {
+test("a signal gate suspends, then resume delivers the signal and continues", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     let approvedBy: unknown;
@@ -116,7 +117,7 @@ Deno.test("a signal gate suspends, then resume delivers the signal and continues
   });
 });
 
-Deno.test("a predicate gate is re-evaluated by `resume --check`", async () => {
+test("a predicate gate is re-evaluated by `resume --check`", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     let ready = false;
@@ -150,7 +151,7 @@ Deno.test("a predicate gate is re-evaluated by `resume --check`", async () => {
   });
 });
 
-Deno.test("a wait past its deadline times out on resume --check", async () => {
+test("a wait past its deadline times out on resume --check", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       gate = target().waitsFor((s) => s.on(externalSignal("never")).timeout(1));
@@ -177,7 +178,7 @@ Deno.test("a wait past its deadline times out on resume --check", async () => {
   });
 });
 
-Deno.test("a timeout settles the run's other parked gates too", async () => {
+test("a timeout settles the run's other parked gates too", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       // Two independent gates: only gateA's deadline has passed.
@@ -204,7 +205,7 @@ Deno.test("a timeout settles the run's other parked gates too", async () => {
   });
 });
 
-Deno.test("a cancel-run timeout still records the deadline it missed", async () => {
+test("a cancel-run timeout still records the deadline it missed", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       // A zero-length deadline is already past by the time the sweep runs.
@@ -236,7 +237,7 @@ Deno.test("a cancel-run timeout still records the deadline it missed", async () 
   });
 });
 
-Deno.test("cancelling a suspended run settles the gate it was parked on", async () => {
+test("cancelling a suspended run settles the gate it was parked on", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       gate = target().waitsFor((s) =>
@@ -269,7 +270,7 @@ Deno.test("cancelling a suspended run settles the gate it was parked on", async 
   });
 });
 
-Deno.test("a re-suspend preserves the original timeout deadline", async () => {
+test("a re-suspend preserves the original timeout deadline", async () => {
   await withStateDir(async (dir) => {
     const ready = false; // never satisfied here: the gate only ever re-suspends
     class B extends Build {
@@ -297,7 +298,7 @@ Deno.test("a re-suspend preserves the original timeout deadline", async () => {
   });
 });
 
-Deno.test("a service starts, gates its dependent on readiness, and is stopped", async () => {
+test("a service starts, gates its dependent on readiness, and is stopped", async () => {
   const log: string[] = [];
   let probes = 0;
   let stopped = false;
@@ -318,7 +319,7 @@ Deno.test("a service starts, gates its dependent on readiness, and is stopped", 
   assertEquals(stopped, true); // the service was torn down after the run
 });
 
-Deno.test("a resume that overrides a parameter records it in the audit trail", async () => {
+test("a resume that overrides a parameter records it in the audit trail", async () => {
   await withStateDir(async (dir) => {
     const deployed: string[] = [];
     class B extends Build {
@@ -378,7 +379,7 @@ Deno.test("a resume that overrides a parameter records it in the audit trail", a
   });
 });
 
-Deno.test("a resume that overrides nothing records no event", async () => {
+test("a resume that overrides nothing records no event", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       env = parameter("environment");
@@ -405,7 +406,7 @@ Deno.test("a resume that overrides nothing records no event", async () => {
   });
 });
 
-Deno.test("a cancellation unwinds on the values its targets actually ran on", async () => {
+test("a cancellation unwinds on the values its targets actually ran on", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class B extends Build {
@@ -438,7 +439,7 @@ Deno.test("a cancellation unwinds on the values its targets actually ran on", as
   });
 });
 
-Deno.test("every terminal path says the same thing about a target it never reached", async () => {
+test("every terminal path says the same thing about a target it never reached", async () => {
   // Three ways a run ends without reaching `after`. They used to disagree: a
   // run that failed outright said `skipped`, while one that failed by timing
   // out said `pending`, and so did a cancelled one — the same situation

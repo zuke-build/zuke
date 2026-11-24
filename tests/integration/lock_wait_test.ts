@@ -14,6 +14,7 @@
  * because the lock is genuinely held, not because a timer won a race.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -102,7 +103,7 @@ function recordingReporter(): {
   };
 }
 
-Deno.test("a second run waits for the lock and proceeds when the first finishes", async () => {
+test("a second run waits for the lock and proceeds when the first finishes", async () => {
   await withStateDir(async () => {
     const { order, HolderBuild, release, held } = sharedResource();
     class WaiterBuild extends Build {
@@ -148,7 +149,7 @@ Deno.test("a second run waits for the lock and proceeds when the first finishes"
   });
 });
 
-Deno.test("a waiter that runs out of time fails and says it waited", async () => {
+test("a waiter that runs out of time fails and says it waited", async () => {
   await withStateDir(async () => {
     const { order, HolderBuild, release, held } = sharedResource();
     class ImpatientBuild extends Build {
@@ -176,7 +177,7 @@ Deno.test("a waiter that runs out of time fails and says it waited", async () =>
   });
 });
 
-Deno.test("a lock holder's actor cannot forge a command in the waiting notice", async () => {
+test("a lock holder's actor cannot forge a command in the waiting notice", async () => {
   // The waiting notice describes the run that holds the lock — its actor, id,
   // start time and url — and every one of those was written into the shared
   // state store by another run. On an Actions runner that lands on a stream

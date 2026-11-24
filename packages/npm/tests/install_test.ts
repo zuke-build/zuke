@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   NpmCiSettings,
@@ -17,7 +18,7 @@ import {
   NpmUpdateSettings,
 } from "../mod.ts";
 
-Deno.test("install renders the save targets and tree options", () => {
+test("install renders the save targets and tree options", () => {
   assertEquals(
     new NpmInstallSettings()
       .saveOptional()
@@ -40,7 +41,7 @@ Deno.test("install renders the save targets and tree options", () => {
   );
 });
 
-Deno.test("the dependency-group flags are shared by every install-shaped command", () => {
+test("the dependency-group flags are shared by every install-shaped command", () => {
   // One implementation of --omit/--include, so the commands cannot disagree.
   assertEquals(
     new NpmInstallSettings().omit("dev").include("optional").ignoreScripts()
@@ -57,7 +58,7 @@ Deno.test("the dependency-group flags are shared by every install-shaped command
   );
 });
 
-Deno.test("uninstall requires the packages it removes", () => {
+test("uninstall requires the packages it removes", () => {
   assertThrows(
     () => new NpmUninstallSettings().argv(),
     Error,
@@ -69,7 +70,7 @@ Deno.test("uninstall requires the packages it removes", () => {
   );
 });
 
-Deno.test("update, rebuild, and link render their options and specs", () => {
+test("update, rebuild, and link render their options and specs", () => {
   assertEquals(
     new NpmUpdateSettings().save().packages("typescript").argv().slice(1),
     ["update", "--save", "typescript"],
@@ -84,7 +85,7 @@ Deno.test("update, rebuild, and link render their options and specs", () => {
   );
 });
 
-Deno.test("the workspace selectors are shared, and refuse an ambiguous pair", () => {
+test("the workspace selectors are shared, and refuse an ambiguous pair", () => {
   assertEquals(
     new NpmCiSettings().workspace("app").workspace("web")
       .includeWorkspaceRoot().argv().slice(1),
@@ -108,7 +109,7 @@ Deno.test("the workspace selectors are shared, and refuse an ambiguous pair", ()
   );
 });
 
-Deno.test("the npm config flags are accepted on any command, and render last", () => {
+test("the npm config flags are accepted on any command, and render last", () => {
   assertEquals(
     new NpmInstallSettings()
       .packages("react")
@@ -131,7 +132,7 @@ Deno.test("the npm config flags are accepted on any command, and render last", (
   );
 });
 
-Deno.test("install renders the save flags the existing suite does not reach", () => {
+test("install renders the save flags the existing suite does not reach", () => {
   assertEquals(
     new NpmInstallSettings().saveDev().saveExact().argv().slice(1),
     ["install", "--save-dev", "--save-exact"],
@@ -142,7 +143,7 @@ Deno.test("install renders the save flags the existing suite does not reach", ()
   );
 });
 
-Deno.test("a config flag never lands past npm's -- separator", () => {
+test("a config flag never lands past npm's -- separator", () => {
   // Everything after `--` belongs to the script or the executed command, not
   // to npm. Appending config flags blindly gave the script a `--json` it never
   // asked for and left npm's own output unchanged.

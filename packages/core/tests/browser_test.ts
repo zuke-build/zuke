@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { ToolNotFoundError } from "../src/tooling.ts";
 import {
@@ -22,7 +23,7 @@ function onOs(os: typeof Deno.build.os): BrowserOpenSettings {
   return settings;
 }
 
-Deno.test("browserCommand picks the opener per platform", () => {
+test("browserCommand picks the opener per platform", () => {
   assertEquals(browserCommand("windows", "g.html"), [
     "rundll32",
     ["url.dll,FileProtocolHandler", "g.html"],
@@ -31,22 +32,22 @@ Deno.test("browserCommand picks the opener per platform", () => {
   assertEquals(browserCommand("linux", "g.html"), ["xdg-open", ["g.html"]]);
 });
 
-Deno.test("open conforms as a PATH-resolved wrapper", async () => {
+test("open conforms as a PATH-resolved wrapper", async () => {
   // Pinned to linux so the asserted binary is stable across the OS matrix.
   await assertWrapperConformance(() => onOs("linux"), "xdg-open", {
     resolution: "path",
   });
 });
 
-Deno.test("open uses xdg-open on Linux", () => {
+test("open uses xdg-open on Linux", () => {
   assertEquals(onOs("linux").argv(), ["xdg-open", URL_]);
 });
 
-Deno.test("open uses open on macOS", () => {
+test("open uses open on macOS", () => {
   assertEquals(onOs("darwin").argv(), ["open", URL_]);
 });
 
-Deno.test("open uses rundll32's protocol handler on Windows", () => {
+test("open uses rundll32's protocol handler on Windows", () => {
   assertEquals(onOs("windows").argv(), [
     "rundll32",
     "url.dll,FileProtocolHandler",
@@ -54,7 +55,7 @@ Deno.test("open uses rundll32's protocol handler on Windows", () => {
   ]);
 });
 
-Deno.test("open rejects a string that is not a URL", () => {
+test("open rejects a string that is not a URL", () => {
   assertThrows(
     () => new BrowserOpenSettings("not a url"),
     Error,
@@ -62,7 +63,7 @@ Deno.test("open rejects a string that is not a URL", () => {
   );
 });
 
-Deno.test("open rejects a non-http(s) scheme", () => {
+test("open rejects a non-http(s) scheme", () => {
   assertThrows(
     () => new BrowserOpenSettings("file:///etc/passwd"),
     Error,
@@ -75,7 +76,7 @@ Deno.test("open rejects a non-http(s) scheme", () => {
   );
 });
 
-Deno.test("BrowserTasks.open reaches execution", async () => {
+test("BrowserTasks.open reaches execution", async () => {
   await assertRejects(
     () => BrowserTasks.open(URL_, (s) => missingTool(s)),
     ToolNotFoundError,

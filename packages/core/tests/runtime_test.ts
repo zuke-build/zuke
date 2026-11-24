@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
   denoPath,
@@ -12,7 +13,7 @@ import {
   runtimeFacts,
 } from "../src/runtime.ts";
 
-Deno.test("on Deno the runtime's answers are Deno's own", () => {
+test("on Deno the runtime's answers are Deno's own", () => {
   assertEquals(ON_DENO, true);
   assertEquals(runtimeFacts(), {
     name: "deno",
@@ -25,7 +26,7 @@ Deno.test("on Deno the runtime's answers are Deno's own", () => {
   assertEquals(denoPath(), Deno.execPath());
 });
 
-Deno.test("the option that keeps the entry's symlink is found where Node takes it from", () => {
+test("the option that keeps the entry's symlink is found where Node takes it from", () => {
   const option = "--preserve-symlinks-main";
   assertEquals(preservesMainSymlink([], undefined), false);
   assertEquals(
@@ -59,7 +60,7 @@ Deno.test("the option that keeps the entry's symlink is found where Node takes i
   assertEquals(preservesMainSymlink([], "--preserve-symlinks"), false);
 });
 
-Deno.test("NODE_OPTIONS is split as Node splits it", () => {
+test("NODE_OPTIONS is split as Node splits it", () => {
   assertEquals(nodeOptionWords(""), []);
   assertEquals(nodeOptionWords("  --a   --b "), ["--a", "--b"]);
   assertEquals(nodeOptionWords('--require "./a b.js" --c'), [
@@ -76,7 +77,7 @@ Deno.test("NODE_OPTIONS is split as Node splits it", () => {
   assertEquals(nodeOptionWords('"end\\'), ["end"]);
 });
 
-Deno.test("a Node single executable is told apart by node:sea", () => {
+test("a Node single executable is told apart by node:sea", () => {
   const builtin = (sea: unknown) => (id: string) =>
     id === "node:sea" ? sea : undefined;
   assertEquals(isSingleExecutable(builtin({ isSea: () => true })), true);

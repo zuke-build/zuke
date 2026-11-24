@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore paiement
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -86,7 +87,7 @@ function against(
       .bundleId("com.example.app").buildNumber(42);
 }
 
-Deno.test("distribute: waits for processing, then compliance, notes, groups, review", async () => {
+test("distribute: waits for processing, then compliance, notes, groups, review", async () => {
   const fake = store([undefined, "PROCESSING", "PROCESSING", "VALID"]);
   const log: string[] = [];
   const build = await TestFlightTasks.distribute((s) =>
@@ -154,7 +155,7 @@ Deno.test("distribute: waits for processing, then compliance, notes, groups, rev
   );
 });
 
-Deno.test("distribute: nothing is written that was not asked for", async () => {
+test("distribute: nothing is written that was not asked for", async () => {
   const fake = store(["VALID"]);
   await TestFlightTasks.distribute(against(fake));
   assertEquals(fake.calls.map((c) => `${c.method} ${c.path.split("?")[0]}`), [
@@ -163,7 +164,7 @@ Deno.test("distribute: nothing is written that was not asked for", async () => {
   ]);
 });
 
-Deno.test("distribute: compliance already answered by the build is not patched", async () => {
+test("distribute: compliance already answered by the build is not patched", async () => {
   const log: string[] = [];
   const fake = store(
     ["VALID"],
@@ -198,7 +199,7 @@ Deno.test("distribute: compliance already answered by the build is not patched",
   );
 });
 
-Deno.test("distribute: a build that fails processing throws", async () => {
+test("distribute: a build that fails processing throws", async () => {
   for (const state of ["INVALID", "FAILED"]) {
     await assertRejects(
       () => TestFlightTasks.distribute(against(store(["PROCESSING", state]))),
@@ -208,7 +209,7 @@ Deno.test("distribute: a build that fails processing throws", async () => {
   }
 });
 
-Deno.test("distribute: a build still processing at the deadline throws", async () => {
+test("distribute: a build still processing at the deadline throws", async () => {
   await assertRejects(
     () =>
       TestFlightTasks.distribute((s) =>
@@ -228,7 +229,7 @@ Deno.test("distribute: a build still processing at the deadline throws", async (
   );
 });
 
-Deno.test("distribute: an unknown processing state reads as unknown", async () => {
+test("distribute: an unknown processing state reads as unknown", async () => {
   const log: string[] = [];
   const fake = fakeAsc((call) =>
     call.path.startsWith("/v1/apps")
@@ -250,7 +251,7 @@ Deno.test("distribute: an unknown processing state reads as unknown", async () =
   assertEquals(log, ["TestFlight: build 42 of com.example.app is unknown"]);
 });
 
-Deno.test("distribute: a missing app or beta group is named", async () => {
+test("distribute: a missing app or beta group is named", async () => {
   const noApp = fakeAsc(() => ({ body: { data: [] } }));
   await assertRejects(
     () => TestFlightTasks.distribute(against(noApp)),
@@ -279,7 +280,7 @@ Deno.test("distribute: a missing app or beta group is named", async () => {
   );
 });
 
-Deno.test("distribute: settings are checked", async () => {
+test("distribute: settings are checked", async () => {
   await assertRejects(
     () => TestFlightTasks.distribute((s) => s.bundleId("x")),
     Error,

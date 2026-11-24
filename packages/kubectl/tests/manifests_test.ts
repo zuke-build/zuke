@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { KubectlDiffSettings, KubectlReplaceSettings } from "../mod.ts";
 
-Deno.test("diff renders its flags", () => {
+test("diff renders its flags", () => {
   assertEquals(
     new KubectlDiffSettings()
       .namespace("prod")
@@ -40,7 +41,7 @@ Deno.test("diff renders its flags", () => {
   );
 });
 
-Deno.test("diff refuses the combinations kubectl would reject", () => {
+test("diff refuses the combinations kubectl would reject", () => {
   assertThrows(
     () => new KubectlDiffSettings().argv(),
     Error,
@@ -64,7 +65,7 @@ Deno.test("diff refuses the combinations kubectl would reject", () => {
   );
 });
 
-Deno.test("replace renders its flags", () => {
+test("replace renders its flags", () => {
   assertEquals(
     new KubectlReplaceSettings()
       .file("k8s/api.yaml")
@@ -90,7 +91,7 @@ Deno.test("replace renders its flags", () => {
   );
 });
 
-Deno.test("replace refuses a zero grace period without a force", () => {
+test("replace refuses a zero grace period without a force", () => {
   // kubectl accepts --grace-period=0 only alongside --force; without it the
   // command fails at the server rather than in the build.
   assertThrows(

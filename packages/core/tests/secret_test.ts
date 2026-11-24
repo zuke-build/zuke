@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -18,14 +19,14 @@ import { withTemp } from "./_temp.ts";
 /** The running `deno`, used as a hermetic, always-present subprocess. */
 const deno = Deno.execPath();
 
-Deno.test("execSecret runs a command and returns its trimmed stdout", async () => {
+test("execSecret runs a command and returns its trimmed stdout", async () => {
   const source = execSecret((s) =>
     s.command(deno).arg("eval", "console.log('  s3cr3t-value  ')")
   );
   assertEquals(await source.resolve(), "s3cr3t-value");
 });
 
-Deno.test("execSecret with trim(false) keeps surrounding whitespace", async () => {
+test("execSecret with trim(false) keeps surrounding whitespace", async () => {
   const source = execSecret((s) =>
     s.command(deno).arg(
       "eval",
@@ -36,7 +37,7 @@ Deno.test("execSecret with trim(false) keeps surrounding whitespace", async () =
   assertEquals(await source.resolve(), "tok\n");
 });
 
-Deno.test("execSecret passes environment variables to the command", async () => {
+test("execSecret passes environment variables to the command", async () => {
   const source = execSecret((s) =>
     s.command(deno)
       .arg("eval", "console.log(Deno.env.get('ZUKE_TEST_SECRET'))")
@@ -45,7 +46,7 @@ Deno.test("execSecret passes environment variables to the command", async () => 
   assertEquals(await source.resolve(), "from-env");
 });
 
-Deno.test("execSecret honours the working directory", async () => {
+test("execSecret honours the working directory", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/token.txt`, "in-cwd");
     const source = execSecret((s) =>
@@ -57,7 +58,7 @@ Deno.test("execSecret honours the working directory", async () => {
   });
 });
 
-Deno.test("execSecret without a command throws SecretError", async () => {
+test("execSecret without a command throws SecretError", async () => {
   const source = execSecret((s) => s.trim());
   await assertRejects(
     () => source.resolve(),
@@ -66,7 +67,7 @@ Deno.test("execSecret without a command throws SecretError", async () => {
   );
 });
 
-Deno.test("execSecret surfaces a non-zero exit as SecretError", async () => {
+test("execSecret surfaces a non-zero exit as SecretError", async () => {
   const source = execSecret((s) =>
     s.command(deno).arg("eval", "console.error('nope'); Deno.exit(3)")
   );
@@ -75,18 +76,18 @@ Deno.test("execSecret surfaces a non-zero exit as SecretError", async () => {
   assertStringIncludes(error.message, "nope");
 });
 
-Deno.test("execSecret reports a non-zero exit with no stderr", async () => {
+test("execSecret reports a non-zero exit with no stderr", async () => {
   const source = execSecret((s) => s.command(deno).arg("eval", "Deno.exit(4)"));
   const error = await assertRejects(() => source.resolve(), SecretError);
   assertStringIncludes(error.message, "exited with code 4");
 });
 
-Deno.test("execSecret wraps a missing binary as SecretError", async () => {
+test("execSecret wraps a missing binary as SecretError", async () => {
   const source = execSecret((s) => s.command("zuke-no-such-binary-xyz"));
   await assertRejects(() => source.resolve(), SecretError, "failed");
 });
 
-Deno.test("fileSecret reads a file and trims by default", async () => {
+test("fileSecret reads a file and trims by default", async () => {
   const file = await Deno.makeTempFile();
   try {
     await Deno.writeTextFile(file, "  file-secret\n");
@@ -97,7 +98,7 @@ Deno.test("fileSecret reads a file and trims by default", async () => {
   }
 });
 
-Deno.test("fileSecret with trim(false) preserves the raw content", async () => {
+test("fileSecret with trim(false) preserves the raw content", async () => {
   const file = await Deno.makeTempFile();
   try {
     await Deno.writeTextFile(file, "raw\n");
@@ -108,12 +109,12 @@ Deno.test("fileSecret with trim(false) preserves the raw content", async () => {
   }
 });
 
-Deno.test("fileSecret without a path throws SecretError", async () => {
+test("fileSecret without a path throws SecretError", async () => {
   const source = fileSecret((s) => s.trim());
   await assertRejects(() => source.resolve(), SecretError, "requires a path");
 });
 
-Deno.test("fileSecret surfaces a missing file as SecretError", async () => {
+test("fileSecret surfaces a missing file as SecretError", async () => {
   const source = fileSecret((s) => s.path("/no/such/zuke/secret/file"));
   await assertRejects(
     () => source.resolve(),
@@ -122,7 +123,7 @@ Deno.test("fileSecret surfaces a missing file as SecretError", async () => {
   );
 });
 
-Deno.test("the settings classes are exported for direct configuration", () => {
+test("the settings classes are exported for direct configuration", () => {
   // The fluent classes are part of the public surface (parity with the tool
   // settings), so a build can construct and inspect one directly.
   const exec = new ExecSecretSettings().command("op").arg("read", "op://v/i/f");

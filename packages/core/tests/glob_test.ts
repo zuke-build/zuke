@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { glob, globListing, globToRegExp } from "../src/glob.ts";
 import { readDir } from "../src/fs.ts";
 import { withTemp } from "./_temp.ts";
 
-Deno.test("globToRegExp compiles the supported syntax", () => {
+test("globToRegExp compiles the supported syntax", () => {
   assertEquals(globToRegExp("*.ts").test("mod.ts"), true);
   assertEquals(globToRegExp("*.ts").test("a/mod.ts"), false); // * stops at /
   assertEquals(globToRegExp("src/**/*.ts").test("src/a/b/mod.ts"), true);
@@ -19,14 +20,14 @@ Deno.test("globToRegExp compiles the supported syntax", () => {
   assertEquals(globToRegExp("{a,b}.ts").test("c.ts"), false);
 });
 
-Deno.test("globToRegExp escapes regex metacharacters and unclosed braces", () => {
+test("globToRegExp escapes regex metacharacters and unclosed braces", () => {
   assertEquals(globToRegExp("a.b+c").test("a.b+c"), true);
   assertEquals(globToRegExp("a.b+c").test("a-b-c"), false); // . and + are literal
   // An unclosed brace is matched literally.
   assertEquals(globToRegExp("a{b").test("a{b"), true);
 });
 
-Deno.test("glob expands patterns against a directory tree", async () => {
+test("glob expands patterns against a directory tree", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/src/sub`, { recursive: true });
     await Deno.writeTextFile(`${dir}/src/a.ts`, "");
@@ -43,7 +44,7 @@ Deno.test("glob expands patterns against a directory tree", async () => {
   });
 });
 
-Deno.test("glob with no static base walks from cwd; missing base yields nothing", async () => {
+test("glob with no static base walks from cwd; missing base yields nothing", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/pkg`);
     await Deno.writeTextFile(`${dir}/pkg/x.ts`, "");
@@ -54,7 +55,7 @@ Deno.test("glob with no static base walks from cwd; missing base yields nothing"
   });
 });
 
-Deno.test("glob matches an absolute pattern, whatever the cwd", async () => {
+test("glob matches an absolute pattern, whatever the cwd", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/g/a`, { recursive: true });
     await Deno.mkdir(`${dir}/g/b`, { recursive: true });
@@ -81,7 +82,7 @@ Deno.test("glob matches an absolute pattern, whatever the cwd", async () => {
   });
 });
 
-Deno.test("glob defaults cwd to Deno.cwd()", async () => {
+test("glob defaults cwd to Deno.cwd()", async () => {
   const original = Deno.cwd();
   const dir = await Deno.makeTempDir();
   try {
@@ -94,7 +95,7 @@ Deno.test("glob defaults cwd to Deno.cwd()", async () => {
   }
 });
 
-Deno.test("glob skips a directory removed after its parent was listed (#1096)", async () => {
+test("glob skips a directory removed after its parent was listed (#1096)", async () => {
   await withTemp(async (dir) => {
     for (const sub of ["keep", "gone"]) {
       await Deno.mkdir(`${dir}/${sub}`);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   checkExamples,
@@ -41,7 +42,7 @@ const EXAMPLES: Example[] = [
   { dir: "examples/b", file: "examples/b/build.ts" },
 ];
 
-Deno.test("discoverExamples finds every build file, sorted, with its directory", async () => {
+test("discoverExamples finds every build file, sorted, with its directory", async () => {
   const root = await Deno.makeTempDir({
     dir: Deno.cwd(),
     prefix: ".examples-",
@@ -65,7 +66,7 @@ Deno.test("discoverExamples finds every build file, sorted, with its directory",
   }
 });
 
-Deno.test("discoverExamples refuses an empty match rather than passing vacuously", async () => {
+test("discoverExamples refuses an empty match rather than passing vacuously", async () => {
   let message = "";
   try {
     await discoverExamples("examples/no-such-dir-*/build.ts");
@@ -75,7 +76,7 @@ Deno.test("discoverExamples refuses an empty match rather than passing vacuously
   assertEquals(message.includes("No example builds match"), true);
 });
 
-Deno.test("checkExamples runs all three steps per example, in order", async () => {
+test("checkExamples runs all three steps per example, in order", async () => {
   const runner = fakeRunner({});
   assertEquals(await checkExamples(EXAMPLES, runner), []);
   assertEquals(runner.calls, [
@@ -88,7 +89,7 @@ Deno.test("checkExamples runs all three steps per example, in order", async () =
   ]);
 });
 
-Deno.test("a build that fails to type-check is reported once and not listed", async () => {
+test("a build that fails to type-check is reported once and not listed", async () => {
   const runner = fakeRunner({
     check: { "examples/a/build.ts": "TS2339: no such method" },
   });
@@ -101,7 +102,7 @@ Deno.test("a build that fails to type-check is reported once and not listed", as
   assertEquals(runner.calls.includes("list examples/b"), true);
 });
 
-Deno.test("a build whose --list fails is reported with the list output", async () => {
+test("a build whose --list fails is reported with the list output", async () => {
   const runner = fakeRunner({
     list: { "examples/b": "forward reference to this.test" },
   });
@@ -116,7 +117,7 @@ Deno.test("a build whose --list fails is reported with the list output", async (
   assertEquals(runner.calls.includes("pipeline examples/b"), false);
 });
 
-Deno.test("an example whose committed pipeline drifted is reported", async () => {
+test("an example whose committed pipeline drifted is reported", async () => {
   // The step this covers: an example commits the workflow files `cicd()`
   // renders, and a change to the renderer leaves them stale. Type-checking and
   // `--list` both still pass, so without this the gate is blind to it.
@@ -134,7 +135,7 @@ Deno.test("an example whose committed pipeline drifted is reported", async () =>
   ]);
 });
 
-Deno.test("formatExampleFailures names the example, the step, and the output", () => {
+test("formatExampleFailures names the example, the step, and the output", () => {
   const text = formatExampleFailures([
     { dir: "examples/a", step: "check", detail: "line one\nline two" },
     { dir: "examples/b", step: "list", detail: "boom" },
@@ -157,7 +158,7 @@ Deno.test("formatExampleFailures names the example, the step, and the output", (
   assertEquals(text.includes("it is what readers copy"), true);
 });
 
-Deno.test("the shipped examples are discovered and pass the real gate", async () => {
+test("the shipped examples are discovered and pass the real gate", async () => {
   // Integration: the default runner spawns the real `deno check` and
   // `deno run … --list` (Deno.execPath() via the wrapper) over every shipped
   // example, resolving their jsr:@zuke/* imports to this workspace — the same

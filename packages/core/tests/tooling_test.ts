@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -66,23 +67,23 @@ const ECHO_STDIN =
   "const b = new Uint8Array(1024); const n = Deno.stdin.readSync(b) ?? 0; " +
   "console.log('got:' + new TextDecoder().decode(b.subarray(0, n)).trim())";
 
-Deno.test("argv() is tool + buildArgs + extra args, in order", () => {
+test("argv() is tool + buildArgs + extra args, in order", () => {
   const s = new EvalSettings().script("1").args("--extra", 2);
   assertEquals(s.argv(), [Deno.execPath(), "eval", "1", "--extra", "2"]);
 });
 
-Deno.test("toolPath() overrides the default binary", () => {
+test("toolPath() overrides the default binary", () => {
   const s = new EvalSettings().toolPath("/custom/bin");
   assertEquals(s.argv()[0], "/custom/bin");
 });
 
-Deno.test("run() executes and captures output", async () => {
+test("run() executes and captures output", async () => {
   const out = await new EvalSettings().quiet().run();
   assertEquals(out.code, 0);
   assertEquals(out.stdout.includes("tool-ok"), true);
 });
 
-Deno.test("run() applies env and cwd", async () => {
+test("run() applies env and cwd", async () => {
   await withTemp(async (dir) => {
     // Compare the resolved cwd against the target dir *inside* the subprocess,
     // so both paths are normalised by the same realPath in the same process.
@@ -102,7 +103,7 @@ Deno.test("run() applies env and cwd", async () => {
   });
 });
 
-Deno.test("run() throws CommandError on non-zero exit", async () => {
+test("run() throws CommandError on non-zero exit", async () => {
   await assertRejects(
     () => new EvalSettings().script("Deno.exit(3)").quiet().run(),
     CommandError,
@@ -110,7 +111,7 @@ Deno.test("run() throws CommandError on non-zero exit", async () => {
   );
 });
 
-Deno.test("killAfter() kills a slow tool run", async () => {
+test("killAfter() kills a slow tool run", async () => {
   await assertRejects(
     () =>
       new EvalSettings()
@@ -122,7 +123,7 @@ Deno.test("killAfter() kills a slow tool run", async () => {
   );
 });
 
-Deno.test("maxCapturedBytes() caps a tool run's captured output at the tail", async () => {
+test("maxCapturedBytes() caps a tool run's captured output at the tail", async () => {
   // Every wrapper funnels through ToolSettings, so the cap has to be settable
   // there too — otherwise a wrapper whose whole output is parsed is stuck with
   // the 8 MiB default and silently receives only the tail.
@@ -140,7 +141,7 @@ Deno.test("maxCapturedBytes() caps a tool run's captured output at the tail", as
   assertEquals(out.stdout.includes("0000"), false); // …not the head.
 });
 
-Deno.test("maxCapturedBytes() leaves output under the cap whole", async () => {
+test("maxCapturedBytes() leaves output under the cap whole", async () => {
   const out = await new EvalSettings()
     .quiet()
     .maxCapturedBytes(64 * 1024 * 1024) // raised well above the default
@@ -149,7 +150,7 @@ Deno.test("maxCapturedBytes() leaves output under the cap whole", async () => {
   assertEquals(out.stdout.includes("tool-ok"), true);
 });
 
-Deno.test("maxCapturedBytes() rejects a cap capture cannot honour", () => {
+test("maxCapturedBytes() rejects a cap capture cannot honour", () => {
   const err = assertThrows(
     () => new EvalSettings().maxCapturedBytes(-1),
     RangeError,
@@ -157,7 +158,7 @@ Deno.test("maxCapturedBytes() rejects a cap capture cannot honour", () => {
   assertEquals(messageOf(err).includes("maxCapturedBytes"), true);
 });
 
-Deno.test("noThrow() suppresses the non-zero throw", async () => {
+test("noThrow() suppresses the non-zero throw", async () => {
   const out = await new EvalSettings()
     .script("Deno.exit(3)")
     .noThrow()
@@ -166,7 +167,7 @@ Deno.test("noThrow() suppresses the non-zero throw", async () => {
   assertEquals(out.code, 3);
 });
 
-Deno.test("missing binary without a shim raises ToolNotFoundError", async () => {
+test("missing binary without a shim raises ToolNotFoundError", async () => {
   const s = new EvalSettings().toolPath("zuke-no-such-tool-xyz");
   s.os_ = "linux"; // force the no-fallback path on every platform
   const err = await assertRejects(() => s.run(), ToolNotFoundError);
@@ -174,7 +175,7 @@ Deno.test("missing binary without a shim raises ToolNotFoundError", async () => 
   assertEquals(messageOf(err).includes("toolPath"), true);
 });
 
-Deno.test({
+test({
   name: "a missing binary on windows reports the tool, with no cmd /c retry",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -184,7 +185,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "run() spawns a batch shim itself rather than wrapping it in cmd /c",
   // Wrapping handed cmd.exe one command line quoted by C-runtime rules, which
   // leave `&` bare, so a caller operand could be re-parsed as a command. The
@@ -213,7 +214,7 @@ Deno.test({
   },
 });
 
-Deno.test("non-NotFound spawn errors propagate unchanged", async () => {
+test("non-NotFound spawn errors propagate unchanged", async () => {
   // An empty command is a plain Error from Command, not a NotFound.
   class EmptySettings extends ToolSettings {
     protected override defaultTool(): string {
@@ -254,7 +255,7 @@ class NodeToolSettings extends ToolSettings {
   }
 }
 
-Deno.test("fromNodeModules resolves a hoisted bin by walking up", () => {
+test("fromNodeModules resolves a hoisted bin by walking up", () => {
   const root = Deno.makeTempDirSync();
   try {
     const bin = plantBin(root, "mytool");
@@ -267,7 +268,7 @@ Deno.test("fromNodeModules resolves a hoisted bin by walking up", () => {
   }
 });
 
-Deno.test("resolution falls back to the bare name on a miss", () => {
+test("resolution falls back to the bare name on a miss", () => {
   const root = Deno.makeTempDirSync();
   try {
     const s = new NodeToolSettings().cwd(root);
@@ -277,7 +278,7 @@ Deno.test("resolution falls back to the bare name on a miss", () => {
   }
 });
 
-Deno.test("fromPath ignores a present node_modules/.bin", () => {
+test("fromPath ignores a present node_modules/.bin", () => {
   const root = Deno.makeTempDirSync();
   try {
     plantBin(root, "mytool");
@@ -288,7 +289,7 @@ Deno.test("fromPath ignores a present node_modules/.bin", () => {
   }
 });
 
-Deno.test("an explicit toolPath wins over node_modules resolution", () => {
+test("an explicit toolPath wins over node_modules resolution", () => {
   const root = Deno.makeTempDirSync();
   try {
     plantBin(root, "mytool");
@@ -299,7 +300,7 @@ Deno.test("an explicit toolPath wins over node_modules resolution", () => {
   }
 });
 
-Deno.test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () => {
+test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () => {
   const root = Deno.makeTempDirSync();
   const prev = Deno.env.get("ZUKE_TOOL_RESOLUTION");
   try {
@@ -335,7 +336,7 @@ Deno.test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () => {
   }
 });
 
-Deno.test("windows resolution matches the .cmd shim, not the bare shim", () => {
+test("windows resolution matches the .cmd shim, not the bare shim", () => {
   const root = Deno.makeTempDirSync();
   try {
     const cmd = plantBin(root, "mytool.cmd");
@@ -348,7 +349,7 @@ Deno.test("windows resolution matches the .cmd shim, not the bare shim", () => {
   }
 });
 
-Deno.test("windows resolution ignores a bare-only shim", () => {
+test("windows resolution ignores a bare-only shim", () => {
   const root = Deno.makeTempDirSync();
   try {
     plantBin(root, "mytool"); // no .cmd/.bat → Windows cannot launch it
@@ -360,7 +361,7 @@ Deno.test("windows resolution ignores a bare-only shim", () => {
   }
 });
 
-Deno.test("windowsCmdShim wraps .cmd/.bat via cmd /c on windows only", () => {
+test("windowsCmdShim wraps .cmd/.bat via cmd /c on windows only", () => {
   assertEquals(windowsCmdShim(["C:/x/foo.cmd", "-v"], "windows"), [
     "cmd",
     "/c",
@@ -378,7 +379,7 @@ Deno.test("windowsCmdShim wraps .cmd/.bat via cmd /c on windows only", () => {
   assertEquals(windowsCmdShim([], "windows"), []);
 });
 
-Deno.test("the lookup is memoized per (tool, cwd)", () => {
+test("the lookup is memoized per (tool, cwd)", () => {
   const root = Deno.makeTempDirSync();
   try {
     const s = new NodeToolSettings().cwd(root);
@@ -390,7 +391,7 @@ Deno.test("the lookup is memoized per (tool, cwd)", () => {
   }
 });
 
-Deno.test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", async () => {
+test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", async () => {
   const root = Deno.makeTempDirSync();
   try {
     Deno.mkdirSync(`${root}/node_modules`, { recursive: true });
@@ -414,7 +415,7 @@ Deno.test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", 
   }
 });
 
-Deno.test("shimFallbackArgv wraps with cmd /c on windows only", () => {
+test("shimFallbackArgv wraps with cmd /c on windows only", () => {
   assertEquals(shimFallbackArgv(["npm", "-v"], "windows"), [
     "cmd",
     "/c",
@@ -425,12 +426,12 @@ Deno.test("shimFallbackArgv wraps with cmd /c on windows only", () => {
   assertEquals(shimFallbackArgv(["npm", "-v"], "darwin"), null);
 });
 
-Deno.test("runSettings runs unconfigured settings when no lambda given", async () => {
+test("runSettings runs unconfigured settings when no lambda given", async () => {
   const out = await runSettings(new EvalSettings().quiet());
   assertEquals(out.stdout.includes("tool-ok"), true);
 });
 
-Deno.test("runSettings applies the configure lambda", async () => {
+test("runSettings applies the configure lambda", async () => {
   const out = await runSettings(
     new EvalSettings(),
     (s) => s.script("console.log('configured')").quiet(),
@@ -438,7 +439,7 @@ Deno.test("runSettings applies the configure lambda", async () => {
   assertEquals(out.stdout.includes("configured"), true);
 });
 
-Deno.test("a subclass can reject invalid settings from buildArgs", () => {
+test("a subclass can reject invalid settings from buildArgs", () => {
   class NeedsValue extends ToolSettings {
     protected override defaultTool(): string {
       return "x";
@@ -454,7 +455,7 @@ Deno.test("a subclass can reject invalid settings from buildArgs", () => {
   );
 });
 
-Deno.test("defineTool: binary, then arg/flag/option in call order", () => {
+test("defineTool: binary, then arg/flag/option in call order", () => {
   const tool = defineTool("mytool");
   // The task closes over a fresh settings each call; build one directly to
   // inspect argv via the configure lambda.
@@ -471,13 +472,13 @@ Deno.test("defineTool: binary, then arg/flag/option in call order", () => {
   assertEquals(typeof tool, "function");
 });
 
-Deno.test("defineTool: short flags and pre-dashed names are left as-is", () => {
+test("defineTool: short flags and pre-dashed names are left as-is", () => {
   const s = new DynamicToolSettings("x");
   s.flag("-v").option("-o", "f").flag("--long");
   assertEquals(s.argv().slice(1), ["-v", "-o", "f", "--long"]);
 });
 
-Deno.test("defineTool: subcommand prepends a leading token (string or array)", () => {
+test("defineTool: subcommand prepends a leading token (string or array)", () => {
   assertEquals(
     new DynamicToolSettings("helm", ["upgrade"]).arg("api").argv().slice(1),
     ["upgrade", "api"],
@@ -489,7 +490,7 @@ Deno.test("defineTool: subcommand prepends a leading token (string or array)", (
   assertEquals(typeof many, "function");
 });
 
-Deno.test("defineTool: numeric args/options are coerced to strings", () => {
+test("defineTool: numeric args/options are coerced to strings", () => {
   const s = new DynamicToolSettings("x");
   s.arg(1).option("port", 8080);
   assertEquals(s.argv().slice(1), ["1", "--port", "8080"]);
@@ -501,7 +502,7 @@ const onLinux = (s: DynamicToolSettings): DynamicToolSettings => {
   return s;
 };
 
-Deno.test("defineTool: base chainers still apply; reaches execution", async () => {
+test("defineTool: base chainers still apply; reaches execution", async () => {
   const tool = defineTool("zuke-no-such-tool-xyz", { subcommand: "go" });
   await assertRejects(
     () => tool((s) => onLinux(s).arg("x")),
@@ -509,13 +510,13 @@ Deno.test("defineTool: base chainers still apply; reaches execution", async () =
   );
 });
 
-Deno.test("defineTool: subcommand array initial tokens drive a real run", async () => {
+test("defineTool: subcommand array initial tokens drive a real run", async () => {
   // Exercise the array-subcommand path through the task closure.
   const tool = defineTool("zuke-no-such-tool-xyz", { subcommand: ["a", "b"] });
   await assertRejects(() => tool(onLinux), ToolNotFoundError);
 });
 
-Deno.test("SubcommandSettings: command path + flags, no leading/middle by default", () => {
+test("SubcommandSettings: command path + flags, no leading/middle by default", () => {
   class Sub extends SubcommandSettings {
     protected override defaultTool(): string {
       return "tool";
@@ -531,7 +532,7 @@ Deno.test("SubcommandSettings: command path + flags, no leading/middle by defaul
   ]);
 });
 
-Deno.test("SubcommandSettings: leadingTokens and middleTokens bracket the command", () => {
+test("SubcommandSettings: leadingTokens and middleTokens bracket the command", () => {
   class Sub extends SubcommandSettings {
     protected override defaultTool(): string {
       return "tool";
@@ -563,14 +564,14 @@ class ObservingSettings extends EvalSettings {
   }
 }
 
-Deno.test("onOutput sees the output of a successful run", async () => {
+test("onOutput sees the output of a successful run", async () => {
   const s = new ObservingSettings().quiet();
   const out = await s.run();
   assertEquals(out.code, 0);
   assertEquals(s.seen, [{ code: 0, stdout: "tool-ok" }]);
 });
 
-Deno.test("onOutput sees a failed run's output before the CommandError is raised", async () => {
+test("onOutput sees a failed run's output before the CommandError is raised", async () => {
   const s = new ObservingSettings()
     .script("console.log('partial'); Deno.exit(3)")
     .quiet();
@@ -578,7 +579,7 @@ Deno.test("onOutput sees a failed run's output before the CommandError is raised
   assertEquals(s.seen, [{ code: 3, stdout: "partial" }]);
 });
 
-Deno.test("onOutput runs once under noThrow too, and the output is returned", async () => {
+test("onOutput runs once under noThrow too, and the output is returned", async () => {
   const s = new ObservingSettings()
     .script("console.log('partial'); Deno.exit(3)")
     .noThrow()
@@ -588,7 +589,7 @@ Deno.test("onOutput runs once under noThrow too, and the output is returned", as
   assertEquals(s.seen, [{ code: 3, stdout: "partial" }]);
 });
 
-Deno.test("markSecret masks a credential a tool only takes as an argument", async () => {
+test("markSecret masks a credential a tool only takes as an argument", async () => {
   // Some tools have no stdin form, so the value must ride in argv. This does not
   // hide it from the process table — nothing can — but it keeps it out of every
   // rendered form of the command: the dry-run echo, a CommandError, a recorded
@@ -621,7 +622,7 @@ Deno.test("markSecret masks a credential a tool only takes as an argument", asyn
   });
 });
 
-Deno.test("markSecret outside a run is a no-op, not a crash", async () => {
+test("markSecret outside a run is a no-op, not a crash", async () => {
   // A wrapper used standalone in a script has no redactor to register with. It
   // should still work — with nothing masking its output, which is the honest
   // outcome rather than a failure.
@@ -657,7 +658,7 @@ class SecretEvalSettings extends EvalSettings {
   }
 }
 
-Deno.test("markSecretsInOutput registers the secrets a tool printed", async () => {
+test("markSecretsInOutput registers the secrets a tool printed", async () => {
   const redactor = new Redactor();
   const printed = JSON.stringify({
     Name: "prod/db",
@@ -674,7 +675,7 @@ Deno.test("markSecretsInOutput registers the secrets a tool printed", async () =
   assertEquals(redactor.redact("prod/db"), "prod/db");
 });
 
-Deno.test("markSecretsInOutput goes through markSecret, with or without a lambda", () => {
+test("markSecretsInOutput goes through markSecret, with or without a lambda", () => {
   class Recording extends EvalSettings {
     readonly marked: string[] = [];
     protected override markSecret(value: string): void {
@@ -696,7 +697,7 @@ Deno.test("markSecretsInOutput goes through markSecret, with or without a lambda
   assertEquals(new Recording().register(""), []);
 });
 
-Deno.test("markSecretsInOutput outside a run is a no-op, not a crash", async () => {
+test("markSecretsInOutput outside a run is a no-op, not a crash", async () => {
   const out = await new SecretEvalSettings()
     .script("console.log('\"aaaaaaaa1\"')")
     .quiet()
@@ -704,7 +705,7 @@ Deno.test("markSecretsInOutput outside a run is a no-op, not a crash", async () 
   assertEquals(out.code, 0);
 });
 
-Deno.test("L3: markSecretsInOutput does not read the output outside a run", async () => {
+test("L3: markSecretsInOutput does not read the output outside a run", async () => {
   // The base markSecret registers nothing without a redactor, so the search
   // is skipped: the lambda describing the output is never even called.
   class Counting extends EvalSettings {
@@ -729,7 +730,7 @@ Deno.test("L3: markSecretsInOutput does not read the output outside a run", asyn
   assertEquals(redactor.redact("aaaaaaaa1"), REDACTED);
 });
 
-Deno.test("stdinInput() reaches the tool's standard input", async () => {
+test("stdinInput() reaches the tool's standard input", async () => {
   // A real pipe, not an argv assertion: what is being proved is that the text
   // arrives on the child's stdin, which only a subprocess can show.
   const out = await new StdinEvalSettings()
@@ -741,7 +742,7 @@ Deno.test("stdinInput() reaches the tool's standard input", async () => {
   assertEquals(out.stdout.includes("got:hunter2"), true);
 });
 
-Deno.test("stdin text stays out of every rendering of the command", async () => {
+test("stdin text stays out of every rendering of the command", async () => {
   // The whole point of preferring this over markSecret: the secret is not on
   // the command line, so nothing that renders the command line can leak it.
   const settings = new StdinEvalSettings()
@@ -757,7 +758,7 @@ Deno.test("stdin text stays out of every rendering of the command", async () => 
   assertEquals(settings.argv().some((a) => a.includes("hunter2")), false);
 });
 
-Deno.test("the base supplies no stdin, so every existing wrapper is unchanged", () => {
+test("the base supplies no stdin, so every existing wrapper is unchanged", () => {
   // The default arm, asserted on the contract rather than on a subprocess.
   // Whether the spawn inherits stdin is `Command`'s decision, keyed on this
   // returning undefined, and it is already covered where that decision lives.

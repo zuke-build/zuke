@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,11 +10,11 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { EslintSettings, EslintTasks } from "../src/eslint.ts";
 
-Deno.test("the default binary is eslint", () => {
+test("the default binary is eslint", () => {
   assertEquals(new EslintSettings().argv(), ["eslint"]);
 });
 
-Deno.test("eslint: every option renders, paths last", () => {
+test("eslint: every option renders, paths last", () => {
   const argv = new EslintSettings()
     .config("eslint.config.js").ext(".ts", ".tsx").fix().fixDryRun()
     .fixType("problem", "suggestion").quietWarnings().maxWarnings(0)
@@ -57,15 +58,15 @@ Deno.test("eslint: every option renders, paths last", () => {
   ]);
 });
 
-Deno.test("eslint: minimal lints just the given path", () => {
+test("eslint: minimal lints just the given path", () => {
   assertEquals(new EslintSettings().paths("src").argv(), ["eslint", "src"]);
 });
 
-Deno.test("EslintTasks.lint reaches execution", async () => {
+test("EslintTasks.lint reaches execution", async () => {
   await assertRejects(() => EslintTasks.lint(missingTool), ToolNotFoundError);
 });
 
-Deno.test("eslint: resolves its binary from node_modules by default", async () => {
+test("eslint: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new EslintSettings(), "eslint", {
     resolution: "node_modules",
   });

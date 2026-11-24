@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("jest: the Tests: line on stderr yields every category, in any order", () => {
+test("jest: the Tests: line on stderr yields every category, in any order", () => {
   const text =
     "Test Suites: 1 failed, 1 passed, 2 total\nTests:       1 failed, 1 skipped, 1 todo, 2 passed, 5 total\nSnapshots:   0 total\nTime:        0.57 s\n";
   assertEquals(parseTestSummary(out(1, "", text)), {
@@ -46,7 +47,7 @@ Deno.test("jest: the Tests: line on stderr yields every category, in any order",
   );
 });
 
-Deno.test("jest: no Tests: line, or one without a total, means nothing to report", () => {
+test("jest: no Tests: line, or one without a total, means nothing to report", () => {
   assertEquals(parseTestSummary(out(0)), undefined);
   assertEquals(
     parseTestSummary(out(1, "", "No tests found, exiting with code 1")),
@@ -65,7 +66,7 @@ class Probe extends JestSettings {
   }
 }
 
-Deno.test("jest: the hook reports the shared shape onto the running target", async () => {
+test("jest: the hook reports the shared shape onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(

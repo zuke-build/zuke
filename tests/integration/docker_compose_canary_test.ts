@@ -13,6 +13,7 @@
  * `--no-recreate` keeps them — and answers `ps` from them.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -261,7 +262,7 @@ function fresh(): void {
 
 const ALL_V1 = ["app:v1", "app:v1", "app:v1", "app:v1"];
 
-Deno.test("Compose: staged, stepped, parked, and promoted by a later process", async () => {
+test("Compose: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -316,7 +317,7 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
   });
 });
 
-Deno.test("Compose: a failed analysis puts every replica back on the stable image", async () => {
+test("Compose: a failed analysis puts every replica back on the stable image", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -335,7 +336,7 @@ Deno.test("Compose: a failed analysis puts every replica back on the stable imag
   });
 });
 
-Deno.test("Compose: a stage its own settings refuse leaves production alone, even with a stable image", async () => {
+test("Compose: a stage its own settings refuse leaves production alone, even with a stable image", async () => {
   // No candidate: stage refuses. Its inline rollback must not take the
   // hand-run path and recreate production on d.stable(...).
   fresh();
@@ -350,7 +351,7 @@ Deno.test("Compose: a stage its own settings refuse leaves production alone, eve
   });
 });
 
-Deno.test("Compose: a cancel from a process whose services resolve differently rolls back the recorded ones", async () => {
+test("Compose: a cancel from a process whose services resolve differently rolls back the recorded ones", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -363,7 +364,7 @@ Deno.test("Compose: a cancel from a process whose services resolve differently r
   });
 });
 
-Deno.test("Compose: a promotion that fails part-way in a later process is rolled back without a capacity dip", async () => {
+test("Compose: a promotion that fails part-way in a later process is rolled back without a capacity dip", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -392,7 +393,7 @@ Deno.test("Compose: a promotion that fails part-way in a later process is rolled
   });
 });
 
-Deno.test("Compose: a rollback run by hand after a promotion goes to the configured stable image", async () => {
+test("Compose: a rollback run by hand after a promotion goes to the configured stable image", async () => {
   fresh();
   world = { app: ["app:v2", "app:v2", "app:v2", "app:v2"], "app-canary": [] };
   stable = "app:v1";
@@ -408,7 +409,7 @@ Deno.test("Compose: a rollback run by hand after a promotion goes to the configu
   });
 });
 
-Deno.test("Compose: a rollback run by hand with no stable image refuses", async () => {
+test("Compose: a rollback run by hand with no stable image refuses", async () => {
   // After a promote the stable service already runs the candidate, so
   // re-scaling it would change nothing while the summary said "Rolled back".
   fresh();
@@ -550,23 +551,23 @@ const RESUME = (runId: string) => ["resume", runId, "--signal", "approved"];
 /** A cancel of the parked rollout: its rollback. */
 const CANCEL = (runId: string) => ["cancel", runId];
 
-Deno.test("Compose: a resume whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
+test("Compose: a resume whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
   await refusedThenRecovered(OTHER_FLAGS, RESUME, 2);
 });
 
-Deno.test("Compose: a cancel whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
+test("Compose: a cancel whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
   await refusedThenRecovered(OTHER_FLAGS, CANCEL, 1);
 });
 
-Deno.test("Compose: a resume that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
+test("Compose: a resume that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
   await refusedThenRecovered(OTHER_REPORTED, RESUME, 2);
 });
 
-Deno.test("Compose: a cancel that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
+test("Compose: a cancel that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
   await refusedThenRecovered(OTHER_REPORTED, CANCEL, 1);
 });
 
-Deno.test("Compose: a promotion that failed half-way, then a project switch, is recovered by hand on the recorded ID", async () => {
+test("Compose: a promotion that failed half-way, then a project switch, is recovered by hand on the recorded ID", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -606,7 +607,7 @@ Deno.test("Compose: a promotion that failed half-way, then a project switch, is 
   });
 });
 
-Deno.test("Compose: a cancel rolls back a parked rollout whose containers all stopped", async () => {
+test("Compose: a cancel rolls back a parked rollout whose containers all stopped", async () => {
   // A host restart during the parked approval, with restart: no: nothing
   // runs, but every container is still the project's, so the project check
   // passes and the rollback starts the stable replicas again.
@@ -628,7 +629,7 @@ Deno.test("Compose: a cancel rolls back a parked rollout whose containers all st
   });
 });
 
-Deno.test("Compose: the hand-run recovery restores a project whose containers all stopped", async () => {
+test("Compose: the hand-run recovery restores a project whose containers all stopped", async () => {
   fresh();
   await withStateDir(async () => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -640,7 +641,7 @@ Deno.test("Compose: the hand-run recovery restores a project whose containers al
   });
 });
 
-Deno.test("Compose: a promotion that failed with the stable replicas gone is recovered by hand without an outage", async () => {
+test("Compose: a promotion that failed with the stable replicas gone is recovered by hand without an outage", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);

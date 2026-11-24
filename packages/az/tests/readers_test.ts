@@ -5,6 +5,7 @@
  * The readers: what each pins, what it returns, and how it fails.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -14,7 +15,7 @@ import { CommandOutput } from "@zuke/core/shell";
 import { AzOutputError, AzTasks } from "../mod.ts";
 import { FakeAz, json, withEmptyPath } from "./_fake.ts";
 
-Deno.test("subscriptionId and tenantId pin a tsv projection after the lambda", async () => {
+test("subscriptionId and tenantId pin a tsv projection after the lambda", async () => {
   const fake = new FakeAz("00000000-1111\n", "tenant-2222\n");
   assertEquals(
     await AzTasks.subscriptionId((s) =>
@@ -37,7 +38,7 @@ Deno.test("subscriptionId and tenantId pin a tsv projection after the lambda", a
   assertEquals(fake.flag(1, "--query"), "tenantId");
 });
 
-Deno.test("a scalar reader refuses an empty or multi-line answer", async () => {
+test("a scalar reader refuses an empty or multi-line answer", async () => {
   await assertRejects(
     () => AzTasks.subscriptionId((s) => s.runner(new FakeAz("\n").run)),
     AzOutputError,
@@ -53,7 +54,7 @@ Deno.test("a scalar reader refuses an empty or multi-line answer", async () => {
   );
 });
 
-Deno.test("a reader refuses a truncated capture", async () => {
+test("a reader refuses a truncated capture", async () => {
   const truncated = new CommandOutput(0, "abc", "", true, 16);
   await assertRejects(
     () => AzTasks.subscriptionId((s) => s.runner(new FakeAz(truncated).run)),
@@ -62,7 +63,7 @@ Deno.test("a reader refuses a truncated capture", async () => {
   );
 });
 
-Deno.test("accessToken pins json and returns the token", async () => {
+test("accessToken pins json and returns the token", async () => {
   const fake = new FakeAz(json("eyJ0eXAi.token.value"));
   assertEquals(
     await AzTasks.accessToken((s) =>
@@ -79,7 +80,7 @@ Deno.test("accessToken pins json and returns the token", async () => {
   );
 });
 
-Deno.test("acrToken forces --expose-token", async () => {
+test("acrToken forces --expose-token", async () => {
   const fake = new FakeAz(json("acr-refresh-token-1"));
   assertEquals(
     await AzTasks.acrToken((s) => s.name("reg").runner(fake.run)),
@@ -89,7 +90,7 @@ Deno.test("acrToken forces --expose-token", async () => {
   assertEquals(fake.flag(0, "--query"), "accessToken");
 });
 
-Deno.test("secretValue returns a multi-line value exactly", async () => {
+test("secretValue returns a multi-line value exactly", async () => {
   const value = "line one\n  line two  \n";
   const fake = new FakeAz(json(value));
   assertEquals(
@@ -106,7 +107,7 @@ Deno.test("secretValue returns a multi-line value exactly", async () => {
   );
 });
 
-Deno.test("a JSON reader's parse error never quotes the output", async () => {
+test("a JSON reader's parse error never quotes the output", async () => {
   const error = await assertRejects(
     () =>
       AzTasks.secretValue((s) =>
@@ -118,7 +119,7 @@ Deno.test("a JSON reader's parse error never quotes the output", async () => {
   assertEquals(error.message.includes("super-secret"), false);
 });
 
-Deno.test("containerappFqdn and webappHostName", async () => {
+test("containerappFqdn and webappHostName", async () => {
   const fake = new FakeAz(
     "api.example.azurecontainerapps.io\n",
     "web.azurewebsites.net\n",
@@ -150,7 +151,7 @@ Deno.test("containerappFqdn and webappHostName", async () => {
   assertStringIncludes(error.message, "ingress enabled");
 });
 
-Deno.test("resourceGroupExists reads true or false", async () => {
+test("resourceGroupExists reads true or false", async () => {
   const fake = new FakeAz("true\n", "false\n", '"maybe"');
   assertEquals(
     await AzTasks.resourceGroupExists("rg", (s) => s.runner(fake.run)),
@@ -175,7 +176,7 @@ Deno.test("resourceGroupExists reads true or false", async () => {
   ]);
 });
 
-Deno.test("deploymentOutput finds an output by name, any case", async () => {
+test("deploymentOutput finds an output by name, any case", async () => {
   const outputs = {
     apiUrl: { type: "String", value: "https://api.example.com" },
     replicas: { type: "Int", value: 3 },
@@ -221,7 +222,7 @@ Deno.test("deploymentOutput finds an output by name, any case", async () => {
   );
 });
 
-Deno.test("logAnalyticsQuery returns the rows as strings", async () => {
+test("logAnalyticsQuery returns the rows as strings", async () => {
   const fake = new FakeAz(json([
     { TableName: "PrimaryResult", count_: "42" },
     { TableName: "PrimaryResult", count_: "None" },
@@ -249,7 +250,7 @@ Deno.test("logAnalyticsQuery returns the rows as strings", async () => {
   ]);
 });
 
-Deno.test("logAnalyticsQuery takes an ISO timespan as written", async () => {
+test("logAnalyticsQuery takes an ISO timespan as written", async () => {
   const fake = new FakeAz("[]");
   for (const span of ["P1D", "2026-10-07T10:00:00Z/2026-10-07T11:00:00Z"]) {
     await AzTasks.logAnalyticsQuery((q) =>
@@ -263,7 +264,7 @@ Deno.test("logAnalyticsQuery takes an ISO timespan as written", async () => {
   );
 });
 
-Deno.test("logAnalyticsQuery refuses an answer of the wrong shape", async () => {
+test("logAnalyticsQuery refuses an answer of the wrong shape", async () => {
   const shapes = [
     ["{}", "not a list of rows"],
     ["[1]", "not an object"],
@@ -281,7 +282,7 @@ Deno.test("logAnalyticsQuery refuses an answer of the wrong shape", async () => 
   }
 });
 
-Deno.test("the log-analytics settings refuse a missing workspace or query", async () => {
+test("the log-analytics settings refuse a missing workspace or query", async () => {
   // Built through the reader's settings, refused before anything runs.
   await assertRejects(
     () => AzTasks.logAnalyticsQuery((q) => q.analyticsQuery("q")),
@@ -295,7 +296,7 @@ Deno.test("the log-analytics settings refuse a missing workspace or query", asyn
   );
 });
 
-Deno.test("a reader without a lambda spawns az", async () => {
+test("a reader without a lambda spawns az", async () => {
   await withEmptyPath(async () => {
     await assertRejects(() => AzTasks.subscriptionId(), Error, "az");
   });

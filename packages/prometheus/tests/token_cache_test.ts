@@ -7,6 +7,7 @@
  * and by `fetch` seam.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { TokenCache } from "../src/token_cache.ts";
 import { type Clock, context, T0 } from "./_auth.ts";
@@ -14,7 +15,7 @@ import { fakeFetch } from "./_fetch.ts";
 
 const MINUTE = 60_000;
 
-Deno.test("a token is reused until five minutes before it expires", async () => {
+test("a token is reused until five minutes before it expires", async () => {
   const cache = new TokenCache<string>();
   const clock: Clock = { now: T0 };
   const ctx = context({ clock });
@@ -34,7 +35,7 @@ Deno.test("a token is reused until five minutes before it expires", async () => 
   assertEquals(fetches, 2);
 });
 
-Deno.test("a short-lived token is refreshed at half its remaining life", async () => {
+test("a short-lived token is refreshed at half its remaining life", async () => {
   const cache = new TokenCache<string>();
   const clock: Clock = { now: T0 };
   const ctx = context({ clock });
@@ -52,7 +53,7 @@ Deno.test("a short-lived token is refreshed at half its remaining life", async (
   assertEquals(fetches, 2);
 });
 
-Deno.test("concurrent callers share one fetch", async () => {
+test("concurrent callers share one fetch", async () => {
   const cache = new TokenCache<string>();
   const ctx = context();
   let fetches = 0;
@@ -72,7 +73,7 @@ Deno.test("concurrent callers share one fetch", async () => {
   assertEquals(fetches, 1);
 });
 
-Deno.test("a failed fetch fails every waiter and is not cached", async () => {
+test("a failed fetch fails every waiter and is not cached", async () => {
   const cache = new TokenCache<string>();
   const ctx = context();
   let fetches = 0;
@@ -109,7 +110,7 @@ Deno.test("a failed fetch fails every waiter and is not cached", async () => {
   );
 });
 
-Deno.test("a failed refresh falls back to the cached token until it expires", async () => {
+test("a failed refresh falls back to the cached token until it expires", async () => {
   const cache = new TokenCache<string>();
   const clock: Clock = { now: T0 };
   const ctx = context({ clock });
@@ -127,7 +128,7 @@ Deno.test("a failed refresh falls back to the cached token until it expires", as
   assertEquals(await cache.get(ctx, ["a"], fresh("second")), "second");
 });
 
-Deno.test("a waiter survives the caller that started the fetch giving up", async () => {
+test("a waiter survives the caller that started the fetch giving up", async () => {
   const cache = new TokenCache<string>();
   const creator = new AbortController();
   const waiter = new AbortController();
@@ -180,7 +181,7 @@ Deno.test("a waiter survives the caller that started the fetch giving up", async
   );
 });
 
-Deno.test("a shared fetch cut off by the cache's limit says so", async () => {
+test("a shared fetch cut off by the cache's limit says so", async () => {
   const cache = new TokenCache<string>(20);
   const slow = (shared: { signal: AbortSignal }) =>
     new Promise<{ value: string; expiresAt: number }>((_, reject) => {
@@ -197,7 +198,7 @@ Deno.test("a shared fetch cut off by the cache's limit says so", async () => {
   );
 });
 
-Deno.test("entries are kept apart by identity and by fetch seam", async () => {
+test("entries are kept apart by identity and by fetch seam", async () => {
   const cache = new TokenCache<string>();
   const one = context();
   const two = context();
@@ -209,7 +210,7 @@ Deno.test("entries are kept apart by identity and by fetch seam", async () => {
   assertEquals(await cache.get(one, ["a"], fresh("x")), "a1");
 });
 
-Deno.test("callers that arrive together share a fetch that fails at once", async () => {
+test("callers that arrive together share a fetch that fails at once", async () => {
   // The key is a digest computed asynchronously, so a fetch that settles
   // before the second caller's digest resolves must still be the one that
   // caller shares — not a reason for it to start a second fetch.

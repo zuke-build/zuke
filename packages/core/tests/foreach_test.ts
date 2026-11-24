@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
@@ -31,7 +32,7 @@ function recorder(): { lines: string[]; reporter: Reporter } {
   };
 }
 
-Deno.test("forEach runs each item's stages in order, items in parallel", async () => {
+test("forEach runs each item's stages in order, items in parallel", async () => {
   const log: string[] = [];
   class Batch extends Build {
     deployBatch = target().forEach(
@@ -53,7 +54,7 @@ Deno.test("forEach runs each item's stages in order, items in parallel", async (
   assertEquals(log.length, 4);
 });
 
-Deno.test("forEach rejects a .waitsFor() on a stage (no resume path)", async () => {
+test("forEach rejects a .waitsFor() on a stage (no resume path)", async () => {
   // A wait gate on a materialised sub-target would be silently swallowed (the
   // run finishes "succeeded" while the row is stranded "waiting"); reject it.
   class Batch extends Build {
@@ -75,7 +76,7 @@ Deno.test("forEach rejects a .waitsFor() on a stage (no resume path)", async () 
   assertStringIncludes(message, ".dependsOn(");
 });
 
-Deno.test("the fan-out wait-gate rejection names an undiscovered target as <unnamed>", () => {
+test("the fan-out wait-gate rejection names an undiscovered target as <unnamed>", () => {
   // materialize() can run before discovery assigns a name; the error still reads
   // cleanly (covers the `name_ ?? "<unnamed>"` fallback).
   const t = target()
@@ -89,7 +90,7 @@ Deno.test("the fan-out wait-gate rejection names an undiscovered target as <unna
   }
 });
 
-Deno.test("forEach rejects a .waitsFor() on the fan-out target itself", async () => {
+test("forEach rejects a .waitsFor() on the fan-out target itself", async () => {
   // A wait on the fan-out parent is dispatched before the gate is checked, so it
   // is silently skipped; reject the combination.
   class Batch extends Build {
@@ -107,7 +108,7 @@ Deno.test("forEach rejects a .waitsFor() on the fan-out target itself", async ()
   );
 });
 
-Deno.test("forEach isolates a failed item with continueOnItemFailure", async () => {
+test("forEach isolates a failed item with continueOnItemFailure", async () => {
   const log: string[] = [];
   class Batch extends Build {
     deployBatch = target().forEach(
@@ -134,7 +135,7 @@ Deno.test("forEach isolates a failed item with continueOnItemFailure", async () 
   assertEquals(log.includes("deploy:b"), false);
 });
 
-Deno.test("forEach without isolation stops the batch at the first failure", async () => {
+test("forEach without isolation stops the batch at the first failure", async () => {
   const log: string[] = [];
   class Batch extends Build {
     deployBatch = target().forEach(
@@ -158,7 +159,7 @@ Deno.test("forEach without isolation stops the batch at the first failure", asyn
   assertEquals(log, ["checks:a", "deploy:a"]);
 });
 
-Deno.test("forEach honours the concurrency cap", async () => {
+test("forEach honours the concurrency cap", async () => {
   let active = 0;
   let peak = 0;
   const busy = () =>
@@ -181,7 +182,7 @@ Deno.test("forEach honours the concurrency cap", async () => {
   assertEquals(peak, 2); // four items, never more than two in flight
 });
 
-Deno.test("forEach concurrency(1) serialises items", async () => {
+test("forEach concurrency(1) serialises items", async () => {
   let active = 0;
   let peak = 0;
   const busy = () =>
@@ -204,7 +205,7 @@ Deno.test("forEach concurrency(1) serialises items", async () => {
   assertEquals(peak, 1);
 });
 
-Deno.test("forEach reports each sub-target and reads a runtime list", async () => {
+test("forEach reports each sub-target and reads a runtime list", async () => {
   const { lines, reporter } = recorder();
   class Batch extends Build {
     repos = parameter("repos").array();
@@ -226,7 +227,7 @@ Deno.test("forEach reports each sub-target and reads a runtime list", async () =
   assertStringIncludes(out, "deployBatch[y].deploy");
 });
 
-Deno.test("forEach over an empty list succeeds with nothing to run", async () => {
+test("forEach over an empty list succeeds with nothing to run", async () => {
   const { lines, reporter } = recorder();
   class Batch extends Build {
     batch = target().forEach(
@@ -241,7 +242,7 @@ Deno.test("forEach over an empty list succeeds with nothing to run", async () =>
   assertStringIncludes(lines.join("\n"), "fan-out over 0 items");
 });
 
-Deno.test("forEach records per-item sub-target status and metadata in the run", async () => {
+test("forEach records per-item sub-target status and metadata in the run", async () => {
   await withStore(async (store) => {
     class Batch extends Build {
       deployBatch = target().forEach(
@@ -274,7 +275,7 @@ Deno.test("forEach records per-item sub-target status and metadata in the run", 
   });
 });
 
-Deno.test("a throwing forEach items thunk fails the target, not the process", async () => {
+test("a throwing forEach items thunk fails the target, not the process", async () => {
   class Batch extends Build {
     deployBatch = target().forEach(
       () => {
@@ -293,7 +294,7 @@ Deno.test("a throwing forEach items thunk fails the target, not the process", as
   }
 });
 
-Deno.test("a throwing forEach items thunk settles the run record to failed", async () => {
+test("a throwing forEach items thunk settles the run record to failed", async () => {
   await withStore(async (store) => {
     class Batch extends Build {
       deployBatch = target().forEach(
@@ -317,7 +318,7 @@ Deno.test("a throwing forEach items thunk settles the run record to failed", asy
   });
 });
 
-Deno.test("forEach clones the factory's builders instead of mutating them", async () => {
+test("forEach clones the factory's builders instead of mutating them", async () => {
   // A factory is free to hand back the same builder objects for every item (a
   // memoised or module-level pipeline). Materialising must not rename or re-wire
   // those objects: the fan-out works on clones, so the factory's builders are
@@ -360,7 +361,7 @@ Deno.test("forEach clones the factory's builders instead of mutating them", asyn
   }
 });
 
-Deno.test("forEach clones carry the stage's own configuration", async () => {
+test("forEach clones carry the stage's own configuration", async () => {
   // The clone must behave like the original: its body, retries and lenient flag
   // all come across, so a reused stage still retries and isolates as declared.
   let attempts = 0;
@@ -383,7 +384,7 @@ Deno.test("forEach clones carry the stage's own configuration", async () => {
   assertEquals(flaky.proceedAfterFailure_, true);
 });
 
-Deno.test("--list and graph annotate a fan-out target", () => {
+test("--list and graph annotate a fan-out target", () => {
   class Batch extends Build {
     plain = target().description("plain").executes(() => {});
     deployBatch = target().description("batch").forEach(
@@ -419,7 +420,7 @@ async function resolved<T>(
   return build.p;
 }
 
-Deno.test("array().options() validates every element", async () => {
+test("array().options() validates every element", async () => {
   const ok = await resolved(
     () => parameter("svc").options("api", "web").array(),
     { p: "api,web" },
@@ -438,7 +439,7 @@ Deno.test("array().options() validates every element", async () => {
   assertEquals(rejected, true);
 });
 
-Deno.test("number().array() parses a numeric list", async () => {
+test("number().array() parses a numeric list", async () => {
   const nums = await resolved(
     () => parameter("workers").number().array(),
     { p: "1,2,3" },

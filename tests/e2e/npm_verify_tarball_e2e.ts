@@ -17,6 +17,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { absolutePath, gunzip, gzip, untar } from "../../packages/core/mod.ts";
 import {
   assertEquals,
@@ -104,7 +105,7 @@ function hasNpm(): boolean {
 }
 
 for (const [name, parts] of Object.entries(variants)) {
-  Deno.test({
+  test({
     name: `verifyAll: ${name}`,
     ignore: !hasNpm(),
     fn: async () => {

@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";
@@ -18,7 +19,7 @@ import { cancelRun } from "../src/cancel.ts";
 import { messageOf } from "../src/internal.ts";
 import { withTempStore } from "./_store.ts";
 
-Deno.test("resolveFailureDispositions keeps only the cancelling dispositions", () => {
+test("resolveFailureDispositions keeps only the cancelling dispositions", () => {
   class B extends Build {
     plain = target().executes(() => {});
     explicit = target().onFailure(() => "fail").executes(() => {});
@@ -47,7 +48,7 @@ function refusalOf(t: TargetBuilder): string {
   return resolved.ok ? "accepted" : resolved.error.message;
 }
 
-Deno.test("resolveFailureDispositions refuses a thunk that throws, naming the target", () => {
+test("resolveFailureDispositions refuses a thunk that throws, naming the target", () => {
   class B extends Build {
     verify = target()
       .onFailure(() => {
@@ -63,7 +64,7 @@ Deno.test("resolveFailureDispositions refuses a thunk that throws, naming the ta
   );
 });
 
-Deno.test("resolveFailureDispositions refuses a disposition that is not a target", () => {
+test("resolveFailureDispositions refuses a disposition that is not a target", () => {
   class B extends Build {
     verify = target().executes(() => {});
   }
@@ -75,7 +76,7 @@ Deno.test("resolveFailureDispositions refuses a disposition that is not a target
   assertStringIncludes(refusalOf(b.verify), "returned undefined");
 });
 
-Deno.test("resolveFailureDispositions refuses naming the failing target itself", () => {
+test("resolveFailureDispositions refuses naming the failing target itself", () => {
   class B extends Build {
     verify: TargetBuilder = target().onFailure(() => this.verify)
       .executes(() => {});
@@ -85,7 +86,7 @@ Deno.test("resolveFailureDispositions refuses naming the failing target itself",
   assertStringIncludes(refusalOf(b.verify), "names the target itself");
 });
 
-Deno.test("resolveFailureDispositions refuses a target not declared on the build", () => {
+test("resolveFailureDispositions refuses a target not declared on the build", () => {
   const stray = target().executes(() => {});
   class B extends Build {
     verify = target().onFailure(() => stray).executes(() => {});
@@ -95,7 +96,7 @@ Deno.test("resolveFailureDispositions refuses a target not declared on the build
   assertStringIncludes(refusalOf(b.verify), "not declared on this build");
 });
 
-Deno.test("resolveFailureDispositions refuses a cancelling target that also proceeds after failure", () => {
+test("resolveFailureDispositions refuses a cancelling target that also proceeds after failure", () => {
   class B extends Build {
     verify = target()
       .proceedAfterFailure()
@@ -113,7 +114,7 @@ Deno.test("resolveFailureDispositions refuses a cancelling target that also proc
   assertEquals(refusalOf(b.lenient), "accepted");
 });
 
-Deno.test("a refused disposition fails the run up front, before any target runs", async () => {
+test("a refused disposition fails the run up front, before any target runs", async () => {
   // Before the fix the thunk was called unguarded at setup, so its throw
   // escaped execute() as a raw exception instead of a failed result.
   await withTempStore(async (store) => {
@@ -141,7 +142,7 @@ Deno.test("a refused disposition fails the run up front, before any target runs"
 });
 
 for (const parallel of [false, true]) {
-  Deno.test(`a disposition thunk is evaluated once, so a later throw cannot strand the run (parallel: ${parallel})`, async () => {
+  test(`a disposition thunk is evaluated once, so a later throw cannot strand the run (parallel: ${parallel})`, async () => {
     // Before the fix the thunk ran again inside the scheduler's settle path: a
     // thunk that threw on its second call left the record \`running\` and, in
     // the parallel scheduler, raised an unhandled rejection.
@@ -178,7 +179,7 @@ for (const parallel of [false, true]) {
   });
 }
 
-Deno.test("the result carries the cancelling target's error, not an earlier failure", async () => {
+test("the result carries the cancelling target's error, not an earlier failure", async () => {
   // Before the fix the result reused the run's first failure, so a plain
   // failure that landed first was reported as the reason for the rollback.
   await withTempStore(async (store) => {
@@ -209,7 +210,7 @@ Deno.test("the result carries the cancelling target's error, not an earlier fail
   });
 });
 
-Deno.test("a failure-cancel never reopens a run another process already cancelled", async () => {
+test("a failure-cancel never reopens a run another process already cancelled", async () => {
   // A \`zuke cancel\` finishes first; the target then fails with cancel-run.
   // Before the fix the writer's \`cancelling\` landed over the terminal
   // \`cancelled\` and the run was stranded there. The same race existed for
@@ -255,7 +256,7 @@ Deno.test("a failure-cancel never reopens a run another process already cancelle
   });
 });
 
-Deno.test("the audit trail names the target whose failure cancelled the run", async () => {
+test("the audit trail names the target whose failure cancelled the run", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       deploy = target().executes(() => {}).onCancel(() => this.rollback);
@@ -282,7 +283,7 @@ Deno.test("the audit trail names the target whose failure cancelled the run", as
   });
 });
 
-Deno.test("without .onFailure a failure fails the run and undoes nothing", async () => {
+test("without .onFailure a failure fails the run and undoes nothing", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     class B extends Build {
@@ -306,7 +307,7 @@ Deno.test("without .onFailure a failure fails the run and undoes nothing", async
   });
 });
 
-Deno.test(".onFailure cancel-run rolls back every succeeded target, in reverse", async () => {
+test(".onFailure cancel-run rolls back every succeeded target, in reverse", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     class B extends Build {
@@ -353,7 +354,7 @@ Deno.test(".onFailure cancel-run rolls back every succeeded target, in reverse",
   });
 });
 
-Deno.test(".onFailure naming a target runs it first, with the failed target's state", async () => {
+test(".onFailure naming a target runs it first, with the failed target's state", async () => {
   await withTempStore(async (store) => {
     const order: string[] = [];
     class B extends Build {
@@ -382,7 +383,7 @@ Deno.test(".onFailure naming a target runs it first, with the failed target's st
   });
 });
 
-Deno.test(".onFailure acts on the final failure, after retries are exhausted", async () => {
+test(".onFailure acts on the final failure, after retries are exhausted", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     let attempts = 0;
@@ -410,7 +411,7 @@ Deno.test(".onFailure acts on the final failure, after retries are exhausted", a
   });
 });
 
-Deno.test("a failure during an existing cancellation does not re-cancel or claim the error", async () => {
+test("a failure during an existing cancellation does not re-cancel or claim the error", async () => {
   // The target fails *because* the run was cancelled. That failure is a
   // symptom, so it must not become the run's error, and the walk runs once.
   await withTempStore(async (store) => {
@@ -452,7 +453,7 @@ Deno.test("a failure during an existing cancellation does not re-cancel or claim
   });
 });
 
-Deno.test("a cancelling failure stops an in-flight parallel sibling", async () => {
+test("a cancelling failure stops an in-flight parallel sibling", async () => {
   await withTempStore(async (store) => {
     let siblingStopped = false;
     let siblingStarted: () => void = () => {};
@@ -488,7 +489,7 @@ Deno.test("a cancelling failure stops an in-flight parallel sibling", async () =
   });
 });
 
-Deno.test(".onFailure that cancels is refused when state is disabled", async () => {
+test(".onFailure that cancels is refused when state is disabled", async () => {
   let ran = false;
   class B extends Build {
     check = target()
@@ -506,7 +507,7 @@ Deno.test(".onFailure that cancels is refused when state is disabled", async () 
   assertStringIncludes(messageOf(result.error), "needs a state store");
 });
 
-Deno.test("an explicit .onFailure fail does not require a state store", async () => {
+test("an explicit .onFailure fail does not require a state store", async () => {
   class B extends Build {
     check = target().onFailure(() => "fail").executes(() => {});
   }
@@ -519,7 +520,7 @@ Deno.test("an explicit .onFailure fail does not require a state store", async ()
   assertEquals(result.ok, true);
 });
 
-Deno.test("a fan-out stage that declares .onFailure fails the fan-out with guidance", async () => {
+test("a fan-out stage that declares .onFailure fails the fan-out with guidance", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       batch = target().forEach(
@@ -543,7 +544,7 @@ Deno.test("a fan-out stage that declares .onFailure fails the fan-out with guida
   });
 });
 
-Deno.test("a fan-out target's .onFailure cancels the run when an item fails", async () => {
+test("a fan-out target's .onFailure cancels the run when an item fails", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     class B extends Build {
@@ -576,7 +577,7 @@ Deno.test("a fan-out target's .onFailure cancels the run when an item fails", as
   });
 });
 
-Deno.test("a dry run never cancels on a failure, since it has nothing to roll back", async () => {
+test("a dry run never cancels on a failure, since it has nothing to roll back", async () => {
   class B extends Build {
     check = target()
       .dryRunnable()

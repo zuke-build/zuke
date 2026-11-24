@@ -13,6 +13,7 @@
  * pinned one) and skips without it; on CI the skip is refused.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
@@ -36,7 +37,7 @@ import {
 const NODE = SEA_NODE;
 const HOST = hostTriple(Deno.build.os, Deno.build.arch);
 
-Deno.test({
+test({
   name: "CI runs the Node single executable test rather than skipping it",
   ignore: !MUST_HAVE_SEA_NODE,
   fn: () => {
@@ -49,7 +50,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "compileNodeCli injects the bundle into the host's Node, and the executable runs it",
   ignore: NODE === undefined || HOST === undefined,

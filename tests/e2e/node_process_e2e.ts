@@ -16,6 +16,7 @@
  * never reaches this file (it is `*_e2e.ts`).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { fileURLToPath } from "node:url";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 
@@ -74,7 +75,7 @@ const USABLE = VERSION !== null &&
  */
 const MUST_HAVE_NODE = Deno.env.get("CI") === "true";
 
-Deno.test({
+test({
   name: "CI runs the Node process canary rather than skipping it",
   ignore: !MUST_HAVE_NODE,
   fn: () => {
@@ -89,7 +90,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the process seam starts, feeds, reads and ends children under real Node",
   ignore: !USABLE,
@@ -107,7 +108,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "output written just before exit reaches a slow reader whole",
   ignore: !USABLE,
   fn: async () => {
@@ -127,7 +128,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "stdin is read to its end and written back under real Node",
   ignore: !USABLE,
   fn: async () => {
@@ -153,7 +154,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "a prompt shows its message and reads one line at a time under real Node",
   ignore: !USABLE,
@@ -181,7 +182,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the entry module under real Node is the script started, also through a symlink",
   ignore: !USABLE,
@@ -225,7 +226,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "the MCP HTTP transport serves, refuses and stops under real Node",
   ignore: !USABLE,
   fn: async () => {
@@ -241,7 +242,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "every entry point of core loads, and its runtime tasks work, under real Node",
   ignore: !USABLE,

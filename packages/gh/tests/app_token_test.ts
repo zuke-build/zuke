@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -103,7 +104,7 @@ function fakeGithub(seen: Seen[], overrides: {
   };
 }
 
-Deno.test("appToken signs a JWT, resolves the installation, and mints a token", async () => {
+test("appToken signs a JWT, resolves the installation, and mints a token", async () => {
   const { pkcs8 } = await testKeys();
   const seen: Seen[] = [];
   const result = await GhTasks.appToken((s) =>
@@ -147,7 +148,7 @@ Deno.test("appToken signs a JWT, resolves the installation, and mints a token", 
   });
 });
 
-Deno.test("a hyphenated permission is sent under the API's own spelling", async () => {
+test("a hyphenated permission is sent under the API's own spelling", async () => {
   // The trap: `create-github-app-token` takes `permission-pull-requests`, and
   // passing that spelling to the API is refused as a permission the
   // installation does not grant — a 422 that reads as a misconfigured app
@@ -178,7 +179,7 @@ Deno.test("a hyphenated permission is sent under the API's own spelling", async 
   for (const key of keys) assertEquals(/^[a-z_]+$/.test(key), true, key);
 });
 
-Deno.test("appToken reads the PKCS#1 PEM GitHub actually issues", async () => {
+test("appToken reads the PKCS#1 PEM GitHub actually issues", async () => {
   const { pkcs1 } = await testKeys();
   const seen: Seen[] = [];
   const result = await GhTasks.appToken((s) =>
@@ -189,7 +190,7 @@ Deno.test("appToken reads the PKCS#1 PEM GitHub actually issues", async () => {
   assertEquals(seen[0].url, "https://api.github.com/orgs/acme/installation");
 });
 
-Deno.test("the signed JWT carries a back-dated iat and the app id as iss", async () => {
+test("the signed JWT carries a back-dated iat and the app id as iss", async () => {
   const { pkcs8 } = await testKeys();
   const settings = new GhAppTokenSettings()
     .appId("999")
@@ -204,7 +205,7 @@ Deno.test("the signed JWT carries a back-dated iat and the app id as iss", async
   assertEquals(decoded, { iat: 999_940, exp: 1_000_480, iss: "999" });
 });
 
-Deno.test("appToken requires the app id, key, and owner before any request", async () => {
+test("appToken requires the app id, key, and owner before any request", async () => {
   const { pkcs8 } = await testKeys();
   await assertRejects(
     () => GhTasks.appToken((s) => s.privateKey(pkcs8).owner("a")),
@@ -223,7 +224,7 @@ Deno.test("appToken requires the app id, key, and owner before any request", asy
   );
 });
 
-Deno.test("a malformed private key is named as such, not surfaced as a DataError", async () => {
+test("a malformed private key is named as such, not surfaced as a DataError", async () => {
   await assertRejects(
     () =>
       GhTasks.appToken((s) =>
@@ -252,7 +253,7 @@ Deno.test("a malformed private key is named as such, not surfaced as a DataError
   );
 });
 
-Deno.test("a failed lookup or mint reports the status and GitHub's message", async () => {
+test("a failed lookup or mint reports the status and GitHub's message", async () => {
   const { pkcs8 } = await testKeys();
   const error = await assertRejects(
     () =>
@@ -271,7 +272,7 @@ Deno.test("a failed lookup or mint reports the status and GitHub's message", asy
   assertStringIncludes(error.message, "Not Found");
 });
 
-Deno.test("an installation response with no numeric id names the likely cause", async () => {
+test("an installation response with no numeric id names the likely cause", async () => {
   const { pkcs8 } = await testKeys();
   await assertRejects(
     () =>
@@ -285,7 +286,7 @@ Deno.test("an installation response with no numeric id names the likely cause", 
   );
 });
 
-Deno.test("a mint response with no token fails rather than returning undefined", async () => {
+test("a mint response with no token fails rather than returning undefined", async () => {
   const { pkcs8 } = await testKeys();
   await assertRejects(
     () =>
@@ -299,7 +300,7 @@ Deno.test("a mint response with no token fails rather than returning undefined",
   );
 });
 
-Deno.test("baseUrl retargets both calls at a GHES host", async () => {
+test("baseUrl retargets both calls at a GHES host", async () => {
   const { pkcs8 } = await testKeys();
   const seen: Seen[] = [];
   await GhTasks.appToken((s) =>
@@ -314,7 +315,7 @@ Deno.test("baseUrl retargets both calls at a GHES host", async () => {
   assertStringIncludes(seen[1].url, "https://ghe.example.com/api/v3/app/");
 });
 
-Deno.test("a mint with no narrowing sends an empty body, not null fields", async () => {
+test("a mint with no narrowing sends an empty body, not null fields", async () => {
   const { pkcs8 } = await testKeys();
   const seen: Seen[] = [];
   await GhTasks.appToken((s) =>
@@ -325,7 +326,7 @@ Deno.test("a mint with no narrowing sends an empty body, not null fields", async
   assertEquals(seen[1].body, "{}");
 });
 
-Deno.test("an owner or repository that would redirect the mint is refused", () => {
+test("an owner or repository that would redirect the mint is refused", () => {
   // This request carries the app's private-key JWT, which outlives the token
   // it mints. URL normalisation resolves a `..` segment before the request is
   // sent, so an owner taken from configuration could otherwise point it at a
@@ -346,13 +347,13 @@ Deno.test("an owner or repository that would redirect the mint is refused", () =
   }
 });
 
-Deno.test("appToken with no configuration is refused before any request", async () => {
+test("appToken with no configuration is refused before any request", async () => {
   // A bare call is legal to write, so its first missing setting must be named
   // — and refused before the transport is touched.
   await assertRejects(() => mintAppToken(), Error, ".appId(...)");
 });
 
-Deno.test("a 2xx body that is not a JSON object is named per endpoint", async () => {
+test("a 2xx body that is not a JSON object is named per endpoint", async () => {
   const { pkcs8 } = await testKeys();
   // Valid JSON, but a string — indexing it as the installation would surface a
   // TypeError naming no endpoint.
@@ -382,7 +383,7 @@ Deno.test("a 2xx body that is not a JSON object is named per endpoint", async ()
   assertStringIncludes(error.message, "<html>gateway</html>");
 });
 
-Deno.test("the minted token is masked in Actions logs, and only there", async () => {
+test("the minted token is masked in Actions logs, and only there", async () => {
   // Matching what actions/create-github-app-token does: inside Actions the
   // runner is told to mask the token, so passing it onward through env cannot
   // leak it into a log. Outside Actions the directive would just be noise.
@@ -412,7 +413,7 @@ Deno.test("the minted token is masked in Actions logs, and only there", async ()
   }
 });
 
-Deno.test("an ordinary owner and repository still build the usual path", () => {
+test("an ordinary owner and repository still build the usual path", () => {
   assertEquals(
     new GhAppTokenSettings().owner("zuke-build").repositories("zuke")
       .installationPath_(),

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -17,7 +18,7 @@ import { GhPrListSettings } from "../src/pr.ts";
 import { GhIssueListSettings } from "../src/issue.ts";
 import { GhReleaseListSettings } from "../src/release.ts";
 
-Deno.test("the typed command groups conform to the gh wrapper's contract", async () => {
+test("the typed command groups conform to the gh wrapper's contract", async () => {
   for (
     const make of [
       () => new GhPrListSettings(),
@@ -29,7 +30,7 @@ Deno.test("the typed command groups conform to the gh wrapper's contract", async
   }
 });
 
-Deno.test("every gh pr task reaches execution", async () => {
+test("every gh pr task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.prCreate((s) => missingTool(s.title("t").body("b"))),
     ToolNotFoundError,
@@ -68,7 +69,7 @@ Deno.test("every gh pr task reaches execution", async () => {
   );
 });
 
-Deno.test("every gh issue task reaches execution", async () => {
+test("every gh issue task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.issueCreate((s) => missingTool(s.title("t"))),
     ToolNotFoundError,
@@ -95,7 +96,7 @@ Deno.test("every gh issue task reaches execution", async () => {
   );
 });
 
-Deno.test("every gh release task reaches execution", async () => {
+test("every gh release task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.releaseCreate((s) => missingTool(s.tag("v1"))),
     ToolNotFoundError,
@@ -130,7 +131,7 @@ Deno.test("every gh release task reaches execution", async () => {
   );
 });
 
-Deno.test("each reader pins its own field set into the argv it runs", async () => {
+test("each reader pins its own field set into the argv it runs", async () => {
   // gh requires --json fields by name, and each reader's parse only makes
   // sense against the set its entry documents. Asserting the constants alone
   // would not catch a reader wired to the wrong one, so capture the settings

@@ -8,6 +8,7 @@
  * server, the quota project, caching, and every failure scrubbed.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -71,7 +72,7 @@ const USER = JSON.stringify({
   refresh_token: "user-refresh-token",
 });
 
-Deno.test("a service-account key signs an RS256 assertion and exchanges it", async () => {
+test("a service-account key signs an RS256 assertion and exchanges it", async () => {
   const { pem, publicKey } = await rsaKey();
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: token("sa-access-token") });
   const clock: Clock = { now: T0 + 999 };
@@ -124,7 +125,7 @@ Deno.test("a service-account key signs an RS256 assertion and exchanges it", asy
   );
 });
 
-Deno.test("a key's token_uri, a missing key id and custom scopes are honoured", async () => {
+test("a key's token_uri, a missing key id and custom scopes are honoured", async () => {
   const { pem } = await rsaKey();
   const fetcher = routes({
     "POST https://oauth2.internal.example/token": token("t"),
@@ -154,7 +155,7 @@ Deno.test("a key's token_uri, a missing key id and custom scopes are honoured", 
   );
 });
 
-Deno.test("a token_uri on a metadata address is refused before the assertion is sent", async () => {
+test("a token_uri on a metadata address is refused before the assertion is sent", async () => {
   const { pem } = await rsaKey();
   for (
     const tokenUri of [
@@ -197,7 +198,7 @@ Deno.test("a token_uri on a metadata address is refused before the assertion is 
   }
 });
 
-Deno.test("an unusable service-account key fails without quoting the key", async () => {
+test("an unusable service-account key fails without quoting the key", async () => {
   const key =
     `-----BEGIN ${LABEL}-----\nAAAAsecretKeyMaterialAAA\n-----END ${LABEL}-----`;
   const error = await assertRejects(
@@ -219,7 +220,7 @@ Deno.test("an unusable service-account key fails without quoting the key", async
   assertEquals(error.message.includes("secretKeyMaterial"), false);
 });
 
-Deno.test("a credentials file missing a field names the field and the file", async () => {
+test("a credentials file missing a field names the field and the file", async () => {
   const cases: Array<[Record<string, unknown>, string]> = [
     [{ type: "service_account", private_key: "k" }, "has no client_email"],
     [{ type: "service_account", client_email: "e" }, "has no private_key"],
@@ -241,7 +242,7 @@ Deno.test("a credentials file missing a field names the field and the file", asy
   }
 });
 
-Deno.test("a failed exchange names the step, never the assertion it sent", async () => {
+test("a failed exchange names the step, never the assertion it sent", async () => {
   const { pem } = await rsaKey();
   let assertion = "";
   const fetcher = routes({
@@ -273,7 +274,7 @@ Deno.test("a failed exchange names the step, never the assertion it sent", async
   assertEquals(error.message.includes(assertion), false);
 });
 
-Deno.test("a gcloud user credential refreshes, and sends its quota project", async () => {
+test("a gcloud user credential refreshes, and sends its quota project", async () => {
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: token("user-access-token") });
   const sent = await headers({
     env: { HOME: "/home/dev" },
@@ -295,7 +296,7 @@ Deno.test("a gcloud user credential refreshes, and sends its quota project", asy
   });
 });
 
-Deno.test("quotaProject(...) overrides the file's, and a refused refresh hides its secrets", async () => {
+test("quotaProject(...) overrides the file's, and a refused refresh hides its secrets", async () => {
   const ok = routes({ [`POST ${TOKEN_URL}`]: token("user-token-2") });
   const sent = await headers(
     { files: { "/u.json": USER }, fetch: ok },
@@ -320,7 +321,7 @@ Deno.test("quotaProject(...) overrides the file's, and a refused refresh hides i
   }
 });
 
-Deno.test("gcloud's well-known file is found under CLOUDSDK_CONFIG and %APPDATA%", async () => {
+test("gcloud's well-known file is found under CLOUDSDK_CONFIG and %APPDATA%", async () => {
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: token("t") });
   const config = "/etc/gcloud/application_default_credentials.json";
   await headers({
@@ -351,7 +352,7 @@ Deno.test("gcloud's well-known file is found under CLOUDSDK_CONFIG and %APPDATA%
   assertEquals(fetcher.sent.length, 3);
 });
 
-Deno.test("with no file, the metadata server is asked, over its plaintext link", async () => {
+test("with no file, the metadata server is asked, over its plaintext link", async () => {
   const fetcher = routes({ [`GET ${METADATA}`]: token("gce-token") });
   const envs: Array<Record<string, string>> = [
     { HOME: "/home/dev" },
@@ -376,7 +377,7 @@ Deno.test("with no file, the metadata server is asked, over its plaintext link",
   await headers({ env: {}, fetch: fetcher }, (g) => g, "windows");
 });
 
-Deno.test("an unreachable metadata server says no credentials were found", async () => {
+test("an unreachable metadata server says no credentials were found", async () => {
   await assertRejects(
     () =>
       headers({
@@ -391,7 +392,7 @@ Deno.test("an unreachable metadata server says no credentials were found", async
   );
 });
 
-Deno.test("a named file that is missing, unreadable, not JSON or of another type fails", async () => {
+test("a named file that is missing, unreadable, not JSON or of another type fails", async () => {
   const cases: Array<[Seams, string]> = [
     [
       { env: { GOOGLE_APPLICATION_CREDENTIALS: "/missing.json" } },
@@ -454,7 +455,7 @@ Deno.test("a named file that is missing, unreadable, not JSON or of another type
   );
 });
 
-Deno.test("scopes(...) needs at least one non-empty scope", () => {
+test("scopes(...) needs at least one non-empty scope", () => {
   for (const scopes of [[], [""]]) {
     let message = "";
     try {
@@ -466,7 +467,7 @@ Deno.test("scopes(...) needs at least one non-empty scope", () => {
   }
 });
 
-Deno.test("a token is cached until shortly before expiry, and one without a lifetime is not", async () => {
+test("a token is cached until shortly before expiry, and one without a lifetime is not", async () => {
   const clock: Clock = { now: T0 };
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: token("cached") });
   const seams: Seams = { files: { "/u.json": USER }, fetch: fetcher, clock };
@@ -484,7 +485,7 @@ Deno.test("a token is cached until shortly before expiry, and one without a life
   assertEquals(once.sent.length, 2);
 });
 
-Deno.test("google() authenticates a PrometheusTasks query end to end", async () => {
+test("google() authenticates a PrometheusTasks query end to end", async () => {
   const fetcher = routes({
     [`GET ${METADATA}`]: token("gce-query-token"),
     "POST https://monitoring.googleapis.com/v1/projects/p/location/global/prometheus/api/v1/query":

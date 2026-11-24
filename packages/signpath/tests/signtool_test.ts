@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -13,7 +14,7 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { SigntoolTasks, SigntoolVerifySettings } from "../mod.ts";
 
-Deno.test("signtool: verify /pa /v renders the usual post-sign check", () => {
+test("signtool: verify /pa /v renders the usual post-sign check", () => {
   assertEquals(
     new SigntoolVerifySettings().authenticodePolicy().verbose()
       .file("dist/zuke.exe").argv(),
@@ -21,7 +22,7 @@ Deno.test("signtool: verify /pa /v renders the usual post-sign check", () => {
   );
 });
 
-Deno.test("signtool: every flag renders in order, files last", () => {
+test("signtool: every flag renders in order, files last", () => {
   assertEquals(
     new SigntoolVerifySettings().kernelPolicy()
       .policy("{F750E6C3-38EE-11D1-85E5-00C04FC295EE}").allSignatures()
@@ -52,7 +53,7 @@ Deno.test("signtool: every flag renders in order, files last", () => {
   );
 });
 
-Deno.test("signtool: a file operand cannot be read as an option", () => {
+test("signtool: a file operand cannot be read as an option", () => {
   assertEquals(
     new SigntoolVerifySettings().file("-x.exe").argv().at(-1),
     "./-x.exe",
@@ -64,7 +65,7 @@ Deno.test("signtool: a file operand cannot be read as an option", () => {
   );
 });
 
-Deno.test("signtool: verify needs a file", () => {
+test("signtool: verify needs a file", () => {
   assertThrows(
     () => new SigntoolVerifySettings().authenticodePolicy().argv(),
     Error,
@@ -72,7 +73,7 @@ Deno.test("signtool: verify needs a file", () => {
   );
 });
 
-Deno.test("signtool: the task reaches execution", async () => {
+test("signtool: the task reaches execution", async () => {
   let argv: string[] = [];
   await assertRejects(
     () =>
@@ -86,7 +87,7 @@ Deno.test("signtool: the task reaches execution", async () => {
   assertEquals(argv.slice(1), ["verify", "/pa", "a.exe"]);
 });
 
-Deno.test("signtool resolves its binary from PATH", async () => {
+test("signtool resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new SigntoolVerifySettings().file("a.exe"),
     "signtool",

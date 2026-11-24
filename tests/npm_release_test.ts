@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   type AncestryProbe,
@@ -36,7 +37,7 @@ function git(
   };
 }
 
-Deno.test("releaseSource: same, changed since the tag, or no tag", async () => {
+test("releaseSource: same, changed since the tag, or no tag", async () => {
   const tagged = (changed: string[]) =>
     git({
       hasTag: (tag) => Promise.resolve(tag === releaseTag("x", "1.0.0")),
@@ -53,7 +54,7 @@ Deno.test("releaseSource: same, changed since the tag, or no tag", async () => {
   assertEquals(await releaseSource("x", "1.0.0", git()), "untagged");
 });
 
-Deno.test("releaseSource: with no tag yet, HEAD stands in when it is the commit that set the version", async () => {
+test("releaseSource: with no tag yet, HEAD stands in when it is the commit that set the version", async () => {
   const asked: string[] = [];
   const at = (
     versions: Record<string, string | null>,
@@ -90,7 +91,7 @@ Deno.test("releaseSource: with no tag yet, HEAD stands in when it is the commit 
   }
 });
 
-Deno.test("masterCheck: an ancestor of origin/master passes, any other commit fails", async () => {
+test("masterCheck: an ancestor of origin/master passes, any other commit fails", async () => {
   const asked: string[] = [];
   const check = masterCheck(git({
     isAncestor: (commit, ref) => {
@@ -109,7 +110,7 @@ Deno.test("masterCheck: an ancestor of origin/master passes, any other commit fa
   assertEquals(asked, [`${SHA}..origin/master`, `${other}..origin/master`]);
 });
 
-Deno.test("masterCheck: without origin/master it asks HEAD", async () => {
+test("masterCheck: without origin/master it asks HEAD", async () => {
   const asked: string[] = [];
   const check = masterCheck(git({
     hasRef: () => Promise.resolve(false),
@@ -122,7 +123,7 @@ Deno.test("masterCheck: without origin/master it asks HEAD", async () => {
   assertEquals(asked, ["HEAD"]);
 });
 
-Deno.test("masterCheck: a missing commit is fetched, and reported when it stays missing", async () => {
+test("masterCheck: a missing commit is fetched, and reported when it stays missing", async () => {
   const fetched: string[] = [];
   let present = false;
   const fetching = masterCheck(git({

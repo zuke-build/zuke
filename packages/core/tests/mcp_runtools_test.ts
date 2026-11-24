@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";
@@ -119,7 +120,7 @@ async function seedRun(
   return id;
 }
 
-Deno.test("list_runs filters by status, target, and since; an unknown status is refused", async () => {
+test("list_runs filters by status, target, and since; an unknown status is refused", async () => {
   await withStore(async (store) => {
     const { build } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
@@ -166,7 +167,7 @@ Deno.test("list_runs filters by status, target, and since; an unknown status is 
   });
 });
 
-Deno.test("show_run returns the full record; a missing runId is a structured error", async () => {
+test("show_run returns the full record; a missing runId is a structured error", async () => {
   await withStore(async (store) => {
     const { build } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
@@ -197,7 +198,7 @@ Deno.test("show_run returns the full record; a missing runId is a structured err
   });
 });
 
-Deno.test("signal_run delivers the payload and resumes the run to completion", async () => {
+test("signal_run delivers the payload and resumes the run to completion", async () => {
   await withStore(async (store) => {
     const { build, root, seen } = makePipeline();
     const server = new McpServer(build, {
@@ -226,7 +227,7 @@ Deno.test("signal_run delivers the payload and resumes the run to completion", a
   });
 });
 
-Deno.test("signal_run with no satisfying signal re-suspends and reports it", async () => {
+test("signal_run with no satisfying signal re-suspends and reports it", async () => {
   await withStore(async (store) => {
     const { build, root, seen } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
@@ -243,7 +244,7 @@ Deno.test("signal_run with no satisfying signal re-suspends and reports it", asy
   });
 });
 
-Deno.test("a lost resume race is a structured already_resumed, not a crash", async () => {
+test("a lost resume race is a structured already_resumed, not a crash", async () => {
   await withStore(async (store) => {
     const { build, root } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
@@ -276,7 +277,7 @@ Deno.test("a lost resume race is a structured already_resumed, not a crash", asy
   });
 });
 
-Deno.test("a lock conflict in the resumed run surfaces as structured lock_conflict", async () => {
+test("a lock conflict in the resumed run surfaces as structured lock_conflict", async () => {
   await withStore(async (store) => {
     const seenHolder = {
       actor: "rival",
@@ -309,7 +310,7 @@ Deno.test("a lock conflict in the resumed run surfaces as structured lock_confli
   });
 });
 
-Deno.test("a failing resumed target is a structured run_failed with the message", async () => {
+test("a failing resumed target is a structured run_failed with the message", async () => {
   await withStore(async (store) => {
     class Failing extends Build {
       gate = target().waitsFor((s) => s.on(externalSignal("approved")));
@@ -334,7 +335,7 @@ Deno.test("a failing resumed target is a structured run_failed with the message"
   });
 });
 
-Deno.test("resume_check re-checks one run, and a sweep covers every authorized run", async () => {
+test("resume_check re-checks one run, and a sweep covers every authorized run", async () => {
   await withStore(async (store) => {
     const { build, root } = makePipeline();
     const server = new McpServer(build, {
@@ -363,7 +364,7 @@ Deno.test("resume_check re-checks one run, and a sweep covers every authorized r
   });
 });
 
-Deno.test("a resume_check failure on one run is reported as structured run_failed", async () => {
+test("a resume_check failure on one run is reported as structured run_failed", async () => {
   await withStore(async (store) => {
     const { build, root } = makePipeline();
     const runId = await suspend(build, root, store);
@@ -433,7 +434,7 @@ class FlakyStore implements StateStore {
   }
 }
 
-Deno.test("a store fault mid-cancel is a structured run_failed, not a crash", async () => {
+test("a store fault mid-cancel is a structured run_failed, not a crash", async () => {
   await withStore(async (inner) => {
     const { build } = makePipeline();
     await seedRun(
@@ -456,7 +457,7 @@ Deno.test("a store fault mid-cancel is a structured run_failed, not a crash", as
   });
 });
 
-Deno.test("signal_run accepts an explicit null payload and still resumes", async () => {
+test("signal_run accepts an explicit null payload and still resumes", async () => {
   await withStore(async (store) => {
     const { build, root, seen } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
@@ -476,7 +477,7 @@ Deno.test("signal_run accepts an explicit null payload and still resumes", async
   });
 });
 
-Deno.test("show_run masks run-held lock tokens", async () => {
+test("show_run masks run-held lock tokens", async () => {
   await withStore(async (store) => {
     const { build } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });

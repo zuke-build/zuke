@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -75,7 +76,7 @@ async function suspended(dir: string): Promise<string> {
   return id;
 }
 
-Deno.test("a forced skip settles the target without running it, and dependents run", async () => {
+test("a forced skip settles the target without running it, and dependents run", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
 
@@ -111,7 +112,7 @@ Deno.test("a forced skip settles the target without running it, and dependents r
   });
 });
 
-Deno.test("a forced success settles the target as succeeded without running it", async () => {
+test("a forced success settles the target as succeeded without running it", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
     assertEquals(
@@ -138,7 +139,7 @@ Deno.test("a forced success settles the target as succeeded without running it",
   });
 });
 
-Deno.test("runs show names the override, who set it and why", async () => {
+test("runs show names the override, who set it and why", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
     assertEquals(
@@ -163,7 +164,7 @@ Deno.test("runs show names the override, who set it and why", async () => {
   });
 });
 
-Deno.test("an unforceable target is refused and nothing is recorded", async () => {
+test("an unforceable target is refused and nothing is recorded", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
     const refused = await runCli(Pipeline, [
@@ -179,7 +180,7 @@ Deno.test("an unforceable target is refused and nothing is recorded", async () =
   });
 });
 
-Deno.test("a finished run is refused — there is no plan left to act on", async () => {
+test("a finished run is refused — there is no plan left to act on", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
     assertEquals(
@@ -199,7 +200,7 @@ Deno.test("a finished run is refused — there is no plan left to act on", async
   });
 });
 
-Deno.test("a target that already settled in a live run is refused", async () => {
+test("a target that already settled in a live run is refused", async () => {
   // The record is the account of what happened; rewriting a settled outcome
   // would make it untrue. `prepare` succeeds before the gate parks the run.
   class Staged extends Build {
@@ -230,7 +231,7 @@ Deno.test("a target that already settled in a live run is refused", async () => 
   });
 });
 
-Deno.test("force validates its arguments before touching the store", async () => {
+test("force validates its arguments before touching the store", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
 
@@ -258,7 +259,7 @@ Deno.test("force validates its arguments before touching the store", async () =>
 
 // ---- Regressions from the adversarial review -------------------------------
 
-Deno.test("a foreign build cannot force another build's run", async () => {
+test("a foreign build cannot force another build's run", async () => {
   // `unforceable()` is read from the build in *this* process, so acting on
   // another build's run would check the wrong safety declaration entirely — a
   // template shared across services would let one force what its owner forbade.
@@ -306,7 +307,7 @@ Deno.test("a foreign build cannot force another build's run", async () => {
   });
 });
 
-Deno.test("a forced gate outranks its own expired deadline", async () => {
+test("a forced gate outranks its own expired deadline", async () => {
   // Forcing a gate someone is waiting on is the reason the verb exists. Timing
   // it out afterwards would run the onTimeout disposition — here a cancel —
   // against the decision the operator had already made.
@@ -349,7 +350,7 @@ Deno.test("a forced gate outranks its own expired deadline", async () => {
   });
 });
 
-Deno.test("a forced success is compensated even before the run reaches it", async () => {
+test("a forced success is compensated even before the run reaches it", async () => {
   // The operator asserted the target's effects exist — that is the whole
   // difference from forcing `skipped` — so a cancel landing in between must
   // still unwind them, while the row is still pending.
@@ -388,7 +389,7 @@ Deno.test("a forced success is compensated even before the run reaches it", asyn
   });
 });
 
-Deno.test("forcing a target that declares an effect to succeeded is refused", async () => {
+test("forcing a target that declares an effect to succeeded is refused", async () => {
   // Settling without running would drop the effect rather than defer it —
   // nothing recorded as owed, and the run reporting success. The same refusal
   // the cache and service layers already make.
@@ -432,7 +433,7 @@ Deno.test("forcing a target that declares an effect to succeeded is refused", as
   });
 });
 
-Deno.test("a run being cancelled is refused", async () => {
+test("a run being cancelled is refused", async () => {
   await withStateDir(async (dir) => {
     const id = await suspended(dir);
     const store = new FileSystemStateStore(dir, defaultStateHost);
@@ -455,7 +456,7 @@ Deno.test("a run being cancelled is refused", async () => {
   });
 });
 
-Deno.test("a stray positional is an error, not a different command", async () => {
+test("a stray positional is an error, not a different command", async () => {
   // Without the guard the third argument fell through to the target slot, so
   // `zuke force <id> <target> oops` quietly ran the build instead of forcing.
   await withStateDir(async (dir) => {

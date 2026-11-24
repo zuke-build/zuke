@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -17,11 +18,11 @@ import {
   KustomizeTasks,
 } from "../src/kustomize.ts";
 
-Deno.test("the default binary is kustomize", () => {
+test("the default binary is kustomize", () => {
   assertEquals(new KustomizeBuildSettings().argv()[0], "kustomize");
 });
 
-Deno.test("build: bare and all options", () => {
+test("build: bare and all options", () => {
   assertEquals(new KustomizeBuildSettings().argv().slice(1), ["build"]);
   assertEquals(
     new KustomizeBuildSettings()
@@ -43,7 +44,7 @@ Deno.test("build: bare and all options", () => {
   );
 });
 
-Deno.test("editSetImage: requires an image; renders name=ref pairs", () => {
+test("editSetImage: requires an image; renders name=ref pairs", () => {
   assertThrows(
     () => new KustomizeEditSetImageSettings().argv(),
     Error,
@@ -59,7 +60,7 @@ Deno.test("editSetImage: requires an image; renders name=ref pairs", () => {
   );
 });
 
-Deno.test("every KustomizeTasks function reaches execution", async () => {
+test("every KustomizeTasks function reaches execution", async () => {
   await assertRejects(
     () => KustomizeTasks.build(missingTool),
     ToolNotFoundError,
@@ -71,7 +72,7 @@ Deno.test("every KustomizeTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("kustomize: conforms to the wrapper contract", async () => {
+test("kustomize: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new KustomizeBuildSettings(),
     "kustomize",

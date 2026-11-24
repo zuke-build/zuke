@@ -12,6 +12,7 @@
  * lives in the e2e suite; skipped on Windows, which has no SIGTERM.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 
@@ -62,7 +63,7 @@ function alive(pid: number): boolean {
   }
 }
 
-Deno.test({
+test({
   name:
     "the forwarding zuke ignores a SIGINT of its own, forwards SIGTERM, and reports the build's exit",
   ignore: Deno.build.os === "windows",

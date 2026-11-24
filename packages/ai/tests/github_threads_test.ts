@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import type { GithubContext } from "../src/hosts/github.ts";
 import { githubHost } from "../src/hosts/github.ts";
@@ -61,7 +62,7 @@ function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status });
 }
 
-Deno.test("a review-comment listing carries parentage and the review kind", async () => {
+test("a review-comment listing carries parentage and the review kind", async () => {
   const { fetch } = fake([[
     "/pulls/7/comments",
     () =>
@@ -86,7 +87,7 @@ Deno.test("a review-comment listing carries parentage and the review kind", asyn
   assertEquals(listing.parents.has(1), false);
 });
 
-Deno.test("a review-comment listing follows Link pagination", async () => {
+test("a review-comment listing follows Link pagination", async () => {
   const page2 =
     "https://api.github.com/repos/zuke-build/zuke/pulls/7/comments?page=2";
   const { fetch, calls } = fake([
@@ -108,7 +109,7 @@ Deno.test("a review-comment listing follows Link pagination", async () => {
   assertEquals(calls.length, 2);
 });
 
-Deno.test("opening a thread anchors to the head commit on the right side", async () => {
+test("opening a thread anchors to the head commit on the right side", async () => {
   const { fetch, calls } = fake([["/pulls/7/comments", () => json({ id: 9 })]]);
   const result = await openThread(
     CONTEXT,
@@ -128,7 +129,7 @@ Deno.test("opening a thread anchors to the head commit on the right side", async
   assertEquals(payload.body.startsWith("<!-- marker -->"), true);
 });
 
-Deno.test("a rejected anchor skips one finding; a rate limit stops the phase", async () => {
+test("a rejected anchor skips one finding; a rate limit stops the phase", async () => {
   for (
     const [status, expected] of [[422, "rejected"], [429, "stop"], [
       500,
@@ -146,7 +147,7 @@ Deno.test("a rejected anchor skips one finding; a rate limit stops the phase", a
   }
 });
 
-Deno.test("a reply is posted against the thread's root comment", async () => {
+test("a reply is posted against the thread's root comment", async () => {
   const { fetch, calls } = fake([["/comments/42/replies", () => json({})]]);
   assertEquals(await replyToThread(CONTEXT, fetch, 42, "done"), "created");
   assertEquals(
@@ -156,7 +157,7 @@ Deno.test("a reply is posted against the thread's root comment", async () => {
   assertEquals(JSON.parse(calls[0].body).body, "done");
 });
 
-Deno.test("the head SHA comes from the pull request itself", async () => {
+test("the head SHA comes from the pull request itself", async () => {
   const { fetch } = fake([["/pulls/7", () => json({ head: { sha: "abc" } })]]);
   assertEquals(await headSha(CONTEXT, fetch), "abc");
 });
@@ -183,7 +184,7 @@ function threadPage(
   });
 }
 
-Deno.test("resolving joins the thread node id to the root comment id", async () => {
+test("resolving joins the thread node id to the root comment id", async () => {
   const { fetch, calls } = fake([[
     "/graphql",
     () => {
@@ -207,7 +208,7 @@ Deno.test("resolving joins the thread node id to the root comment id", async () 
   assertEquals(mutation.variables.id, "NODE_A");
 });
 
-Deno.test("unresolving uses the unresolve mutation", async () => {
+test("unresolving uses the unresolve mutation", async () => {
   const { fetch, calls } = fake([[
     "/graphql",
     () => {
@@ -223,7 +224,7 @@ Deno.test("unresolving uses the unresolve mutation", async () => {
   );
 });
 
-Deno.test("the node-id query is paged by cursor", async () => {
+test("the node-id query is paged by cursor", async () => {
   let page = 0;
   const { fetch, calls } = fake([[
     "/graphql",
@@ -244,7 +245,7 @@ Deno.test("the node-id query is paged by cursor", async () => {
   assertEquals(JSON.parse(graph[1].body).variables.cursor, "cur");
 });
 
-Deno.test("a GraphQL failure resolves nothing, throws nothing, and says why", async () => {
+test("a GraphQL failure resolves nothing, throws nothing, and says why", async () => {
   const failures: Array<[() => Response, string]> = [
     // GraphQL reports errors in a 200 — checking `ok` alone reads this as
     // success and the reviewer would believe it resolved the thread. The
@@ -274,7 +275,7 @@ Deno.test("a GraphQL failure resolves nothing, throws nothing, and says why", as
   }
 });
 
-Deno.test("a refused mutation carries the host's reason, bounded to one line", async () => {
+test("a refused mutation carries the host's reason, bounded to one line", async () => {
   // The join succeeds; the mutation itself is what the host refuses — the
   // shape a token that may not resolve threads produces. Only the first
   // refusal is kept, flattened and capped, since it heads for a report note.
@@ -301,7 +302,7 @@ Deno.test("a refused mutation carries the host's reason, bounded to one line", a
   });
 });
 
-Deno.test("resolving nothing issues no GraphQL call at all", async () => {
+test("resolving nothing issues no GraphQL call at all", async () => {
   const { fetch, calls } = fake([["/graphql", () => json({})]]);
   assertEquals(await setThreadsResolved(CONTEXT, fetch, [], true), {
     done: 0,
@@ -309,7 +310,7 @@ Deno.test("resolving nothing issues no GraphQL call at all", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("githubHost exposes review threads only inside a pull request", () => {
+test("githubHost exposes review threads only inside a pull request", () => {
   assertEquals(githubHost.reviewThreads?.("tkn", env({})), undefined);
   assertEquals(
     typeof githubHost.reviewThreads?.(
@@ -323,7 +324,7 @@ Deno.test("githubHost exposes review threads only inside a pull request", () => 
   );
 });
 
-Deno.test("a malformed comment in a listing is skipped, not fatal", async () => {
+test("a malformed comment in a listing is skipped, not fatal", async () => {
   const { fetch } = fake([[
     "/pulls/7/comments",
     () =>
@@ -337,7 +338,7 @@ Deno.test("a malformed comment in a listing is skipped, not fatal", async () => 
   assertEquals(listing.comments.map((c) => c.id), [3]);
 });
 
-Deno.test("a node-id page without a cursor ends the walk", async () => {
+test("a node-id page without a cursor ends the walk", async () => {
   const { fetch, calls } = fake([[
     "/graphql",
     () => {
@@ -363,7 +364,7 @@ Deno.test("a node-id page without a cursor ends the walk", async () => {
   });
 });
 
-Deno.test("a thread with no known node id is skipped", async () => {
+test("a thread with no known node id is skipped", async () => {
   const { fetch } = fake([[
     "/graphql",
     () => threadPage([{ id: "N", root: 1 }]),
@@ -376,7 +377,7 @@ Deno.test("a thread with no known node id is skipped", async () => {
   });
 });
 
-Deno.test("a review-comment listing restores a hidden maintainer's standing too", async () => {
+test("a review-comment listing restores a hidden maintainer's standing too", async () => {
   // Same lookup as the summary comments: a reply in a thread by an
   // organisation member the token sees as CONTRIBUTOR is trusted once the
   // collaborators API says they can push.

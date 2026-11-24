@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { absolutePath } from "../packages/core/mod.ts";
 import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
 import {
@@ -49,7 +50,7 @@ async function setup(fail = false) {
 const text = (files: ReadonlyMap<string, Uint8Array> | undefined) =>
   new TextDecoder().decode(files?.get("mod.js"));
 
-Deno.test("rebuilder: a commit is built in a worktree that is then removed", async () => {
+test("rebuilder: a commit is built in a worktree that is then removed", async () => {
   const { work, log, rebuild } = await setup();
   try {
     const other = "b".repeat(40);
@@ -64,7 +65,7 @@ Deno.test("rebuilder: a commit is built in a worktree that is then removed", asy
   }
 });
 
-Deno.test("rebuilder: a failing build still removes its worktree and rejects", async () => {
+test("rebuilder: a failing build still removes its worktree and rejects", async () => {
   const { work, log, rebuild } = await setup(true);
   try {
     await assertRejects(
@@ -78,7 +79,7 @@ Deno.test("rebuilder: a failing build still removes its worktree and rejects", a
   }
 });
 
-Deno.test("rebuildGit: adds a detached worktree at the commit and force-removes it", async () => {
+test("rebuildGit: adds a detached worktree at the commit and force-removes it", async () => {
   const argv: string[][] = [];
   // Record each call's finished argv, then point git at a binary that cannot
   // exist, so no real git runs.
@@ -112,7 +113,7 @@ function fixtureGit(build: string, log: string[]): RebuildGit {
 // The real build adapter, run by the running deno against a tree's build.ts.
 const DENO = rebuildBuild((s) => s.toolPath(Deno.execPath()).quiet());
 
-Deno.test("rebuildBuild: runs the tree's own build.ts npmBuild in the tree", async () => {
+test("rebuildBuild: runs the tree's own build.ts npmBuild in the tree", async () => {
   const work = absolutePath(await Deno.makeTempDir());
   const log: string[] = [];
   try {
@@ -130,7 +131,7 @@ Deno.test("rebuildBuild: runs the tree's own build.ts npmBuild in the tree", asy
   }
 });
 
-Deno.test("rebuildBuild: a build.ts that fails rejects, and the tree is removed", async () => {
+test("rebuildBuild: a build.ts that fails rejects, and the tree is removed", async () => {
   const work = absolutePath(await Deno.makeTempDir());
   const log: string[] = [];
   try {

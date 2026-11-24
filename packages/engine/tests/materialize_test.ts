@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   discoverCiFiles,
   discoverParameters,
@@ -60,7 +61,7 @@ function remote(manifest: unknown): new () => InstanceType<
   return materialize(parseManifest(manifest), recorder().runner);
 }
 
-Deno.test("materialize declares one target field per manifest entry, in order", () => {
+test("materialize declares one target field per manifest entry, in order", () => {
   const Remote = remote({
     name: "B",
     targets: [
@@ -78,7 +79,7 @@ Deno.test("materialize declares one target field per manifest entry, in order", 
   );
 });
 
-Deno.test("materialize applies every target setting, group and config field", () => {
+test("materialize applies every target setting, group and config field", () => {
   const Remote = remote({
     name: "B",
     targets: [
@@ -139,7 +140,7 @@ Deno.test("materialize applies every target setting, group and config field", ()
   assertEquals(build.unforceable().map((t) => t.name_), ["c"]);
 });
 
-Deno.test("materialize wires condition and cacheKey to the worker only when declared", async () => {
+test("materialize wires condition and cacheKey to the worker only when declared", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
     parseManifest({
@@ -158,7 +159,7 @@ Deno.test("materialize wires condition and cacheKey to the worker only when decl
   assertEquals(calls, ["cacheKey gated"]);
 });
 
-Deno.test("late settings are fetched at onStart and feed the deferred lambdas", async () => {
+test("late settings are fetched at onStart and feed the deferred lambdas", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
     parseManifest({
@@ -189,7 +190,7 @@ Deno.test("late settings are fetched at onStart and feed the deferred lambdas", 
   assertEquals(calls.at(-1), "validate a disk");
 });
 
-Deno.test("a resumeWhen gate asks the worker, and onTimeout resolves like onFailure", async () => {
+test("a resumeWhen gate asks the worker, and onTimeout resolves like onFailure", async () => {
   const { runner, calls } = recorder();
   runner.settings = () =>
     Promise.resolve({
@@ -230,7 +231,7 @@ Deno.test("a resumeWhen gate asks the worker, and onTimeout resolves like onFail
   assertEquals(wait?.timeout_, "1h");
 });
 
-Deno.test("a service target starts, probes and stops in the worker with its handle", async () => {
+test("a service target starts, probes and stops in the worker with its handle", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
     parseManifest({
@@ -260,7 +261,7 @@ Deno.test("a service target starts, probes and stops in the worker with its hand
   ]);
 });
 
-Deno.test("onStart configures the worker, then the hooks the manifest flags run in order", async () => {
+test("onStart configures the worker, then the hooks the manifest flags run in order", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
     parseManifest({
@@ -292,7 +293,7 @@ Deno.test("onStart configures the worker, then the hooks the manifest flags run 
   ]);
 });
 
-Deno.test("an unflagged hook is never called, and an unresolved parameter configures as null", async () => {
+test("an unflagged hook is never called, and an unresolved parameter configures as null", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
     parseManifest({
@@ -310,7 +311,7 @@ Deno.test("an unflagged hook is never called, and an unresolved parameter config
   assertEquals(calls, ['configure {"tag":null}', "finish 1 false"]);
 });
 
-Deno.test("a throwing onFinish hook still exits the worker, with a failure code", async () => {
+test("a throwing onFinish hook still exits the worker, with a failure code", async () => {
   const { runner, calls } = recorder("onFinish");
   const Remote = materialize(
     parseManifest({ name: "B", targets: [], hooks: { onFinish: true } }),
@@ -327,7 +328,7 @@ Deno.test("a throwing onFinish hook still exits the worker, with a failure code"
   ]);
 });
 
-Deno.test("materialize declares each parameter kind as parameter() would", () => {
+test("materialize declares each parameter kind as parameter() would", () => {
   const Remote = remote({
     name: "B",
     targets: [],
@@ -370,7 +371,7 @@ Deno.test("materialize declares each parameter kind as parameter() would", () =>
   ]);
 });
 
-Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclared name", () => {
+test("materialize refuses a duplicate, a forward dependency, or an undeclared name", () => {
   const refuse = (manifest: unknown, message: string) =>
     assertThrows(() => new (remote(manifest))(), Error, message);
   refuse(
@@ -422,7 +423,7 @@ Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclar
   );
 });
 
-Deno.test("materialize declares a CiFile per ci entry, named after the manifest's build", () => {
+test("materialize declares a CiFile per ci entry, named after the manifest's build", () => {
   const Remote = remote({
     name: "Pipeline",
     targets: [{ name: "lint" }, { name: "test", dependsOn: ["lint"] }],

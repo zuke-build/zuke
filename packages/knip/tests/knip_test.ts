@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,15 +10,15 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { KnipRunSettings, KnipTasks } from "../src/knip.ts";
 
-Deno.test("the default binary is knip", () => {
+test("the default binary is knip", () => {
   assertEquals(new KnipRunSettings().argv()[0], "knip");
 });
 
-Deno.test("run: bare is empty argv", () => {
+test("run: bare is empty argv", () => {
   assertEquals(new KnipRunSettings().argv().slice(1), []);
 });
 
-Deno.test("run: all options render", () => {
+test("run: all options render", () => {
   assertEquals(
     new KnipRunSettings()
       .production()
@@ -49,11 +50,11 @@ Deno.test("run: all options render", () => {
   );
 });
 
-Deno.test("KnipTasks.run reaches execution", async () => {
+test("KnipTasks.run reaches execution", async () => {
   await assertRejects(() => KnipTasks.run(missingTool), ToolNotFoundError);
 });
 
-Deno.test("knip: resolves its binary from node_modules by default", async () => {
+test("knip: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new KnipRunSettings(), "knip", {
     resolution: "node_modules",
   });

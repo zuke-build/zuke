@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   GhLabelCloneSettings,
@@ -12,7 +13,7 @@ import {
 } from "../mod.ts";
 import { parseLabels } from "../src/label.ts";
 
-Deno.test("label list renders its filters", () => {
+test("label list renders its filters", () => {
   assertEquals(
     new GhLabelListSettings().repo("acme/app").search("bug").sort("name").order(
       "desc",
@@ -37,7 +38,7 @@ Deno.test("label list renders its filters", () => {
   );
 });
 
-Deno.test("label create and edit render their colour and description", () => {
+test("label create and edit render their colour and description", () => {
   assertEquals(
     new GhLabelCreateSettings().name("flaky").color("d73a4a").description(
       "a test that fails at random",
@@ -81,7 +82,7 @@ Deno.test("label create and edit render their colour and description", () => {
   );
 });
 
-Deno.test("label delete makes the build mean the deletion", () => {
+test("label delete makes the build mean the deletion", () => {
   assertEquals(
     new GhLabelDeleteSettings().name("wontfix").yes().argv().slice(1),
     ["label", "delete", "wontfix", "--yes"],
@@ -98,7 +99,7 @@ Deno.test("label delete makes the build mean the deletion", () => {
   );
 });
 
-Deno.test("label clone names the repository it copies from", () => {
+test("label clone names the repository it copies from", () => {
   assertEquals(
     new GhLabelCloneSettings().source("acme/template").repo("acme/app").force()
       .argv().slice(1),
@@ -111,7 +112,7 @@ Deno.test("label clone names the repository it copies from", () => {
   );
 });
 
-Deno.test("parseLabels reads gh's JSON array", () => {
+test("parseLabels reads gh's JSON array", () => {
   assertEquals(
     parseLabels(
       '[{"name":"bug","color":"d73a4a","description":"Something is broken"}]',
@@ -125,14 +126,14 @@ Deno.test("parseLabels reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseLabels treats anything but an array of objects as empty", () => {
+test("parseLabels treats anything but an array of objects as empty", () => {
   assertEquals(parseLabels("[]"), []);
   assertEquals(parseLabels("no labels found"), []);
   assertEquals(parseLabels('{"name":"bug"}'), []);
   assertEquals(parseLabels('[{"color":123}]'), [{}]);
 });
 
-Deno.test("the pinned label field set is what the entry documents", () => {
+test("the pinned label field set is what the entry documents", () => {
   assertEquals(LABEL_LIST_FIELDS.includes("color"), true);
   assertEquals(LABEL_LIST_FIELDS.length, 3);
 });

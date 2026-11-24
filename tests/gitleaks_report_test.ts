@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -28,7 +29,7 @@ const FINDING = {
   Secret: "REDACTED",
 };
 
-Deno.test("a clean scan parses to no findings, however it is written", () => {
+test("a clean scan parses to no findings, however it is written", () => {
   // gitleaks writes `[]` on a clean scan; an absent report reaches us as "".
   assertEquals(parseGitleaksReport("[]"), []);
   assertEquals(parseGitleaksReport(""), []);
@@ -36,7 +37,7 @@ Deno.test("a clean scan parses to no findings, however it is written", () => {
   assertEquals(parseGitleaksReport("null"), []);
 });
 
-Deno.test("a finding is read from gitleaks' field names", () => {
+test("a finding is read from gitleaks' field names", () => {
   assertEquals(parseGitleaksReport(JSON.stringify([FINDING])), [{
     rule: "generic-api-key",
     file: "src/config.ts",
@@ -46,7 +47,7 @@ Deno.test("a finding is read from gitleaks' field names", () => {
   }]);
 });
 
-Deno.test("the lower-cased field spelling is read too", () => {
+test("the lower-cased field spelling is read too", () => {
   const lower = [{
     ruleID: "aws-access-key",
     file: "deploy.sh",
@@ -63,7 +64,7 @@ Deno.test("the lower-cased field spelling is read too", () => {
   });
 });
 
-Deno.test("an unparseable report throws rather than reading as clean", () => {
+test("an unparseable report throws rather than reading as clean", () => {
   // The dangerous failure mode: a truncated or non-array report silently
   // becoming "no findings" would turn a failed scan into a passing one.
   assertThrows(
@@ -78,13 +79,13 @@ Deno.test("an unparseable report throws rather than reading as clean", () => {
   );
 });
 
-Deno.test("a clean scan renders no summary section at all", () => {
+test("a clean scan renders no summary section at all", () => {
   // A "nothing found" panel on every green run is noise; the build's own table
   // already reports that the scan passed.
   assertEquals(gitleaksSummary([]), null);
 });
 
-Deno.test("the summary names the location, the rule, and the fingerprint", () => {
+test("the summary names the location, the rule, and the fingerprint", () => {
   const summary = gitleaksSummary(
     parseGitleaksReport(JSON.stringify([FINDING])),
   );
@@ -99,7 +100,7 @@ Deno.test("the summary names the location, the rule, and the fingerprint", () =>
   assertEquals(summary.includes("REDACTED"), false);
 });
 
-Deno.test("the count is pluralised and a missing line renders as a dash", () => {
+test("the count is pluralised and a missing line renders as a dash", () => {
   const summary = gitleaksSummary([
     { rule: "a", file: "x", line: 0, commit: "", fingerprint: "f1" },
     { rule: "b", file: "y", line: 3, commit: "c", fingerprint: "f2" },
@@ -109,7 +110,7 @@ Deno.test("the count is pluralised and a missing line renders as a dash", () => 
   assertStringIncludes(summary, "| — |");
 });
 
-Deno.test("a pipe in a value cannot break out of the table cell", () => {
+test("a pipe in a value cannot break out of the table cell", () => {
   const summary = gitleaksSummary([
     { rule: "r", file: "a|b.ts", line: 1, commit: "c", fingerprint: "f" },
   ]);
@@ -117,7 +118,7 @@ Deno.test("a pipe in a value cannot break out of the table cell", () => {
   assertStringIncludes(summary, "a\\|b.ts");
 });
 
-Deno.test("a backslash in a value cannot pose as an escape", () => {
+test("a backslash in a value cannot pose as an escape", () => {
   // A Windows path contains backslashes. Unescaped, the value's own backslash
   // would merge with the escapes this table adds — `a\` before a pipe reads as
   // an escaped pipe, fabricating cell content in the one report that says
@@ -135,7 +136,7 @@ Deno.test("a backslash in a value cannot pose as an escape", () => {
   assertStringIncludes(summary, "dir\\\\a\\|b.ts");
 });
 
-Deno.test("a backtick in a path cannot end its code span early", () => {
+test("a backtick in a path cannot end its code span early", () => {
   // A path may contain a backtick, and this table is the only place a failing
   // scan reports where a secret is — a row garbled by its own filename would
   // hide the location it exists to show.
@@ -150,7 +151,7 @@ Deno.test("a backtick in a path cannot end its code span early", () => {
   assertEquals(row?.split("|").length, 7); // 5 cells + the leading/trailing pipes
 });
 
-Deno.test("a value that begins or ends with a backtick is padded, not broken", () => {
+test("a value that begins or ends with a backtick is padded, not broken", () => {
   const summary = gitleaksSummary([
     { rule: "r", file: "`quoted`", line: 1, commit: "c", fingerprint: "f" },
   ]);
@@ -160,7 +161,7 @@ Deno.test("a value that begins or ends with a backtick is padded, not broken", (
   assertStringIncludes(summary, "`` `quoted` ``");
 });
 
-Deno.test("a newline in a path cannot end the row or forge another", () => {
+test("a newline in a path cannot end the row or forge another", () => {
   // Reachable from outside the repository: a path may contain a newline on
   // POSIX, and a pull request can add one. Left raw it would end the table row
   // and let whatever followed render as its own Markdown — fabricating content
@@ -183,7 +184,7 @@ Deno.test("a newline in a path cannot end the row or forge another", () => {
   assertEquals(rows.length, 3);
 });
 
-Deno.test("a carriage return or tab is escaped the same way", () => {
+test("a carriage return or tab is escaped the same way", () => {
   const summary = gitleaksSummary([
     { rule: "r\t", file: "b\r", line: 1, commit: "c", fingerprint: "f" },
   ]);
@@ -192,7 +193,7 @@ Deno.test("a carriage return or tab is escaped the same way", () => {
   assertStringIncludes(summary, "b\\r");
 });
 
-Deno.test("an exotic control character renders as a hex escape", () => {
+test("an exotic control character renders as a hex escape", () => {
   const summary = gitleaksSummary([
     { rule: "r", file: "c\u0007d", line: 1, commit: "x", fingerprint: "f" },
   ]);
@@ -200,7 +201,7 @@ Deno.test("an exotic control character renders as a hex escape", () => {
   assertStringIncludes(summary, "c\\x07d");
 });
 
-Deno.test("a run of backticks is out-sized by the delimiter", () => {
+test("a run of backticks is out-sized by the delimiter", () => {
   const summary = gitleaksSummary([
     { rule: "a``b", file: "f.ts", line: 1, commit: "c", fingerprint: "f" },
   ]);

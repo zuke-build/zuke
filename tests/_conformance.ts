@@ -13,6 +13,7 @@
  * started there runs the case's build.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { isRecord } from "../packages/engine/src/protocol.ts";
 import {
@@ -188,7 +189,7 @@ export async function conformanceSuite(
     );
     const death = engineDeathOf(raw, name);
     const spec = death === undefined ? caseOf(raw, name) : undefined;
-    Deno.test({
+    test({
       name: `${prefix}: ${name}`,
       ignore,
       fn: async () => {

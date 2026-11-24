@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -67,12 +68,12 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
 
 // ---------------------------------------------------------------- types
 
-Deno.test("stringify then parse round-trips a run record", () => {
+test("stringify then parse round-trips a run record", () => {
   const record = sampleRecord();
   assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
 });
 
-Deno.test("toSummary projects a record's summary fields", () => {
+test("toSummary projects a record's summary fields", () => {
   assertEquals(toSummary(sampleRecord({ id: "r9" })), {
     id: "r9",
     build: "CI",
@@ -84,7 +85,7 @@ Deno.test("toSummary projects a record's summary fields", () => {
   });
 });
 
-Deno.test("parseRunRecord rejects malformed records", () => {
+test("parseRunRecord rejects malformed records", () => {
   const cases: Array<[string, string]> = [
     ["not json", "not valid JSON"],
     ["42", "not an object"],
@@ -158,7 +159,7 @@ Deno.test("parseRunRecord rejects malformed records", () => {
   }
 });
 
-Deno.test("parseRunRecord round-trips signals and a waiting target", () => {
+test("parseRunRecord round-trips signals and a waiting target", () => {
   const record = sampleRecord({
     status: "suspended",
     signals: {
@@ -179,12 +180,12 @@ Deno.test("parseRunRecord round-trips signals and a waiting target", () => {
   assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
 });
 
-Deno.test("parseRunRecord defaults missing signals to empty (backwards compat)", () => {
+test("parseRunRecord defaults missing signals to empty (backwards compat)", () => {
   const { signals: _signals, ...withoutSignals } = sampleRecord();
   assertEquals(parseRunRecord(JSON.stringify(withoutSignals)).signals, {});
 });
 
-Deno.test("parseRunRecord defaults a missing degraded flag to false", () => {
+test("parseRunRecord defaults a missing degraded flag to false", () => {
   // A record written before the flag existed carries no dropped write we can
   // know about, so it reads back as trustworthy rather than failing to parse.
   const { degraded: _degraded, ...older } = sampleRecord();
@@ -199,7 +200,7 @@ Deno.test("parseRunRecord defaults a missing degraded flag to false", () => {
 // A minimal WaitContext for the built-in triggers, which ignore it.
 const WAIT_CTX = { state: inMemoryStateHandle(), runId: "r", target: "t" };
 
-Deno.test("externalSignal is satisfied only when the named signal is present", async () => {
+test("externalSignal is satisfied only when the named signal is present", async () => {
   const trigger = externalSignal("approved");
   assertEquals(trigger.descriptor, "signal:approved");
   assertEquals(await trigger.isSatisfied(new Map(), WAIT_CTX), false);
@@ -212,7 +213,7 @@ Deno.test("externalSignal is satisfied only when the named signal is present", a
   );
 });
 
-Deno.test("resumeWhen evaluates the predicate and carries a poll interval", async () => {
+test("resumeWhen evaluates the predicate and carries a poll interval", async () => {
   assertEquals(
     await resumeWhen(() => true).isSatisfied(new Map(), WAIT_CTX),
     true,
@@ -228,7 +229,7 @@ Deno.test("resumeWhen evaluates the predicate and carries a poll interval", asyn
   assertEquals(resumeWhen(() => true).pollIntervalMs, undefined);
 });
 
-Deno.test("parseRunRecord preserves nested target meta as JSON", () => {
+test("parseRunRecord preserves nested target meta as JSON", () => {
   const record = sampleRecord({
     targets: {
       deploy: {
@@ -248,7 +249,7 @@ Deno.test("parseRunRecord preserves nested target meta as JSON", () => {
   assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
 });
 
-Deno.test("parseRunSummary validates untrusted summaries", () => {
+test("parseRunSummary validates untrusted summaries", () => {
   const good = toSummary(sampleRecord());
   assertEquals(parseRunSummary(good), good);
   assertThrows(() => parseRunSummary(5), Error, "not an object");
@@ -261,7 +262,7 @@ Deno.test("parseRunSummary validates untrusted summaries", () => {
 
 // ---------------------------------------------------------------- fs store
 
-Deno.test("FileSystemStateStore persists and reconstructs a record", async () => {
+test("FileSystemStateStore persists and reconstructs a record", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   assertEquals(await store.getRun("run-1"), null);
@@ -274,7 +275,7 @@ Deno.test("FileSystemStateStore persists and reconstructs a record", async () =>
   assertEquals(typeof loaded?.version, "string");
 });
 
-Deno.test("FileSystemStateStore CAS rejects a stale write", async () => {
+test("FileSystemStateStore CAS rejects a stale write", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   const created = await store.putRun(sampleRecord(), null);
@@ -295,7 +296,7 @@ Deno.test("FileSystemStateStore CAS rejects a stale write", async () => {
   assertEquals(conflict, { ok: false, conflict: true });
 });
 
-Deno.test("FileSystemStateStore: concurrent writers — exactly one wins", async () => {
+test("FileSystemStateStore: concurrent writers — exactly one wins", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   const created = await store.putRun(sampleRecord(), null);
@@ -311,7 +312,7 @@ Deno.test("FileSystemStateStore: concurrent writers — exactly one wins", async
   assertEquals(conflicts, 1);
 });
 
-Deno.test("FileSystemStateStore listRuns filters, sorts, and skips junk", async () => {
+test("FileSystemStateStore listRuns filters, sorts, and skips junk", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   await store.putRun(
@@ -361,7 +362,7 @@ Deno.test("FileSystemStateStore listRuns filters, sorts, and skips junk", async 
   assertEquals((await store.listRuns({ limit: 0 })).length, 0);
 });
 
-Deno.test("FileSystemStateStore deleteRun removes a run; a missing run is a no-op", async () => {
+test("FileSystemStateStore deleteRun removes a run; a missing run is a no-op", async () => {
   const store = new FileSystemStateStore("/runs", new FakeStateHost());
   await store.putRun(sampleRecord({ id: "r1" }), null);
   assertEquals((await store.getRun("r1")) !== null, true);
@@ -371,7 +372,7 @@ Deno.test("FileSystemStateStore deleteRun removes a run; a missing run is a no-o
   await store.deleteRun("never-existed");
 });
 
-Deno.test("FileSystemStateStore deleteRun rejects an unsafe run id", async () => {
+test("FileSystemStateStore deleteRun rejects an unsafe run id", async () => {
   const store = new FileSystemStateStore("/runs", new FakeStateHost());
   await assertRejects(
     () => store.deleteRun("../escape"),
@@ -380,7 +381,7 @@ Deno.test("FileSystemStateStore deleteRun rejects an unsafe run id", async () =>
   );
 });
 
-Deno.test("FileSystemStateStore rejects an unsafe run id on read and write", async () => {
+test("FileSystemStateStore rejects an unsafe run id on read and write", async () => {
   const store = new FileSystemStateStore("/runs", new FakeStateHost());
   await assertRejects(() => store.getRun("../escape"), Error, "unsafe run id");
   await assertRejects(
@@ -390,7 +391,7 @@ Deno.test("FileSystemStateStore rejects an unsafe run id on read and write", asy
   );
 });
 
-Deno.test("FileSystemStateStore round-trips through the real filesystem", async () => {
+test("FileSystemStateStore round-trips through the real filesystem", async () => {
   await withTempStore(async (store) => {
     const created = await store.putRun(sampleRecord(), null);
     if (!created.ok) throw new Error("expected create to succeed");
@@ -416,7 +417,7 @@ function fakeFetch(
     Promise.resolve(handler(String(input), init));
 }
 
-Deno.test("HttpStateStore.getRun returns record + ETag, or null on 404", async () => {
+test("HttpStateStore.getRun returns record + ETag, or null on 404", async () => {
   const store = new HttpStateStore({
     url: "https://s.example/",
     token: "t",
@@ -440,7 +441,7 @@ Deno.test("HttpStateStore.getRun returns record + ETag, or null on 404", async (
   assertEquals(await store.getRun("missing"), null);
 });
 
-Deno.test("HttpStateStore.getRun errors without an ETag or on failure", async () => {
+test("HttpStateStore.getRun errors without an ETag or on failure", async () => {
   const noEtag = new HttpStateStore({
     url: "https://s.example",
     fetch: fakeFetch(() =>
@@ -460,7 +461,7 @@ Deno.test("HttpStateStore.getRun errors without an ETag or on failure", async ()
   await assertRejects(() => boom.getRun("run-1"), HttpError);
 });
 
-Deno.test("HttpStateStore.putRun sends preconditions and maps 412 to a conflict", async () => {
+test("HttpStateStore.putRun sends preconditions and maps 412 to a conflict", async () => {
   const seen: Array<Record<string, string>> = [];
   const store = new HttpStateStore({
     url: "https://s.example",
@@ -488,7 +489,7 @@ Deno.test("HttpStateStore.putRun sends preconditions and maps 412 to a conflict"
   assertEquals(conflict, { ok: false, conflict: true });
 });
 
-Deno.test("HttpStateStore.putRun errors without an ETag or on failure", async () => {
+test("HttpStateStore.putRun errors without an ETag or on failure", async () => {
   const noEtag = new HttpStateStore({
     url: "https://s.example",
     fetch: fakeFetch(() => new Response(null, { status: 200 })),
@@ -505,7 +506,7 @@ Deno.test("HttpStateStore.putRun errors without an ETag or on failure", async ()
   await assertRejects(() => boom.putRun(sampleRecord(), null), HttpError);
 });
 
-Deno.test("HttpStateStore.listRuns builds a query and validates the array", async () => {
+test("HttpStateStore.listRuns builds a query and validates the array", async () => {
   let lastUrl = "";
   const store = new HttpStateStore({
     url: "https://s.example",
@@ -561,7 +562,7 @@ Deno.test("HttpStateStore.listRuns builds a query and validates the array", asyn
   await assertRejects(() => boom.listRuns({}), HttpError);
 });
 
-Deno.test("HttpStateStore.deleteRun sends DELETE; 404 is not an error, others throw", async () => {
+test("HttpStateStore.deleteRun sends DELETE; 404 is not an error, others throw", async () => {
   let method = "";
   let path = "";
   const ok = new HttpStateStore({
@@ -591,7 +592,7 @@ Deno.test("HttpStateStore.deleteRun sends DELETE; 404 is not an error, others th
 
 // ---------------------------------------------------------------- resolve
 
-Deno.test("resolveStateStore honours precedence", () => {
+test("resolveStateStore honours precedence", () => {
   const host = new FakeStateHost();
   const explicit = new FileSystemStateStore("/explicit", host);
   const declared = new FileSystemStateStore("/declared", host);
@@ -614,7 +615,7 @@ Deno.test("resolveStateStore honours precedence", () => {
   assertEquals(def instanceof FileSystemStateStore, true);
 });
 
-Deno.test("envStateStore selects HTTP by URL then filesystem by DIR", () => {
+test("envStateStore selects HTTP by URL then filesystem by DIR", () => {
   const host = new FakeStateHost();
   const url = envStateStore(
     (n) => (n === "ZUKE_STATE_URL" ? "https://s" : undefined),
@@ -631,14 +632,14 @@ Deno.test("envStateStore selects HTTP by URL then filesystem by DIR", () => {
 
 // ---------------------------------------------------------------- record
 
-Deno.test("recordStatusOf maps executor statuses onto record statuses", () => {
+test("recordStatusOf maps executor statuses onto record statuses", () => {
   assertEquals(recordStatusOf("passed"), "succeeded");
   assertEquals(recordStatusOf("cached"), "succeeded");
   assertEquals(recordStatusOf("failed"), "failed");
   assertEquals(recordStatusOf("skipped"), "skipped");
 });
 
-Deno.test("resolveActor prefers explicit, then env, then anonymous", () => {
+test("resolveActor prefers explicit, then env, then anonymous", () => {
   assertEquals(resolveActor("me", () => "env"), "me");
   assertEquals(
     resolveActor(undefined, (n) => (n === "ZUKE_ACTOR" ? "z" : undefined)),
@@ -651,7 +652,7 @@ Deno.test("resolveActor prefers explicit, then env, then anonymous", () => {
   assertEquals(resolveActor(undefined, () => undefined), "anonymous");
 });
 
-Deno.test("buildRunRecord snapshots the graph, seeds targets, excludes secrets", () => {
+test("buildRunRecord snapshots the graph, seeds targets, excludes secrets", () => {
   class B extends Build {
     token = parameter("api token").secret();
     env = parameter("environment");
@@ -690,7 +691,7 @@ Deno.test("buildRunRecord snapshots the graph, seeds targets, excludes secrets",
 
 // ---------------------------------------------------------------- writer
 
-Deno.test("RunStateWriter records transitions and redacted state", async () => {
+test("RunStateWriter records transitions and redacted state", async () => {
   const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("swordfish");
@@ -717,7 +718,7 @@ Deno.test("RunStateWriter records transitions and redacted state", async () => {
   assertEquals(writer.stateHandle("deploy").get().where, "sit-7");
 });
 
-Deno.test("RunStateWriter records a failure message, redacted", async () => {
+test("RunStateWriter records a failure message, redacted", async () => {
   const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("hunter2");
@@ -732,7 +733,7 @@ Deno.test("RunStateWriter records a failure message, redacted", async () => {
   assertEquals(store.record?.targets.deploy.error, "bad password [redacted]");
 });
 
-Deno.test("RunStateWriter redacts a secret in a wait trigger descriptor", async () => {
+test("RunStateWriter redacts a secret in a wait trigger descriptor", async () => {
   const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("swordfish"); // a secret routed into a signal name
@@ -754,7 +755,7 @@ Deno.test("RunStateWriter redacts a secret in a wait trigger descriptor", async 
   );
 });
 
-Deno.test("RunStateWriter survives a store error without throwing", async () => {
+test("RunStateWriter survives a store error without throwing", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
@@ -769,7 +770,7 @@ Deno.test("RunStateWriter survives a store error without throwing", async () => 
   assertEquals(warnings.some((w) => w.includes("failed to persist")), true);
 });
 
-Deno.test("a permanently lost write flags the record degraded for the next write to carry", async () => {
+test("a permanently lost write flags the record degraded for the next write to carry", async () => {
   const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
@@ -790,7 +791,7 @@ Deno.test("a permanently lost write flags the record degraded for the next write
   assertEquals(store.record?.degraded, true); // the next write that lands does
 });
 
-Deno.test("the degraded flag survives a conflict re-read", async () => {
+test("the degraded flag survives a conflict re-read", async () => {
   const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
@@ -807,7 +808,7 @@ Deno.test("the degraded flag survives a conflict re-read", async () => {
   assertEquals(store.record?.degraded, true);
 });
 
-Deno.test("a store error does not flag the record degraded — the mutation is retained", async () => {
+test("a store error does not flag the record degraded — the mutation is retained", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
@@ -828,7 +829,7 @@ Deno.test("a store error does not flag the record degraded — the mutation is r
   assertEquals(store.record?.degraded, false);
 });
 
-Deno.test("a conflicting re-apply onto a cancelling record loses the write", async () => {
+test("a conflicting re-apply onto a cancelling record loses the write", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   let aborted = false;
@@ -857,7 +858,7 @@ Deno.test("a conflicting re-apply onto a cancelling record loses the write", asy
   assertEquals(aborted, true);
 });
 
-Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
+test("RunStateWriter re-reads and retries on a conflict", async () => {
   const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
@@ -870,7 +871,7 @@ Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
   assertEquals(store.record?.status, "succeeded");
 });
 
-Deno.test("RunStateWriter warns and gives up after repeated conflicts", async () => {
+test("RunStateWriter warns and gives up after repeated conflicts", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
@@ -886,7 +887,7 @@ Deno.test("RunStateWriter warns and gives up after repeated conflicts", async ()
   assertEquals(writer.snapshot().degraded, true); // the update was lost
 });
 
-Deno.test("inMemoryStateHandle stores within the run but persists nothing", async () => {
+test("inMemoryStateHandle stores within the run but persists nothing", async () => {
   const handle = inMemoryStateHandle();
   assertEquals(handle.get(), {});
   await handle.set({ a: 1 });
@@ -896,7 +897,7 @@ Deno.test("inMemoryStateHandle stores within the run but persists nothing", asyn
 
 // ---------------------------------------------------------------- host
 
-Deno.test("defaultStateHost performs real filesystem effects", async () => {
+test("defaultStateHost performs real filesystem effects", async () => {
   await withTemp(async (dir) => {
     const host = defaultStateHost;
     assertEquals(await host.readText(`${dir}/none`), null); // missing → null
@@ -914,7 +915,7 @@ Deno.test("defaultStateHost performs real filesystem effects", async () => {
   });
 });
 
-Deno.test("FileSystemStateStore errors when a lock is permanently held", async () => {
+test("FileSystemStateStore errors when a lock is permanently held", async () => {
   const host = new FakeStateHost();
   const marker = "/runs/run-1.json.lock";
   host.locks.add(marker);
@@ -928,7 +929,7 @@ Deno.test("FileSystemStateStore errors when a lock is permanently held", async (
   assertEquals(host.locks.has(marker), true); // never stolen from a live holder
 });
 
-Deno.test("FileSystemStateStore takes over a mutex marker left past its TTL", async () => {
+test("FileSystemStateStore takes over a mutex marker left past its TTL", async () => {
   // A holder killed mid-write leaves its marker behind. Once the marker is older
   // than the mutex TTL, the next writer reclaims it instead of wedging forever.
   const host = new FakeStateHost();
@@ -944,7 +945,7 @@ Deno.test("FileSystemStateStore takes over a mutex marker left past its TTL", as
   assertEquals(host.files.get("/runs/run-1.json") === undefined, false);
 });
 
-Deno.test("FileSystemStateStore releases a mutex marker it could not stamp", async () => {
+test("FileSystemStateStore releases a mutex marker it could not stamp", async () => {
   // The stamp write lives inside the marker's `try`, so a filesystem that
   // rejects it (a full disk, a scanner holding the freshly created file) still
   // releases the marker. Leaving an unstamped one behind would wedge the next
@@ -972,7 +973,7 @@ Deno.test("FileSystemStateStore releases a mutex marker it could not stamp", asy
   assertEquals((await store.putRun(sampleRecord(), null)).ok, true);
 });
 
-Deno.test("FileSystemStateStore never steals an unstamped mutex marker", async () => {
+test("FileSystemStateStore never steals an unstamped mutex marker", async () => {
   // An unstamped marker carries no age — and reads exactly like a live holder in
   // the instant between creating its marker and stamping it, two syscalls a
   // waiter cannot time. Reclaiming one would put two writers inside the mutex at
@@ -994,7 +995,7 @@ Deno.test("FileSystemStateStore never steals an unstamped mutex marker", async (
   }
 });
 
-Deno.test("a mutex marker that reads as access denied is waited on, not thrown", async () => {
+test("a mutex marker that reads as access denied is waited on, not thrown", async () => {
   // Windows answers a read of a file its holder is deleting with "access
   // denied". The waiter must spin on, and get the mutex once the holder is gone.
   const marker = "/runs/run-1.json.lock";
@@ -1015,7 +1016,7 @@ Deno.test("a mutex marker that reads as access denied is waited on, not thrown",
   assertEquals((await store.getRun(record.id))?.record.id, record.id);
 });
 
-Deno.test("two writers never both reclaim the same stale mutex marker", async () => {
+test("two writers never both reclaim the same stale mutex marker", async () => {
   // Reclaiming with a bare `remove` is not a compare-and-swap: two writers that
   // read the same stale stamp would both delete a marker — the second deleting
   // the one the first had just taken — and both would run inside the mutex. The
@@ -1051,7 +1052,7 @@ Deno.test("two writers never both reclaim the same stale mutex marker", async ()
 
 // ---------------------------------------------------------------- duration
 
-Deno.test("parseDuration parses units and passes numbers through", () => {
+test("parseDuration parses units and passes numbers through", () => {
   assertEquals(parseDuration("500ms"), 500);
   assertEquals(parseDuration("90s"), 90_000);
   assertEquals(parseDuration("30m"), 1_800_000);
@@ -1061,7 +1062,7 @@ Deno.test("parseDuration parses units and passes numbers through", () => {
   assertEquals(parseDuration(1234), 1234);
 });
 
-Deno.test("parseDuration rejects nonsense", () => {
+test("parseDuration rejects nonsense", () => {
   assertThrows(() => parseDuration("soon"), Error, "invalid duration");
   assertThrows(() => parseDuration("10x"), Error, "invalid duration");
   assertThrows(() => parseDuration(-5), Error, "non-negative");
@@ -1069,7 +1070,7 @@ Deno.test("parseDuration rejects nonsense", () => {
 
 // ---------------------------------------------------------------- lock types
 
-Deno.test("LockSettings collects key, ttl, and onConflict fluently", () => {
+test("LockSettings collects key, ttl, and onConflict fluently", () => {
   const render = (h: { actor: string }) => `held by ${h.actor}`;
   const composed = new LockSettings().lockKey("deploy", "x").withTtl("4h")
     .onConflict(render);
@@ -1080,13 +1081,13 @@ Deno.test("LockSettings collects key, ttl, and onConflict fluently", () => {
   assertEquals(new LockSettings().key("raw").key_, "raw");
 });
 
-Deno.test("lockKey sanitises and joins parts", () => {
+test("lockKey sanitises and joins parts", () => {
   assertEquals(lockKey("deploy", "expense-service"), "deploy-expense-service");
   assertEquals(lockKey("deploy", "a/b:c"), "deploy-a_b_c");
   assertEquals(lockKey("", "x"), "x"); // empty parts dropped
 });
 
-Deno.test("LockConflictError carries the holder and guidance", () => {
+test("LockConflictError carries the holder and guidance", () => {
   const holder = { actor: "bob", runId: "r7", since: "t" };
   const err = new LockConflictError(holder, "held by bob");
   assertEquals(err.message, "held by bob");
@@ -1094,7 +1095,7 @@ Deno.test("LockConflictError carries the holder and guidance", () => {
   assertEquals(err.name, "LockConflictError");
 });
 
-Deno.test("parseLockHolder validates untrusted holders", () => {
+test("parseLockHolder validates untrusted holders", () => {
   const holder = { actor: "a", runId: "r", since: "t", runUrl: "https://x" };
   assertEquals(parseLockHolder(holder), holder);
   assertEquals(parseLockHolder({ actor: "a", runId: "r", since: "t" }), {
@@ -1111,7 +1112,7 @@ Deno.test("parseLockHolder validates untrusted holders", () => {
   );
 });
 
-Deno.test("parseLockRecord round-trips and rejects malformed", () => {
+test("parseLockRecord round-trips and rejects malformed", () => {
   const record = {
     holder: { actor: "a", runId: "r", since: "t" },
     token: "tok",
@@ -1129,7 +1130,7 @@ Deno.test("parseLockRecord round-trips and rejects malformed", () => {
 
 // ---------------------------------------------------------------- fs locks
 
-Deno.test("FileSystemStateStore locks: acquire, conflict, renew, release", async () => {
+test("FileSystemStateStore locks: acquire, conflict, renew, release", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/s", host);
   const holderA = { actor: "a", runId: "r1", since: "t1" };
@@ -1153,7 +1154,7 @@ Deno.test("FileSystemStateStore locks: acquire, conflict, renew, release", async
   assertEquals(third.ok, true);
 });
 
-Deno.test("FileSystemStateStore locks: an expired lock is taken over (fake clock)", async () => {
+test("FileSystemStateStore locks: an expired lock is taken over (fake clock)", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/s", host);
   const won = await store.acquireLock("k", {
@@ -1183,7 +1184,7 @@ Deno.test("FileSystemStateStore locks: an expired lock is taken over (fake clock
   assertEquals(await store.renewLock("k", won.token, 1000), false);
 });
 
-Deno.test("FileSystemStateStore locks: concurrent acquire — exactly one wins", async () => {
+test("FileSystemStateStore locks: concurrent acquire — exactly one wins", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/s", host);
   const results = await Promise.all([
@@ -1194,7 +1195,7 @@ Deno.test("FileSystemStateStore locks: concurrent acquire — exactly one wins",
   assertEquals(results.filter((r) => !r.ok).length, 1);
 });
 
-Deno.test("FileSystemStateStore locks: release/renew with no lock is safe", async () => {
+test("FileSystemStateStore locks: release/renew with no lock is safe", async () => {
   const store = new FileSystemStateStore("/s", new FakeStateHost());
   await store.releaseLock("absent", "tok"); // no throw
   assertEquals(await store.renewLock("absent", "tok", 1000), false);
@@ -1202,7 +1203,7 @@ Deno.test("FileSystemStateStore locks: release/renew with no lock is safe", asyn
 
 // ---------------------------------------------------------------- http locks
 
-Deno.test("HttpStateStore locks: acquire 201/409, renew, release", async () => {
+test("HttpStateStore locks: acquire 201/409, renew, release", async () => {
   const holder = { actor: "a", runId: "r1", since: "t" };
   const store = new HttpStateStore({
     url: "https://s",
@@ -1229,7 +1230,7 @@ Deno.test("HttpStateStore locks: acquire 201/409, renew, release", async () => {
   await store.releaseLock("free", "tok-9"); // no throw
 });
 
-Deno.test("HttpStateStore locks: renew 409/404 → lost; errors throw", async () => {
+test("HttpStateStore locks: renew 409/404 → lost; errors throw", async () => {
   const lost = new HttpStateStore({
     url: "https://s",
     fetch: fakeFetch(() => new Response(null, { status: 409 })),
@@ -1255,7 +1256,7 @@ Deno.test("HttpStateStore locks: renew 409/404 → lost; errors throw", async ()
   await assertRejects(() => boom.releaseLock("k", "t"), HttpError);
 });
 
-Deno.test("HttpStateStore locks: a 201 without a token is an error", async () => {
+test("HttpStateStore locks: a 201 without a token is an error", async () => {
   const store = new HttpStateStore({
     url: "https://s",
     fetch: fakeFetch(() => new Response("{}", { status: 201 })),
@@ -1267,7 +1268,7 @@ Deno.test("HttpStateStore locks: a 201 without a token is an error", async () =>
   );
 });
 
-Deno.test("RunStateWriter drops a write when the run vanishes after a conflict", async () => {
+test("RunStateWriter drops a write when the run vanishes after a conflict", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
@@ -1291,7 +1292,7 @@ Deno.test("RunStateWriter drops a write when the run vanishes after a conflict",
   assertEquals(writer.snapshot().degraded, false);
 });
 
-Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {
+test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {
   await withTemp(async (dir) => {
     // A store that counts the heartbeat's renewals but still renews for real.
     class CountingStore extends FileSystemStateStore {
@@ -1323,7 +1324,7 @@ Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", 
   });
 });
 
-Deno.test("a run's origin round-trips, and its absence stays an absence", () => {
+test("a run's origin round-trips, and its absence stays an absence", () => {
   const withOrigin = sampleRecord({ buildId: "acme/api" });
   assertEquals(parseRunRecord(stringifyRunRecord(withOrigin)), withOrigin);
 
@@ -1337,7 +1338,7 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
   assertEquals(parsed.buildId, undefined);
 });
 
-Deno.test("deleting a run leaves its lock records alone", async () => {
+test("deleting a run leaves its lock records alone", async () => {
   await withTempStore(async (store) => {
     const runId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     await store.putRun(
@@ -1382,7 +1383,7 @@ Deno.test("deleting a run leaves its lock records alone", async () => {
 
 // ------------------------------------------------- types: malformed branches
 
-Deno.test("parseRunRecord rejects malformed optional and nested fields", () => {
+test("parseRunRecord rejects malformed optional and nested fields", () => {
   const cases: Array<[string, string]> = [
     // An optional string field present with the wrong type.
     [
@@ -1465,7 +1466,7 @@ Deno.test("parseRunRecord rejects malformed optional and nested fields", () => {
   }
 });
 
-Deno.test("parseRunRecord defaults an absent target meta and signal data", () => {
+test("parseRunRecord defaults an absent target meta and signal data", () => {
   const parsed = parseRunRecord(JSON.stringify({
     ...sampleRecord(),
     // A target state written without a `meta` key still parses (empty meta),
@@ -1480,7 +1481,7 @@ Deno.test("parseRunRecord defaults an absent target meta and signal data", () =>
   });
 });
 
-Deno.test("parseRunRecord round-trips effects, events, and terminal intent", () => {
+test("parseRunRecord round-trips effects, events, and terminal intent", () => {
   const record = sampleRecord({
     status: "cancelling",
     buildId: "org/app",
@@ -1519,7 +1520,7 @@ Deno.test("parseRunRecord round-trips effects, events, and terminal intent", () 
   assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
 });
 
-Deno.test("toJsonValue passes JSON through and rejects a non-JSON value", () => {
+test("toJsonValue passes JSON through and rejects a non-JSON value", () => {
   assertEquals(toJsonValue({ a: [1, "x", true, null], b: { c: 2 } }), {
     a: [1, "x", true, null],
     b: { c: 2 },
@@ -1539,11 +1540,11 @@ Deno.test("toJsonValue passes JSON through and rejects a non-JSON value", () => 
 
 // ------------------------------------------------- record: mapping branches
 
-Deno.test("recordStatusOf maps a waiting target onto the record vocabulary", () => {
+test("recordStatusOf maps a waiting target onto the record vocabulary", () => {
   assertEquals(recordStatusOf("waiting"), "waiting");
 });
 
-Deno.test("ciRunUrl derives the GitHub Actions run URL only when fully set", () => {
+test("ciRunUrl derives the GitHub Actions run URL only when fully set", () => {
   const full: Record<string, string> = {
     GITHUB_SERVER_URL: "https://github.com",
     GITHUB_REPOSITORY: "o/r",
@@ -1561,7 +1562,7 @@ Deno.test("ciRunUrl derives the GitHub Actions run URL only when fully set", () 
   }
 });
 
-Deno.test("buildRunRecord tolerates an unnamed target and stamps optional fields", () => {
+test("buildRunRecord tolerates an unnamed target and stamps optional fields", () => {
   // A builder that never went through discoverTargets has no name; the record
   // still forms (empty name) instead of crashing mid-run.
   const anonymous = target().executes(() => {});
@@ -1585,7 +1586,7 @@ Deno.test("buildRunRecord tolerates an unnamed target and stamps optional fields
 
 // ------------------------------------------------- host: real error paths
 
-Deno.test("defaultStateHost surfaces non-NotFound filesystem errors", async () => {
+test("defaultStateHost surfaces non-NotFound filesystem errors", async () => {
   // A genuine I/O failure must propagate, never be masked as "missing".
   await withTemp(async (dir) => {
     const host = defaultStateHost;
@@ -1604,7 +1605,7 @@ Deno.test("defaultStateHost surfaces non-NotFound filesystem errors", async () =
 
 // ------------------------------------------------- http store: bodied errors
 
-Deno.test("HttpStateStore drains response bodies a server sends on every path", async () => {
+test("HttpStateStore drains response bodies a server sends on every path", async () => {
   // Real servers attach error pages (and empty-object bodies) to statuses the
   // client discards; each path must drain them and keep its behaviour.
   const bodied = (status: number, headers?: Record<string, string>) =>
@@ -1660,7 +1661,7 @@ Deno.test("HttpStateStore drains response bodies a server sends on every path", 
 
 // ------------------------------------------------------------- lock listing
 
-Deno.test("FileSystemStateStore lists live locks, ordered, without their tokens", async () => {
+test("FileSystemStateStore lists live locks, ordered, without their tokens", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   assertEquals(await store.listLocks(), []);
@@ -1687,7 +1688,7 @@ Deno.test("FileSystemStateStore lists live locks, ordered, without their tokens"
   assertEquals(Object.hasOwn(held[0] ?? {}, "token"), false);
 });
 
-Deno.test("FileSystemStateStore leaves expired and released locks out of the listing", async () => {
+test("FileSystemStateStore leaves expired and released locks out of the listing", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   const short = await store.acquireLock("dev-env", {
@@ -1711,7 +1712,7 @@ Deno.test("FileSystemStateStore leaves expired and released locks out of the lis
   assertEquals((await store.listLocks()).map((e) => e.key), ["test-db"]);
 });
 
-Deno.test("FileSystemStateStore skips a corrupt lock file rather than hiding the rest", async () => {
+test("FileSystemStateStore skips a corrupt lock file rather than hiding the rest", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   await store.acquireLock("dev-env", {
@@ -1726,7 +1727,7 @@ Deno.test("FileSystemStateStore skips a corrupt lock file rather than hiding the
   assertEquals((await store.listLocks()).map((e) => e.key), ["dev-env"]);
 });
 
-Deno.test("listStoreLocks fails on a backend that cannot enumerate", async () => {
+test("listStoreLocks fails on a backend that cannot enumerate", async () => {
   const host = new FakeStateHost();
   const store = new FileSystemStateStore("/runs", host);
   assertEquals(await listStoreLocks(store), []);
@@ -1749,7 +1750,7 @@ Deno.test("listStoreLocks fails on a backend that cannot enumerate", async () =>
   );
 });
 
-Deno.test("HttpStateStore lists locks, and tells a missing endpoint from an empty one", async () => {
+test("HttpStateStore lists locks, and tells a missing endpoint from an empty one", async () => {
   const listing = [{
     key: "dev-env",
     holder: {
@@ -1784,7 +1785,7 @@ Deno.test("HttpStateStore lists locks, and tells a missing endpoint from an empt
   }
 });
 
-Deno.test("a lock listing from the server is validated, not trusted", async () => {
+test("a lock listing from the server is validated, not trusted", async () => {
   const bodies: unknown[] = [
     { locks: [] },
     [{ holder: { actor: "a", runId: "r", since: "s" }, expiresAt: 1 }],
@@ -1803,7 +1804,7 @@ Deno.test("a lock listing from the server is validated, not trusted", async () =
   }
 });
 
-Deno.test("RunStateWriter stores a settled target's summary notes, values redacted", async () => {
+test("RunStateWriter stores a settled target's summary notes, values redacted", async () => {
   const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("hunter2");
@@ -1828,7 +1829,7 @@ Deno.test("RunStateWriter stores a settled target's summary notes, values redact
   assertEquals(store.record?.targets.verify.summary, undefined);
 });
 
-Deno.test("an audit event's roles are persisted, and redacted like every other field", async () => {
+test("an audit event's roles are persisted, and redacted like every other field", async () => {
   // Role names are normally the operator's own identifiers, which the redactor
   // leaves alone — but they go through it anyway, so no field of the trail is
   // safe only because of an assumption about where its value came from.
@@ -1865,7 +1866,7 @@ Deno.test("an audit event's roles are persisted, and redacted like every other f
   assertEquals("roles" in (store.record?.events[1] ?? {}), false);
 });
 
-Deno.test("parseRunRecord round-trips a target's summary notes and rejects malformed ones", () => {
+test("parseRunRecord round-trips a target's summary notes and rejects malformed ones", () => {
   const record = sampleRecord({
     targets: {
       test: {
@@ -1894,7 +1895,7 @@ Deno.test("parseRunRecord round-trips a target's summary notes and rejects malfo
 
 // ---- The run initiator: stamped once, never rewritten ----------------------
 
-Deno.test("buildRunRecord stamps the initiator from the actor and kind", () => {
+test("buildRunRecord stamps the initiator from the actor and kind", () => {
   const record = buildRunRecord({
     runId: "r1",
     build: "Demo",
@@ -1913,7 +1914,7 @@ Deno.test("buildRunRecord stamps the initiator from the actor and kind", () => {
   });
 });
 
-Deno.test("resolveActorKind states a service claim rather than guessing it", () => {
+test("resolveActorKind states a service claim rather than guessing it", () => {
   const env = (vars: Record<string, string>) => (name: string) => vars[name];
   // The explicit flag wins.
   assertEquals(resolveActorKind("service", env({})), "service");
@@ -1939,7 +1940,7 @@ Deno.test("resolveActorKind states a service claim rather than guessing it", () 
   assertEquals(resolveActorKind(undefined, env({})), "human");
 });
 
-Deno.test("parseRunRecord round-trips an initiator and refuses a malformed one", () => {
+test("parseRunRecord round-trips an initiator and refuses a malformed one", () => {
   const record = buildRunRecord({
     runId: "r1",
     build: "Demo",
@@ -1978,7 +1979,7 @@ Deno.test("parseRunRecord round-trips an initiator and refuses a malformed one",
   }
 });
 
-Deno.test("initiatorOf falls back to the actor when no initiator was recorded", () => {
+test("initiatorOf falls back to the actor when no initiator was recorded", () => {
   const record = buildRunRecord({
     runId: "r1",
     build: "Demo",
@@ -2004,7 +2005,7 @@ Deno.test("initiatorOf falls back to the actor when no initiator was recorded", 
   assertEquals(toSummary(resumed).initiator?.actor, "engineer-a");
 });
 
-Deno.test("recordedParams keeps resolved non-secret values and drops the rest", () => {
+test("recordedParams keeps resolved non-secret values and drops the rest", () => {
   class B extends Build {
     env = parameter("environment");
     token = parameter("deploy token").secret();
@@ -2026,7 +2027,7 @@ Deno.test("recordedParams keeps resolved non-secret values and drops the rest", 
   assertEquals("unset" in recorded, false);
 });
 
-Deno.test("paramOverrideEvent names only what the resume changed", () => {
+test("paramOverrideEvent names only what the resume changed", () => {
   const event = paramOverrideEvent(
     { env: "sit", region: "eu" },
     { env: "production", region: "eu" },
@@ -2043,7 +2044,7 @@ Deno.test("paramOverrideEvent names only what the resume changed", () => {
   assertEquals(event?.detail, "env=production");
 });
 
-Deno.test("paramOverrideEvent is undefined when the resume changed nothing", () => {
+test("paramOverrideEvent is undefined when the resume changed nothing", () => {
   assertEquals(
     paramOverrideEvent({ env: "sit" }, { env: "sit" }, "alice", NOW_ISO),
     undefined,

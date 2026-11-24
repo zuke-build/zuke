@@ -9,6 +9,7 @@
  * so nothing here touches the network or spawns `deno`.
  */
 
+import { test } from "./_testing.ts";
 import {
   dropLockEntries,
   formatUpdate,
@@ -68,18 +69,18 @@ async function withLock(
   }
 }
 
-Deno.test("dropLockEntries removes the named package's specifier and integrity", () => {
+test("dropLockEntries removes the named package's specifier and integrity", () => {
   const out = JSON.parse(dropLockEntries(lockText(), ["@zuke/git"]));
   assertEquals(Object.keys(out.specifiers), ["jsr:@std/yaml@1.0.5"]);
   assertEquals(Object.keys(out.jsr), ["@std/yaml@1.0.5"]);
 });
 
-Deno.test("dropLockEntries leaves a package it was not asked about alone", () => {
+test("dropLockEntries leaves a package it was not asked about alone", () => {
   const out = JSON.parse(dropLockEntries(lockText(), ["@zuke/git"]));
   assertEquals(out.specifiers["jsr:@std/yaml@1.0.5"], "1.0.5");
 });
 
-Deno.test("dropLockEntries matches on the package name, not the key prefix", () => {
+test("dropLockEntries matches on the package name, not the key prefix", () => {
   // `@zuke/git-lfs` starts with `@zuke/git`; dropping one must not drop it.
   const text = JSON.stringify({
     specifiers: {
@@ -93,7 +94,7 @@ Deno.test("dropLockEntries matches on the package name, not the key prefix", () 
   assertEquals(Object.keys(out.jsr), ["@zuke/git-lfs@1.0.0"]);
 });
 
-Deno.test("dropLockEntries refuses a lock it did not understand", () => {
+test("dropLockEntries refuses a lock it did not understand", () => {
   // Strict where the reporting path is tolerant: this one overwrites the file.
   for (const bad of ["not json", "[]", '{"no":"specifiers"}']) {
     let threw = false;
@@ -106,7 +107,7 @@ Deno.test("dropLockEntries refuses a lock it did not understand", () => {
   }
 });
 
-Deno.test("updateOutdated moves a package whose range admits the release", async () => {
+test("updateOutdated moves a package whose range admits the release", async () => {
   const final = await withLock(lockText(), async (path) => {
     const report = await updateOutdated({
       lockPath: path,
@@ -127,7 +128,7 @@ Deno.test("updateOutdated moves a package whose range admits the release", async
   assertEquals(JSON.parse(final).specifiers["jsr:@zuke/git@^1"], "1.9.0");
 });
 
-Deno.test("updateOutdated reports a package its specifier pins as held", async () => {
+test("updateOutdated reports a package its specifier pins as held", async () => {
   await withLock(lockText(), async (path) => {
     const report = await updateOutdated({
       lockPath: path,
@@ -151,7 +152,7 @@ Deno.test("updateOutdated reports a package its specifier pins as held", async (
   });
 });
 
-Deno.test("updateOutdated restores the lock when re-resolution fails", async () => {
+test("updateOutdated restores the lock when re-resolution fails", async () => {
   // The failure mode that matters: a half-dropped lock fails every --frozen
   // run, so a failed update must not leave one behind.
   const before = lockText();
@@ -173,7 +174,7 @@ Deno.test("updateOutdated restores the lock when re-resolution fails", async () 
   assertEquals(final, before);
 });
 
-Deno.test("updateOutdated narrows to the named packages", async () => {
+test("updateOutdated narrows to the named packages", async () => {
   await withLock(lockText(), async (path) => {
     const report = await updateOutdated({
       lockPath: path,
@@ -192,7 +193,7 @@ Deno.test("updateOutdated narrows to the named packages", async () => {
   });
 });
 
-Deno.test("updateOutdated rejects a name the lock does not resolve", async () => {
+test("updateOutdated rejects a name the lock does not resolve", async () => {
   await withLock(lockText(), async (path) => {
     let message = "";
     try {
@@ -210,7 +211,7 @@ Deno.test("updateOutdated rejects a name the lock does not resolve", async () =>
   });
 });
 
-Deno.test("updateOutdated does nothing when nothing is behind", async () => {
+test("updateOutdated does nothing when nothing is behind", async () => {
   const before = lockText();
   const final = await withLock(before, async (path) => {
     const report = await updateOutdated({
@@ -224,7 +225,7 @@ Deno.test("updateOutdated does nothing when nothing is behind", async () => {
   assertEquals(final, before);
 });
 
-Deno.test("formatUpdate names what moved and what held it back", () => {
+test("formatUpdate names what moved and what held it back", () => {
   const text = formatUpdate({
     updated: [{ name: "@zuke/git", from: "1.2.0", to: "1.9.0" }],
     held: [{
@@ -242,14 +243,14 @@ Deno.test("formatUpdate names what moved and what held it back", () => {
   assertStringIncludes(text, "widen the range");
 });
 
-Deno.test("formatUpdate says so when there was nothing to do", () => {
+test("formatUpdate says so when there was nothing to do", () => {
   assertEquals(
     formatUpdate({ updated: [], held: [], unchecked: [] }),
     "Nothing to update.",
   );
 });
 
-Deno.test("formatUpdate still reports packages it could not check", () => {
+test("formatUpdate still reports packages it could not check", () => {
   const text = formatUpdate({
     updated: [],
     held: [],
@@ -259,7 +260,7 @@ Deno.test("formatUpdate still reports packages it could not check", () => {
   assertStringIncludes(text, "404");
 });
 
-Deno.test("updateOutdated restores the lock if re-resolution loses an entry", async () => {
+test("updateOutdated restores the lock if re-resolution loses an entry", async () => {
   // The success-path twin of the failure case above: re-resolution is what
   // puts a dropped entry back, so one that returns without doing so would
   // leave the lock incomplete, and every --frozen run fails on that.
@@ -282,7 +283,7 @@ Deno.test("updateOutdated restores the lock if re-resolution loses an entry", as
   assertEquals(final, before);
 });
 
-Deno.test("updateOutdated accepts a resolver that normalises the specifier", async () => {
+test("updateOutdated accepts a resolver that normalises the specifier", async () => {
   // Deno rewrites the range it records — a dropped `jsr:@zuke/git@^1.0.0`
   // comes back as `jsr:@zuke/git@1` — so the entry is matched by package name.
   // Keyed on the old specifier, this would report the package as lost and roll
@@ -309,7 +310,7 @@ Deno.test("updateOutdated accepts a resolver that normalises the specifier", asy
   });
 });
 
-Deno.test("dropLockEntries removes the dropped specifiers from dependants", () => {
+test("dropLockEntries removes the dropped specifiers from dependants", () => {
   // Deno rejects a lock whose `dependencies` name a specifier the `specifiers`
   // map no longer has ("Invalid jsr dependency … Lockfile may be corrupt").
   const text = JSON.stringify({
@@ -362,7 +363,7 @@ function gitResolver(relink: boolean) {
   };
 }
 
-Deno.test("updateOutdated keeps an update whose dependants were relinked", async () => {
+test("updateOutdated keeps an update whose dependants were relinked", async () => {
   await withLock(dependantLock, async (path) => {
     const report = await updateOutdated({
       lockPath: path,
@@ -378,7 +379,7 @@ Deno.test("updateOutdated keeps an update whose dependants were relinked", async
   });
 });
 
-Deno.test("updateOutdated restores the lock when a dependant was not relinked", async () => {
+test("updateOutdated restores the lock when a dependant was not relinked", async () => {
   // A lock can serve a second entrypoint (a workspace member's build) that the
   // re-resolution never reaches; its records keep the shortened dependency
   // list, which fails that build's `--frozen` run. Restore rather than ship it.
@@ -400,7 +401,7 @@ Deno.test("updateOutdated restores the lock when a dependant was not relinked", 
   assertEquals(final, dependantLock);
 });
 
-Deno.test("updateOutdated restores the lock when the resolver writes something unreadable", async () => {
+test("updateOutdated restores the lock when the resolver writes something unreadable", async () => {
   let message = "";
   const final = await withLock(dependantLock, async (path) => {
     try {
@@ -418,7 +419,7 @@ Deno.test("updateOutdated restores the lock when the resolver writes something u
   assertEquals(final, dependantLock);
 });
 
-Deno.test("dropLockEntries removes a dependency Deno wrote without its range", () => {
+test("dropLockEntries removes a dependency Deno wrote without its range", () => {
   // With one locked range for a package, Deno writes its dependants' entry as
   // a bare `jsr:@std/internal` — which no specifier key matches exactly.
   const text = JSON.stringify({
@@ -440,7 +441,7 @@ Deno.test("dropLockEntries removes a dependency Deno wrote without its range", (
   ]);
 });
 
-Deno.test("updateOutdated notices a bare-form dependant that was not relinked", async () => {
+test("updateOutdated notices a bare-form dependant that was not relinked", async () => {
   const text = dependantLock.replace(
     '["jsr:@zuke/git@^1"]',
     '["jsr:@zuke/git"]',
@@ -462,7 +463,7 @@ Deno.test("updateOutdated notices a bare-form dependant that was not relinked", 
   assertStringIncludes(message, "stale and can be deleted");
 });
 
-Deno.test("updateOutdated passes a URL entrypoint through and refuses an empty one", async () => {
+test("updateOutdated passes a URL entrypoint through and refuses an empty one", async () => {
   const seen: unknown[] = [];
   await withLock(lockText(), async (path) => {
     await updateOutdated({

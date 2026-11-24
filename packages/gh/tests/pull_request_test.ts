@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -54,7 +55,7 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("a pull request is opened from head onto base", async () => {
+test("a pull request is opened from head onto base", async () => {
   const { fetch, calls } = fakeFetch({
     "POST /pulls": {
       status: 201,
@@ -77,7 +78,7 @@ Deno.test("a pull request is opened from head onto base", async () => {
   assertEquals(calls[0].body.base, "master");
 });
 
-Deno.test("an existing proposal is found rather than failed on", async () => {
+test("an existing proposal is found rather than failed on", async () => {
   // The retry case. A job that opened this branch and then failed later must be
   // able to run again; without the lookup the second run dies on the 422 and
   // the work is stuck until someone intervenes.
@@ -107,7 +108,7 @@ Deno.test("an existing proposal is found rather than failed on", async () => {
   assertEquals(calls.length, 2);
 });
 
-Deno.test("a 422 with no open pull request keeps the original error", async () => {
+test("a 422 with no open pull request keeps the original error", async () => {
   // 422 covers several unrelated problems — a base branch that does not exist,
   // a head with no commits. Reporting "already open" for those would send the
   // reader looking for a pull request that was never there.
@@ -133,7 +134,7 @@ Deno.test("a 422 with no open pull request keeps the original error", async () =
   assertStringIncludes(message, "No commits between master and topic");
 });
 
-Deno.test("a failure that is not a 422 is not treated as an existing one", async () => {
+test("a failure that is not a 422 is not treated as an existing one", async () => {
   // A missing permission must not send the caller looking for a pull request:
   // the lookup would fail too, and the reported error would be the second one.
   const { fetch, calls } = fakeFetch({
@@ -155,7 +156,7 @@ Deno.test("a failure that is not a 422 is not treated as an existing one", async
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a branch name that would redirect the request is refused", async () => {
+test("a branch name that would redirect the request is refused", async () => {
   // Same primitive as the commit operations: these names reach a request path
   // and a query string, and URL normalisation resolves `..` before the request
   // is sent.
@@ -188,7 +189,7 @@ Deno.test("a branch name that would redirect the request is refused", async () =
   assertEquals(calls.length, 0);
 });
 
-Deno.test("the missing settings are named rather than sent empty", async () => {
+test("the missing settings are named rather than sent empty", async () => {
   const { fetch } = fakeFetch({});
   const cases: [(s: GhPullRequestSettings) => GhPullRequestSettings, string][] =
     [
@@ -209,7 +210,7 @@ Deno.test("the missing settings are named rather than sent empty", async () => {
   }
 });
 
-Deno.test("a proposal onto a different base is not reported as this one", async () => {
+test("a proposal onto a different base is not reported as this one", async () => {
   // GitHub allows several pull requests open from one branch at once, provided
   // they target different bases, and the duplicate 422 is raised for the
   // head-and-base pair. A lookup filtered only on the head would match the
@@ -242,7 +243,7 @@ Deno.test("a proposal onto a different base is not reported as this one", async 
   assertStringIncludes(calls[1].path, "base=master");
 });
 
-Deno.test("a head that is not the one asked for is not accepted", async () => {
+test("a head that is not the one asked for is not accepted", async () => {
   // The filter is applied by GitHub, and this is the one place where taking
   // its word for it would mean returning a pull request the caller never
   // asked about.
@@ -270,7 +271,7 @@ Deno.test("a head that is not the one asked for is not accepted", async () => {
   assertStringIncludes(message, "original 422");
 });
 
-Deno.test("findPullRequest returns the open proposal without opening one", async () => {
+test("findPullRequest returns the open proposal without opening one", async () => {
   const { fetch, calls } = fakeFetch({
     "GET /pulls?state=open&head=acme%3Atopic&base=master": {
       status: 200,
@@ -295,7 +296,7 @@ Deno.test("findPullRequest returns the open proposal without opening one", async
   assertEquals(calls[0].method, "GET");
 });
 
-Deno.test("findPullRequest returns undefined when nothing is open", async () => {
+test("findPullRequest returns undefined when nothing is open", async () => {
   const { fetch } = fakeFetch({
     "GET /pulls?state=open&head=acme%3Atopic&base=master": {
       status: 200,
@@ -310,7 +311,7 @@ Deno.test("findPullRequest returns undefined when nothing is open", async () => 
   );
 });
 
-Deno.test("findPullRequest names its missing settings before any request", async () => {
+test("findPullRequest names its missing settings before any request", async () => {
   // A bare call is legal to write, so the first missing setting is named —
   // before the environment or the transport is consulted.
   await assertRejects(
@@ -325,7 +326,7 @@ Deno.test("findPullRequest names its missing settings before any request", async
   );
 });
 
-Deno.test("findPullRequest refuses a ref that would redirect the lookup", async () => {
+test("findPullRequest refuses a ref that would redirect the lookup", async () => {
   // The head and base reach the lookup's query string, the same reason
   // openPullRequest validates its own.
   const { fetch, calls } = fakeFetch({});
@@ -341,7 +342,7 @@ Deno.test("findPullRequest refuses a ref that would redirect the lookup", async 
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a lookup entry that is not an object keeps the original error", async () => {
+test("a lookup entry that is not an object keeps the original error", async () => {
   // Junk in the lookup body must fall through to the 422 that says what was
   // refused, never be dressed up as an existing pull request.
   const { fetch } = fakeFetch({
@@ -362,7 +363,7 @@ Deno.test("a lookup entry that is not an object keeps the original error", async
   );
 });
 
-Deno.test("a created response without a numeric number names the call", async () => {
+test("a created response without a numeric number names the call", async () => {
   // `readNumber` names the call whose response was malformed, rather than
   // letting a string flow into the result as though it were the number.
   const { fetch } = fakeFetch({
@@ -379,7 +380,7 @@ Deno.test("a created response without a numeric number names the call", async ()
   );
 });
 
-Deno.test("the repo and token fall back to the Actions environment", async () => {
+test("the repo and token fall back to the Actions environment", async () => {
   // A job that already has GITHUB_REPOSITORY and GITHUB_TOKEN needs to name
   // only what it is proposing.
   await withEnv({
@@ -408,7 +409,7 @@ Deno.test("the repo and token fall back to the Actions environment", async () =>
   });
 });
 
-Deno.test("a missing repo or token is named rather than sent empty", async () => {
+test("a missing repo or token is named rather than sent empty", async () => {
   await withEnv({
     GITHUB_REPOSITORY: undefined,
     GITHUB_TOKEN: undefined,
@@ -437,7 +438,7 @@ Deno.test("a missing repo or token is named rather than sent empty", async () =>
   });
 });
 
-Deno.test("openPullRequest with no configuration names the first gap", async () => {
+test("openPullRequest with no configuration names the first gap", async () => {
   await assertRejects(
     () => openPullRequest(),
     Error,
@@ -445,7 +446,7 @@ Deno.test("openPullRequest with no configuration names the first gap", async () 
   );
 });
 
-Deno.test("baseUrl retargets the proposal at a GHES host", async () => {
+test("baseUrl retargets the proposal at a GHES host", async () => {
   const seen: string[] = [];
   const capture: typeof fetch = (input) => {
     seen.push(String(input));
@@ -463,7 +464,7 @@ Deno.test("baseUrl retargets the proposal at a GHES host", async () => {
   assertEquals(seen[0], "https://ghe.example.com/api/v3/repos/acme/app/pulls");
 });
 
-Deno.test("a lookup that fails keeps the error that says what was refused", async () => {
+test("a lookup that fails keeps the error that says what was refused", async () => {
   // The lookup is how this call finds out what the 422 meant. If it fails too,
   // reporting its failure would replace the diagnosis with a symptom of the
   // diagnosis — the same defect as retrying a 403 as though it were the
@@ -490,7 +491,7 @@ Deno.test("a lookup that fails keeps the error that says what was refused", asyn
   assertStringIncludes(message, "Reference update failed");
 });
 
-Deno.test("a base that is not the one asked for is not accepted", async () => {
+test("a base that is not the one asked for is not accepted", async () => {
   // Both ends are what make it the same proposal. Verifying the head but not
   // the base would leave open the exact confusion the base filter was added to
   // avoid, for any case where the filter does not behave as assumed.

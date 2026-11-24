@@ -8,6 +8,7 @@
  * command to the wrong base fails here rather than at a user's terminal.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   GhCacheListSettings,
@@ -54,7 +55,7 @@ const MATRIX: Array<[string, { json: boolean; web: boolean }, object]> = [
   ["repo view", { json: true, web: true }, new GhRepoViewSettings()],
 ];
 
-Deno.test("each reading command offers exactly the read flags gh gives it", () => {
+test("each reading command offers exactly the read flags gh gives it", () => {
   const actual = MATRIX.map((
     [name, _expected, settings],
   ) => [name, { json: "json" in settings, web: "web" in settings }]);

@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -120,7 +121,7 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
   return { deps, calls, pins, releases };
 }
 
-Deno.test("only a full v-major-minor-patch tag parses as a release", () => {
+test("only a full v-major-minor-patch tag parses as a release", () => {
   // The moving `v1` pointer and the 350-plus component tags share the
   // repository's tag namespace; treating either as a release would pick the
   // wrong base to bump from.
@@ -131,7 +132,7 @@ Deno.test("only a full v-major-minor-patch tag parses as a release", () => {
   assertEquals(parseVersion("v1.2.3-rc1"), undefined);
 });
 
-Deno.test("the newest release is found numerically, not lexically", () => {
+test("the newest release is found numerically, not lexically", () => {
   // The bug this exists to prevent shows up exactly once: a lexical sort puts
   // "v1.9.0" above "v1.10.0", so the tenth release would bump from the ninth
   // and collide with a tag that already exists.
@@ -140,19 +141,19 @@ Deno.test("the newest release is found numerically, not lexically", () => {
   assertEquals(latestVersion(["core-v1.0.0", "v1"]), undefined);
 });
 
-Deno.test("the first release is v1.0.0 and later ones bump the patch", () => {
+test("the first release is v1.0.0 and later ones bump the patch", () => {
   assertEquals(nextVersion(undefined), "v1.0.0");
   assertEquals(nextVersion(parseVersion("v1.9.0")), "v1.9.1");
   assertEquals(nextVersion(parseVersion("v1.10.3")), "v1.10.4");
 });
 
-Deno.test("the major tag is derived, and a non-release is refused", () => {
+test("the major tag is derived, and a non-release is refused", () => {
   assertEquals(majorTag("v1.2.3"), "v1");
   assertThrows(() => majorTag("v1"));
   assertThrows(() => majorTag("core-v1.0.0"));
 });
 
-Deno.test("a pin must carry a full commit SHA", () => {
+test("a pin must carry a full commit SHA", () => {
   // A short SHA or a tag in the generated workflows would be an unpinned
   // reference, which is the thing the pin arrangement exists to prevent — and
   // supply-chain scanners flag it.
@@ -165,7 +166,7 @@ Deno.test("a pin must carry a full commit SHA", () => {
   assertThrows(() => pinFor("v1.0.0", "v1.0.0", INPUTS, DIGEST));
 });
 
-Deno.test("an unchanged action.yml releases nothing", async () => {
+test("an unchanged action.yml releases nothing", async () => {
   // The loop breaker. This target's own commit is another push to master, so
   // without the guard the second run would tag again, and so would the third.
   const { deps, calls } = fakeDeps({
@@ -178,7 +179,7 @@ Deno.test("an unchanged action.yml releases nothing", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("a changed action.yml tags the next patch and moves the major", async () => {
+test("a changed action.yml tags the next patch and moves the major", async () => {
   const { deps, calls, pins } = fakeDeps({
     tags: () => Promise.resolve(["v1.4.0", "core-v1.33.0"]),
     changedSince: () => Promise.resolve(true),
@@ -199,7 +200,7 @@ Deno.test("a changed action.yml tags the next patch and moves the major", async 
   assertEquals(pins[0].version, "v1.4.1");
 });
 
-Deno.test("a repository with no action release yet starts at v1.0.0", async () => {
+test("a repository with no action release yet starts at v1.0.0", async () => {
   const { deps, calls } = fakeDeps({
     tags: () => Promise.resolve(["core-v1.0.0"]),
   });
@@ -210,7 +211,7 @@ Deno.test("a repository with no action release yet starts at v1.0.0", async () =
   assertEquals(calls[1], `tag:v1.0.0@${SHA.slice(0, 4)}`);
 });
 
-Deno.test("the committed pin file matches what the module expects", () => {
+test("the committed pin file matches what the module expects", () => {
   // The generated workflows reference the action at this pin, so a hand edit
   // that breaks its shape would unpin every job.
   const pin: ActionPinFile = JSON.parse(
@@ -228,7 +229,7 @@ Deno.test("the committed pin file matches what the module expects", () => {
   );
 });
 
-Deno.test("a release is refused from anywhere but a clean, synced master", () => {
+test("a release is refused from anywhere but a clean, synced master", () => {
   // The tag moves for every consumer of the action and there is no undo short
   // of another force-push, so each of these is a way to publish a commit
   // nobody reviewed.
@@ -245,7 +246,7 @@ Deno.test("a release is refused from anywhere but a clean, synced master", () =>
   assertThrows(() => assertReleasable({ ...ok, syncedWithRemote: false }));
 });
 
-Deno.test("a credentialed release job refuses any CI ref but master", () => {
+test("a credentialed release job refuses any CI ref but master", () => {
   // release.yml can be dispatched on any branch; publishJsr, release,
   // syncWebsite and cliTap would then run its unreviewed code with JSR's
   // OIDC identity or the app key.
@@ -268,7 +269,7 @@ Deno.test("a credentialed release job refuses any CI ref but master", () => {
   assertThrows(guard("refs/heads/feat/refs/heads/master"));
 });
 
-Deno.test("the CI release guard leaves a local run alone", () => {
+test("the CI release guard leaves a local run alone", () => {
   // Locally there is no OIDC identity or app key to protect: a maintainer's
   // run holds only their own credentials, on whatever branch they are on.
   assertCiOnReleaseBranch("publish to JSR", "why", {
@@ -278,7 +279,7 @@ Deno.test("the CI release guard leaves a local run alone", () => {
   assertCiOnReleaseBranch("publish to JSR", "why", { ci: false });
 });
 
-Deno.test("the guards run before anything is written", async () => {
+test("the guards run before anything is written", async () => {
   // Ordering matters: a release refused after the pin was written would leave
   // the tree pointing at a version that was never tagged.
   const { deps, calls } = fakeDeps({
@@ -299,7 +300,7 @@ Deno.test("the guards run before anything is written", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("a pin version must be exactly a release tag", () => {
+test("a pin version must be exactly a release tag", () => {
   // It is rendered as the `# vX.Y.Z` comment beside every generated `uses:`,
   // and that comment is not escaped — so a newline would emit a stray line
   // into six workflow files. JavaScript's `$` matches before a trailing
@@ -311,7 +312,7 @@ Deno.test("a pin version must be exactly a release tag", () => {
   assertThrows(() => pinFor(SHA, "", INPUTS, DIGEST));
 });
 
-Deno.test("a malformed pin names the file rather than throwing a TypeError", () => {
+test("a malformed pin names the file rather than throwing a TypeError", () => {
   // `ActionPinFile` describes the shape of a committed JSON file, and a type
   // cannot hold a hand edit to its contents. Reading the SHA off a split and
   // using whatever comes back surfaced a malformed ref as a TypeError several
@@ -350,7 +351,7 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   );
 });
 
-Deno.test("input names are read out of an action manifest", () => {
+test("input names are read out of an action manifest", () => {
   const manifest = `name: "Zuke Build"
 inputs:
   target:
@@ -372,7 +373,7 @@ runs:
   assertEquals(declaredInputs('name: "x"\nruns:\n  using: composite\n'), []);
 });
 
-Deno.test("a workflow's inputs are read only from the action's own steps", () => {
+test("a workflow's inputs are read only from the action's own steps", () => {
   const yaml = `jobs:
   gate:
     steps:
@@ -394,7 +395,7 @@ Deno.test("a workflow's inputs are read only from the action's own steps", () =>
   assertEquals(workflowActionInputs(yaml), ["egress-policy", "ref"]);
 });
 
-Deno.test("an input the pinned release lacks fails, naming it", () => {
+test("an input the pinned release lacks fails, naming it", () => {
   // The failure this exists for, and it is a quiet one: GitHub warns on an
   // undeclared input and carries on, so the job runs without it and nothing
   // says why.
@@ -411,7 +412,7 @@ Deno.test("an input the pinned release lacks fails, naming it", () => {
   assertStringIncludes(message, "actionRelease");
 });
 
-Deno.test("a change that alters no input does not fail the check", () => {
+test("a change that alters no input does not fail the check", () => {
   // The reason this is not a digest of the whole file. Most changes to
   // action.yml are bumps to the actions it wraps — Dependabot's weekly work —
   // which alter no input and break no workflow. Failing on those blocked the
@@ -441,13 +442,13 @@ runs:
   assertWorkflowInputsAvailable(before, afterBump);
 });
 
-Deno.test("a release must declare at least one input", () => {
+test("a release must declare at least one input", () => {
   // The check compares what the workflows pass against this list, so an empty
   // one would reject every workflow that configures anything.
   assertThrows(() => pinFor(SHA, "v1.0.0", [], DIGEST));
 });
 
-Deno.test("the committed pin lists the inputs action.yml declares", () => {
+test("the committed pin lists the inputs action.yml declares", () => {
   // The two are written together by `actionRelease`, and drift between them is
   // exactly what the gate check reads. This asserts the committed pair agree
   // on the *shape* — the gate asserts the workflows fit inside it.
@@ -464,7 +465,7 @@ Deno.test("the committed pin lists the inputs action.yml declares", () => {
   }
 });
 
-Deno.test("every YAML shape that broke the line reader now parses", () => {
+test("every YAML shape that broke the line reader now parses", () => {
   // Five review findings and four fixes came out of reading these files line by
   // line: a comment ended the block, flow style read as empty, a folded scalar
   // ended the block, a nested value contributed its own keys. Three were silent
@@ -533,7 +534,7 @@ ${withBlock}      - run: ./zuke ci
   );
 });
 
-Deno.test("only this action's own steps count", () => {
+test("only this action's own steps count", () => {
   // Every step has a `with:`. Counting them all would compare another action's
   // inputs against this action's list and reject every workflow for having a
   // checkout in it.
@@ -553,7 +554,7 @@ jobs:
   assertEquals(workflowActionInputs(yaml), ["ref"]);
 });
 
-Deno.test("a manifest's inputs parse whatever the style", () => {
+test("a manifest's inputs parse whatever the style", () => {
   assertEquals(
     declaredInputs("name: x\ninputs:\n  target:\n    description: y\n  ref:\n"),
     ["target", "ref"],
@@ -571,7 +572,7 @@ Deno.test("a manifest's inputs parse whatever the style", () => {
   assertEquals(declaredInputs("name: x\nruns:\n  using: composite\n"), []);
 });
 
-Deno.test("a change no workflow can see is reported, not failed", () => {
+test("a change no workflow can see is reported, not failed", () => {
   // The counterpart to the input check, and the reason both exist. Inputs cover
   // what breaks a workflow now; this covers what a workflow cannot see at all —
   // a guard added to the action, a step reordered — which reaches consumers
@@ -592,7 +593,7 @@ Deno.test("a change no workflow can see is reported, not failed", () => {
   });
 });
 
-Deno.test("the proposed pin branch and subject are derived from the version", () => {
+test("the proposed pin branch and subject are derived from the version", () => {
   assertEquals(pinBranch("v1.0.3"), "chore/action-v1.0.3");
   assertStringIncludes(pinSubject("v1.0.3"), "v1.0.3");
   // Both are interpolated into git arguments, so a value that is not a release
@@ -602,7 +603,7 @@ Deno.test("the proposed pin branch and subject are derived from the version", ()
   assertThrows(() => pinSubject("core-v1.0.0"));
 });
 
-Deno.test("the pin commit is a chore, and its body has no fenced block", () => {
+test("the pin commit is a chore, and its body has no fenced block", () => {
   // `chore:` because this changes no package. release-please parses every
   // merged subject, so a `feat:`/`fix:` here would cut a package release for a
   // commit that touched none.
@@ -614,7 +615,7 @@ Deno.test("the pin commit is a chore, and its body has no fenced block", () => {
   assertStringIncludes(pinBody("v1.0.3"), "v1.0.3");
 });
 
-Deno.test("a tagged release whose pin never landed is proposed again", async () => {
+test("a tagged release whose pin never landed is proposed again", async () => {
   // The failure this exists to prevent is silent and permanent. A release is
   // two halves: the tags, which reach consumers, and the pin, which lands in a
   // pull request. If that pull request fails after the tags are pushed, asking
@@ -639,7 +640,7 @@ Deno.test("a tagged release whose pin never landed is proposed again", async () 
   assertEquals(pins[0].ref, `zuke-build/zuke@${TAGGED_SHA}`);
 });
 
-Deno.test("a pin that matches the newest tag is left alone", async () => {
+test("a pin that matches the newest tag is left alone", async () => {
   // The other side of the same guard: with the pin already up to date there is
   // nothing outstanding, and re-proposing on every push would be a loop.
   const { deps, calls } = fakeDeps({
@@ -653,7 +654,7 @@ Deno.test("a pin that matches the newest tag is left alone", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("a half-published release has its major pointer repaired", async () => {
+test("a half-published release has its major pointer repaired", async () => {
   // The failure this exists to catch: a release is two tag writes with nothing
   // binding them. `v1.4.1` is created, then `v1` is moved — and if the second
   // write fails, the release is half-published with `v1`, the tag consumers
@@ -681,7 +682,7 @@ Deno.test("a half-published release has its major pointer repaired", async () =>
   assertEquals(result.released, undefined);
 });
 
-Deno.test("an aligned major pointer is left untouched", async () => {
+test("an aligned major pointer is left untouched", async () => {
   // The check runs on every release run, so it has to be silent when there is
   // nothing wrong — otherwise it would move `v1` onto the same commit forever.
   const { deps, calls } = fakeDeps({
@@ -692,7 +693,7 @@ Deno.test("an aligned major pointer is left untouched", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("a first release of a major creates the pointer rather than reporting drift", async () => {
+test("a first release of a major creates the pointer rather than reporting drift", async () => {
   // A major tag that does not exist yet is an ordinary state, not a
   // half-published release, and the two must not be conflated.
   const messages: string[] = [];
@@ -711,7 +712,7 @@ Deno.test("a first release of a major creates the pointer rather than reporting 
   assertStringIncludes(messages.join("\n"), "does not exist yet");
 });
 
-Deno.test("a release tag that does not resolve is refused rather than guessed", async () => {
+test("a release tag that does not resolve is refused rather than guessed", async () => {
   // Moving a major pointer onto the wrong commit is worse than not moving it.
   const { deps } = fakeDeps({
     tags: () => Promise.resolve(["v1.4.0"]),
@@ -726,7 +727,7 @@ Deno.test("a release tag that does not resolve is refused rather than guessed", 
   assertStringIncludes(message, "does not resolve to a commit");
 });
 
-Deno.test("a tag whose release was never created gets one", async () => {
+test("a tag whose release was never created gets one", async () => {
   // The gap this exists to close, and it is invisible from inside the release
   // flow: v1.0.4 and v1.0.5 were tagged, `v1` was moved onto v1.0.5, and
   // neither had a GitHub release for six days. Nothing failed — the tags were
@@ -749,7 +750,7 @@ Deno.test("a tag whose release was never created gets one", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("only the newest release of a back-filled run becomes latest", async () => {
+test("only the newest release of a back-filled run becomes latest", async () => {
   // GitHub treats a new release as latest unless told otherwise, and
   // back-filling works oldest-first — so taking that default would walk the
   // pointer backwards through the backlog and leave it on the oldest release
@@ -763,7 +764,7 @@ Deno.test("only the newest release of a back-filled run becomes latest", async (
   assertEquals(releases.map((r) => r.latest), [false, false, true]);
 });
 
-Deno.test("a freshly cut release is published from the commit, not a lookup", async () => {
+test("a freshly cut release is published from the commit, not a lookup", async () => {
   // One code path for the backlog and for the cut — but the cut path cannot
   // resolve its own tag. On CI the tags are created through the API, so the
   // version just released is not in this clone and every lookup for it answers
@@ -790,7 +791,7 @@ Deno.test("a freshly cut release is published from the commit, not a lookup", as
   assertStringIncludes(releases.at(-1)?.notes ?? "", `zuke-build/zuke@${SHA}`);
 });
 
-Deno.test("a release tag from before action.yml existed is walked past", async () => {
+test("a release tag from before action.yml existed is walked past", async () => {
   // The action was added to a repository that already had tags. A `vX.Y.Z`
   // predating the file has nothing to describe, and notes about a file the tag
   // does not contain would be worse than no release at all.
@@ -807,7 +808,7 @@ Deno.test("a release tag from before action.yml existed is walked past", async (
   assertStringIncludes(messages.join("\n"), "predates action.yml");
 });
 
-Deno.test("a version tag that does not resolve fails rather than releasing a guess", async () => {
+test("a version tag that does not resolve fails rather than releasing a guess", async () => {
   // Symmetric with the major-pointer reconciliation: publishing a release
   // whose notes name the wrong commit is worse than publishing none.
   const { deps } = fakeDeps({
@@ -823,7 +824,7 @@ Deno.test("a version tag that does not resolve fails rather than releasing a gue
   assertStringIncludes(message, "cannot name what it contains");
 });
 
-Deno.test("a repository with no action tags reconciles nothing", async () => {
+test("a repository with no action tags reconciles nothing", async () => {
   // Every other tag in this repository is component-scoped, and treating one
   // as an action release would publish a release for somebody else's version.
   const { deps, releases } = fakeDeps();
@@ -831,7 +832,7 @@ Deno.test("a repository with no action tags reconciles nothing", async () => {
   assertEquals(releases, []);
 });
 
-Deno.test("reconciliation reports only what it actually published", async () => {
+test("reconciliation reports only what it actually published", async () => {
   // The caller logs this, so a release that already existed must not be
   // reported as though this run created it.
   const { deps } = fakeDeps({

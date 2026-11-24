@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   postSuggestions,
@@ -58,13 +59,13 @@ const ONE: Suggestion = {
   key: "zuke.ts:42",
 };
 
-Deno.test("postSuggestions is a no-op for an empty list", async () => {
+test("postSuggestions is a no-op for an empty list", async () => {
   const { fetch, calls } = ghFetch({ sha: "abc" });
   assertEquals(await postSuggestions(CONTEXT, [], fetch), 0);
   assertEquals(calls.length, 0);
 });
 
-Deno.test("postSuggestions posts a multi-line suggestion anchored to the head sha", async () => {
+test("postSuggestions posts a multi-line suggestion anchored to the head sha", async () => {
   const { fetch, calls } = ghFetch({ sha: "abc123", existing: [] });
   const created = await postSuggestions(CONTEXT, [ONE], fetch);
   assertEquals(created, 1);
@@ -84,7 +85,7 @@ Deno.test("postSuggestions posts a multi-line suggestion anchored to the head sh
   );
 });
 
-Deno.test("a single-line suggestion omits start_line", async () => {
+test("a single-line suggestion omits start_line", async () => {
   const { fetch, calls } = ghFetch({ sha: "abc", existing: [] });
   await postSuggestions(CONTEXT, [{ ...ONE, line: 42, startLine: 42 }], fetch);
   const post = calls.find((c) => c.method === "POST");
@@ -93,7 +94,7 @@ Deno.test("a single-line suggestion omits start_line", async () => {
   assertEquals("start_line" in payload, false);
 });
 
-Deno.test("an already-posted suggestion is skipped (matched by key)", async () => {
+test("an already-posted suggestion is skipped (matched by key)", async () => {
   // `id` as GitHub always reports it: the key scan reads the shared review-comment
   // listing, which skips an item without a numeric id.
   const existing = [{ id: 1, body: `${suggestionMarker("zuke.ts:42")}\nold` }];
@@ -103,12 +104,12 @@ Deno.test("an already-posted suggestion is skipped (matched by key)", async () =
   assertEquals(calls.some((c) => c.method === "POST"), false);
 });
 
-Deno.test("a rejected suggestion (line not in diff) is skipped, not fatal", async () => {
+test("a rejected suggestion (line not in diff) is skipped, not fatal", async () => {
   const { fetch } = ghFetch({ sha: "abc", existing: [], postStatus: 422 });
   assertEquals(await postSuggestions(CONTEXT, [ONE], fetch), 0);
 });
 
-Deno.test("no head sha means nothing is posted", async () => {
+test("no head sha means nothing is posted", async () => {
   const { fetch, calls } = ghFetch({ existing: [] });
   assertEquals(await postSuggestions(CONTEXT, [ONE], fetch), 0);
   assertEquals(calls.some((c) => c.method === "POST"), false);

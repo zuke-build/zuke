@@ -9,6 +9,7 @@
  * unknown-target error path.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -38,14 +39,14 @@ class Demo extends Build {
   );
 }
 
-Deno.test("--list names the declared targets", async () => {
+test("--list names the declared targets", async () => {
   const { code, out } = await runCli(Demo, ["--list"]);
   assertEquals(code, 0);
   assertStringIncludes(out, "clean");
   assertStringIncludes(out, "build");
 });
 
-Deno.test("--list --json emits a valid, complete build-surface document", async () => {
+test("--list --json emits a valid, complete build-surface document", async () => {
   const { code, out } = await runCli(Demo, ["--list", "--json"]);
   assertEquals(code, 0);
   const surface = JSON.parse(out);
@@ -56,7 +57,7 @@ Deno.test("--list --json emits a valid, complete build-surface document", async 
   assertEquals(Array.isArray(surface.parameters), true);
 });
 
-Deno.test("graph prints a dependency graph containing the target names", async () => {
+test("graph prints a dependency graph containing the target names", async () => {
   const { code, out } = await runCli(Demo, ["graph"]);
   assertEquals(code, 0);
   assertStringIncludes(out, "Dependency graph:");
@@ -64,7 +65,7 @@ Deno.test("graph prints a dependency graph containing the target names", async (
   assertStringIncludes(out, "build → clean");
 });
 
-Deno.test("graph --output=html renders through the injected GraphHost", async () => {
+test("graph --output=html renders through the injected GraphHost", async () => {
   const host = new FakeGraphHost("/repo", [`/repo/${CONFIG_FILE}`]);
   const { code } = await runCli(
     Demo,
@@ -92,7 +93,7 @@ class CiBuild extends Build {
   build = target().executes(() => {});
 }
 
-Deno.test("generate-ci writes the declared CI file", async () => {
+test("generate-ci writes the declared CI file", async () => {
   // Runs with cwd pointed at a throwaway temp dir so this never writes
   // `.github/...` into the repo tree.
   await inTempDir(async (dir) => {
@@ -106,7 +107,7 @@ Deno.test("generate-ci writes the declared CI file", async () => {
   });
 });
 
-Deno.test("generate-ci --check reports drift when the file is absent", async () => {
+test("generate-ci --check reports drift when the file is absent", async () => {
   await inTempDir(async () => {
     const { code, err } = await runCli(CiBuild, ["generate-ci", "--check"]);
     assertEquals(code, 1);
@@ -114,7 +115,7 @@ Deno.test("generate-ci --check reports drift when the file is absent", async () 
   });
 });
 
-Deno.test("generate-ci --check reports drift when the file is stale", async () => {
+test("generate-ci --check reports drift when the file is stale", async () => {
   await inTempDir(async (dir) => {
     await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
     await Deno.writeTextFile(
@@ -140,7 +141,7 @@ class ScheduledBuild extends Build {
   build = target().executes(() => {});
 }
 
-Deno.test("generate-ci writes a timezone-aware scheduled workflow", async () => {
+test("generate-ci writes a timezone-aware scheduled workflow", async () => {
   await inTempDir(async (dir) => {
     const first = await runCli(ScheduledBuild, ["generate-ci"]);
     assertEquals(first.code, 0);
@@ -167,7 +168,7 @@ const BINDING: Record<string, string> = {
 };
 
 for (const shell of ["bash", "zsh", "fish"]) {
-  Deno.test(`completions print ${shell} emits a non-empty script naming the targets`, async () => {
+  test(`completions print ${shell} emits a non-empty script naming the targets`, async () => {
     const { code, out } = await runCli(Demo, ["completions", "print", shell]);
     assertEquals(code, 0);
     assertEquals(out.length > 0, true);
@@ -177,20 +178,20 @@ for (const shell of ["bash", "zsh", "fish"]) {
   });
 }
 
-Deno.test("--help prints usage", async () => {
+test("--help prints usage", async () => {
   const { code, out } = await runCli(Demo, ["--help"]);
   assertEquals(code, 0);
   assertStringIncludes(out, "Usage:");
 });
 
-Deno.test("an unknown target exits 1 with a helpful message", async () => {
+test("an unknown target exits 1 with a helpful message", async () => {
   const { code, err } = await runCli(Demo, ["nope"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "Unknown target: nope");
   assertStringIncludes(err, "Targets:");
 });
 
-Deno.test("integration: --help groups the general flags by section, and command help keeps its own", async () => {
+test("integration: --help groups the general flags by section, and command help keeps its own", async () => {
   class Grouped extends Build {
     work = target().description("Do work").executes(() => {});
   }

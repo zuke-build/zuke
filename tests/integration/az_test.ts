@@ -11,6 +11,7 @@
  * is needed.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -77,7 +78,7 @@ class Gate extends Build {
     });
 }
 
-Deno.test("a build gates on an Azure Monitor metric read through AzTasks", async () => {
+test("a build gates on an Azure Monitor metric read through AzTasks", async () => {
   calls = [];
   // The fake answers under `total` whatever was asked, so the gate reads
   // Count from a key the answer does not carry: no data, which is 0.
@@ -102,7 +103,7 @@ class TotalGate extends Build {
     });
 }
 
-Deno.test("the metric gate fails a build over its limit", async () => {
+test("the metric gate fails a build over its limit", async () => {
   totals = [1, 0, 1];
   const passed = await runCli(TotalGate, ["gate"]);
   assertEquals(passed.code, 0, passed.err);
@@ -126,7 +127,7 @@ class Leaky extends Build {
     });
 }
 
-Deno.test("a secret read through AzTasks is masked in the build's output", async () => {
+test("a secret read through AzTasks is masked in the build's output", async () => {
   calls = [];
   const { code, out, err } = await runCli(Leaky, ["leak"]);
   assertEquals(code, 1);
@@ -161,7 +162,7 @@ class Deploy extends Build {
   );
 }
 
-Deno.test("canary's azureMonitor analysis promotes a healthy candidate", async () => {
+test("canary's azureMonitor analysis promotes a healthy candidate", async () => {
   platform = new FakePlatform();
   calls = [];
   totals = [0, 1, 0];
@@ -178,7 +179,7 @@ Deno.test("canary's azureMonitor analysis promotes a healthy candidate", async (
   });
 });
 
-Deno.test("canary's azureMonitor analysis rolls an unhealthy candidate back", async () => {
+test("canary's azureMonitor analysis rolls an unhealthy candidate back", async () => {
   platform = new FakePlatform();
   totals = [9];
   await withStateDir(async () => {

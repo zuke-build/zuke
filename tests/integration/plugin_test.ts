@@ -8,11 +8,12 @@
  * on a durable store — `onRunStateChange` on each run-level transition.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, type Plugin, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("a plugin driven through the CLI gets run id, timing, and run-state changes", async () => {
+test("a plugin driven through the CLI gets run id, timing, and run-state changes", async () => {
   await withStateDir(async () => {
     const events: string[] = [];
     let runId: string | undefined;

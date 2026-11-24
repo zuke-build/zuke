@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { diffToSuggestions } from "../src/diff_suggest.ts";
 
 const PRELUDE = "note";
 
-Deno.test("a modification hunk becomes a replacement suggestion", () => {
+test("a modification hunk becomes a replacement suggestion", () => {
   const diff = [
     "diff --git a/zuke.ts b/zuke.ts",
     "--- a/zuke.ts",
@@ -27,7 +28,7 @@ Deno.test("a modification hunk becomes a replacement suggestion", () => {
   assertEquals(s[0].key, "zuke.ts:46");
 });
 
-Deno.test("a deletion hunk suggests an empty (delete) block", () => {
+test("a deletion hunk suggests an empty (delete) block", () => {
   const diff = [
     "diff --git a/a.ts b/a.ts",
     "--- a/a.ts",
@@ -43,7 +44,7 @@ Deno.test("a deletion hunk suggests an empty (delete) block", () => {
   assertEquals(s[0].body.includes("```suggestion\n```"), true);
 });
 
-Deno.test("a pure insertion is skipped (nothing to anchor)", () => {
+test("a pure insertion is skipped (nothing to anchor)", () => {
   const diff = [
     "diff --git a/a.ts b/a.ts",
     "--- a/a.ts",
@@ -54,7 +55,7 @@ Deno.test("a pure insertion is skipped (nothing to anchor)", () => {
   assertEquals(diffToSuggestions(diff, PRELUDE), []);
 });
 
-Deno.test("multiple files and hunks each produce a suggestion", () => {
+test("multiple files and hunks each produce a suggestion", () => {
   const diff = [
     "diff --git a/one.ts b/one.ts",
     "--- a/one.ts",
@@ -76,7 +77,7 @@ Deno.test("multiple files and hunks each produce a suggestion", () => {
   ]);
 });
 
-Deno.test("a removed line whose content begins with '--' is a removal, not a header", () => {
+test("a removed line whose content begins with '--' is a removal, not a header", () => {
   const diff = [
     "diff --git a/flags.ts b/flags.ts",
     "--- a/flags.ts",
@@ -94,6 +95,6 @@ Deno.test("a removed line whose content begins with '--' is a removal, not a hea
   assertEquals(s[0].body.includes("--quiet"), true);
 });
 
-Deno.test("an empty diff yields no suggestions", () => {
+test("an empty diff yields no suggestions", () => {
   assertEquals(diffToSuggestions("", PRELUDE), []);
 });

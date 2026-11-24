@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -35,11 +36,11 @@ import {
 } from "../mod.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
-Deno.test("the default binary is kubectl", () => {
+test("the default binary is kubectl", () => {
   assertEquals(new KubectlApplySettings().file("x.yaml").argv()[0], "kubectl");
 });
 
-Deno.test("global flags (namespace, context, kubeconfig) apply to a subcommand", () => {
+test("global flags (namespace, context, kubeconfig) apply to a subcommand", () => {
   assertEquals(
     new KubectlGetSettings()
       .resource("pods")
@@ -61,7 +62,7 @@ Deno.test("global flags (namespace, context, kubeconfig) apply to a subcommand",
   );
 });
 
-Deno.test("apply: requires file or kustomize; all options", () => {
+test("apply: requires file or kustomize; all options", () => {
   assertThrows(
     () => new KubectlApplySettings().argv(),
     Error,
@@ -125,7 +126,7 @@ Deno.test("apply: requires file or kustomize; all options", () => {
   );
 });
 
-Deno.test("create: bare and all options", () => {
+test("create: bare and all options", () => {
   assertEquals(new KubectlCreateSettings().argv().slice(1), ["create"]);
   assertEquals(
     new KubectlCreateSettings()
@@ -149,7 +150,7 @@ Deno.test("create: bare and all options", () => {
   );
 });
 
-Deno.test("delete: requires file or resource; all options", () => {
+test("delete: requires file or resource; all options", () => {
   assertThrows(
     () => new KubectlDeleteSettings().argv(),
     Error,
@@ -184,7 +185,7 @@ Deno.test("delete: requires file or resource; all options", () => {
   );
 });
 
-Deno.test("get: requires a resource; all options", () => {
+test("get: requires a resource; all options", () => {
   assertThrows(
     () => new KubectlGetSettings().argv(),
     Error,
@@ -216,7 +217,7 @@ Deno.test("get: requires a resource; all options", () => {
   );
 });
 
-Deno.test("getNamespaces forces `get namespaces -o json`", () => {
+test("getNamespaces forces `get namespaces -o json`", () => {
   // getNamespaces builds this argv internally (the forced `.quiet()` adds no arg).
   assertEquals(
     new KubectlGetSettings().resource("namespaces").output("json").argv().slice(
@@ -226,7 +227,7 @@ Deno.test("getNamespaces forces `get namespaces -o json`", () => {
   );
 });
 
-Deno.test("parseNamespaces narrows a List, a single object, and skips bad items", () => {
+test("parseNamespaces narrows a List, a single object, and skips bad items", () => {
   const list = parseNamespaces(JSON.stringify({
     items: [
       {
@@ -274,7 +275,7 @@ Deno.test("parseNamespaces narrows a List, a single object, and skips bad items"
   assertThrows(() => parseNamespaces("{not json"), Error);
 });
 
-Deno.test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async () => {
+test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async () => {
   if (Deno.build.os === "windows") return; // shebang script; argv is covered above.
   await withTemp(async (dir) => {
     const argvFile = `${dir}/argv`;
@@ -320,7 +321,7 @@ Deno.test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", 
   });
 });
 
-Deno.test("getNamespaces with no configure runs the command (dry run yields no rows)", async () => {
+test("getNamespaces with no configure runs the command (dry run yields no rows)", async () => {
   // Under a deep-dry-run echo sink the command is echoed, not spawned; the
   // empty output parses to no rows. Exercises the no-configure path.
   const echoed: string[] = [];
@@ -332,7 +333,7 @@ Deno.test("getNamespaces with no configure runs the command (dry run yields no r
   assertStringIncludes(echoed[0], "kubectl get namespaces -o json");
 });
 
-Deno.test("getNamespaces reaches execution", async () => {
+test("getNamespaces reaches execution", async () => {
   await assertRejects(
     () =>
       KubectlTasks.getNamespaces((s) => {
@@ -343,7 +344,7 @@ Deno.test("getNamespaces reaches execution", async () => {
   );
 });
 
-Deno.test("getNamespaces neutralizes a caller's .watch() so it never streams", async () => {
+test("getNamespaces neutralizes a caller's .watch() so it never streams", async () => {
   // A watch (`-w`) would stream forever and never yield parseable JSON; the
   // helper must force it off. Echoed under a dry run so nothing spawns.
   const echoed: string[] = [];
@@ -355,7 +356,7 @@ Deno.test("getNamespaces neutralizes a caller's .watch() so it never streams", a
   assertEquals(echoed[0].includes("-w"), false);
 });
 
-Deno.test("KubectlGetSettings.watch(false) disables an earlier watch", () => {
+test("KubectlGetSettings.watch(false) disables an earlier watch", () => {
   assertEquals(
     new KubectlGetSettings().resource("pods").watch().watch(false).argv()
       .includes("-w"),
@@ -363,7 +364,7 @@ Deno.test("KubectlGetSettings.watch(false) disables an earlier watch", () => {
   );
 });
 
-Deno.test("describe: requires a resource type; selector is a filter", () => {
+test("describe: requires a resource type; selector is a filter", () => {
   assertThrows(
     () => new KubectlDescribeSettings().argv(),
     Error,
@@ -386,7 +387,7 @@ Deno.test("describe: requires a resource type; selector is a filter", () => {
   );
 });
 
-Deno.test("logs: requires resource or selector; all options", () => {
+test("logs: requires resource or selector; all options", () => {
   assertThrows(
     () => new KubectlLogsSettings().argv(),
     Error,
@@ -431,7 +432,7 @@ Deno.test("logs: requires resource or selector; all options", () => {
   );
 });
 
-Deno.test("exec: requires resource and command; ordering with --", () => {
+test("exec: requires resource and command; ordering with --", () => {
   assertThrows(
     () => new KubectlExecSettings().command("ls").argv(),
     Error,
@@ -455,7 +456,7 @@ Deno.test("exec: requires resource and command; ordering with --", () => {
   );
 });
 
-Deno.test("rollout: requires action and resource; sub-actions and flags", () => {
+test("rollout: requires action and resource; sub-actions and flags", () => {
   assertThrows(
     () => new KubectlRolloutSettings().resource("deployment/api").argv(),
     Error,
@@ -496,7 +497,7 @@ Deno.test("rollout: requires action and resource; sub-actions and flags", () => 
   );
 });
 
-Deno.test("scale: requires replicas and a target; all options", () => {
+test("scale: requires replicas and a target; all options", () => {
   assertThrows(
     () => new KubectlScaleSettings().resource("deployment/api").argv(),
     Error,
@@ -533,7 +534,7 @@ Deno.test("scale: requires replicas and a target; all options", () => {
   );
 });
 
-Deno.test("setImage: requires resource and image; all options", () => {
+test("setImage: requires resource and image; all options", () => {
   assertThrows(
     () => new KubectlSetImageSettings().image("api", "api:1").argv(),
     Error,
@@ -566,7 +567,7 @@ Deno.test("setImage: requires resource and image; all options", () => {
   );
 });
 
-Deno.test("annotate: resource + annotations, remove, and flags", () => {
+test("annotate: resource + annotations, remove, and flags", () => {
   // Resource tokens + one annotation + --overwrite.
   assertEquals(
     new KubectlAnnotateSettings()
@@ -608,7 +609,7 @@ Deno.test("annotate: resource + annotations, remove, and flags", () => {
   );
 });
 
-Deno.test("label: resource + labels, remove, and flags", () => {
+test("label: resource + labels, remove, and flags", () => {
   // Resource + a label + -l selector.
   assertEquals(
     new KubectlLabelSettings()
@@ -634,7 +635,7 @@ Deno.test("label: resource + labels, remove, and flags", () => {
   );
 });
 
-Deno.test("annotate and label honour the shared cluster flags", () => {
+test("annotate and label honour the shared cluster flags", () => {
   assertEquals(
     new KubectlAnnotateSettings()
       .resource("deploy", "api")
@@ -655,7 +656,7 @@ Deno.test("annotate and label honour the shared cluster flags", () => {
   );
 });
 
-Deno.test("annotate and label require a resource type and a payload", () => {
+test("annotate and label require a resource type and a payload", () => {
   // A payload but no resource type — a bare selector or --all is not enough.
   assertThrows(
     () => new KubectlAnnotateSettings().annotation("a", "b").argv(),
@@ -697,7 +698,7 @@ Deno.test("annotate and label require a resource type and a payload", () => {
   );
 });
 
-Deno.test("annotate and label reject a bare type with no name, selector, or --all", () => {
+test("annotate and label reject a bare type with no name, selector, or --all", () => {
   // kubectl rejects `annotate pods key=val` ("no name was specified").
   assertThrows(
     () =>
@@ -739,7 +740,7 @@ Deno.test("annotate and label reject a bare type with no name, selector, or --al
   for (const s of ok) s.argv(); // none throw
 });
 
-Deno.test("annotate and label reject a selector combined with a name or --all", () => {
+test("annotate and label reject a selector combined with a name or --all", () => {
   // A label selector is mutually exclusive with a name and with --all (kubectl
   // rejects both client-side). A name + --all is NOT rejected — kubectl accepts
   // it (ignoring --all), so the wrapper mirrors that. Covers annotate and label
@@ -765,7 +766,7 @@ Deno.test("annotate and label reject a selector combined with a name or --all", 
   }
 });
 
-Deno.test("patch: requires resource and patch; --type ordering", () => {
+test("patch: requires resource and patch; --type ordering", () => {
   assertThrows(
     () => new KubectlPatchSettings().patch("{}").argv(),
     Error,
@@ -794,7 +795,7 @@ Deno.test("patch: requires resource and patch; --type ordering", () => {
   );
 });
 
-Deno.test("portForward: requires resource and a port; --address ordering", () => {
+test("portForward: requires resource and a port; --address ordering", () => {
   assertThrows(
     () => new KubectlPortForwardSettings().port("8080:80").argv(),
     Error,
@@ -817,7 +818,7 @@ Deno.test("portForward: requires resource and a port; --address ordering", () =>
   );
 });
 
-Deno.test("wait: requires a target and a condition; all options", () => {
+test("wait: requires a target and a condition; all options", () => {
   assertThrows(
     () => new KubectlWaitSettings().forCondition("delete").argv(),
     Error,
@@ -852,7 +853,7 @@ Deno.test("wait: requires a target and a condition; all options", () => {
   );
 });
 
-Deno.test("top: requires pods or nodes; all options", () => {
+test("top: requires pods or nodes; all options", () => {
   assertThrows(
     () => new KubectlTopSettings().argv(),
     Error,
@@ -902,7 +903,7 @@ Deno.test("top: requires pods or nodes; all options", () => {
   );
 });
 
-Deno.test("every KubectlTasks function reaches execution", async () => {
+test("every KubectlTasks function reaches execution", async () => {
   await assertRejects(
     () => KubectlTasks.apply((s) => missingTool(s).file("a.yaml")),
     ToolNotFoundError,
@@ -994,7 +995,7 @@ Deno.test("every KubectlTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("kubectl: conforms to the wrapper contract", async () => {
+test("kubectl: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new KubectlApplySettings().file("k8s.yaml"),
     "kubectl",

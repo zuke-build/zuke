@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,11 +10,11 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { CspellSettings, CspellTasks } from "../src/cspell.ts";
 
-Deno.test("the default invocation is cspell lint", () => {
+test("the default invocation is cspell lint", () => {
   assertEquals(new CspellSettings().argv(), ["cspell", "lint"]);
 });
 
-Deno.test("cspell: every option renders, files last", () => {
+test("cspell: every option renders, files last", () => {
   const argv = new CspellSettings()
     .config("cspell.json").noProgress().noSummary().showSuggestions()
     .showContext().quietOutput().cache().dot().gitignore()
@@ -50,7 +51,7 @@ Deno.test("cspell: every option renders, files last", () => {
   ]);
 });
 
-Deno.test("cspell: minimal checks just the given glob", () => {
+test("cspell: minimal checks just the given glob", () => {
   assertEquals(new CspellSettings().files("**").argv(), [
     "cspell",
     "lint",
@@ -58,11 +59,11 @@ Deno.test("cspell: minimal checks just the given glob", () => {
   ]);
 });
 
-Deno.test("CspellTasks.lint reaches execution", async () => {
+test("CspellTasks.lint reaches execution", async () => {
   await assertRejects(() => CspellTasks.lint(missingTool), ToolNotFoundError);
 });
 
-Deno.test("cspell: resolves its binary from node_modules by default", async () => {
+test("cspell: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new CspellSettings(), "cspell", {
     resolution: "node_modules",
   });

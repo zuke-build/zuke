@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { NpmTrustSettings } from "../mod.ts";
 
 const argv = (s: NpmTrustSettings) => s.argv().slice(1);
 
-Deno.test("trust github renders every flag after the package", () => {
+test("trust github renders every flag after the package", () => {
   assertEquals(
     argv(
       new NpmTrustSettings().github("@s/app", "release.yml").repo("o/app")
@@ -26,7 +27,7 @@ Deno.test("trust github renders every flag after the package", () => {
   );
 });
 
-Deno.test("trust gitlab and circleci take the file as a setter too", () => {
+test("trust gitlab and circleci take the file as a setter too", () => {
   assertEquals(argv(new NpmTrustSettings().gitlab().file("ci.yml")), [
     "trust",
     "gitlab",
@@ -39,7 +40,7 @@ Deno.test("trust gitlab and circleci take the file as a setter too", () => {
   ]);
 });
 
-Deno.test("trust lists by default and revokes by id", () => {
+test("trust lists by default and revokes by id", () => {
   assertEquals(argv(new NpmTrustSettings()), ["trust", "list"]);
   assertEquals(argv(new NpmTrustSettings().list("app")), [
     "trust",
@@ -54,14 +55,14 @@ Deno.test("trust lists by default and revokes by id", () => {
   ]);
 });
 
-Deno.test("trust list after revoke drops the id", () => {
+test("trust list after revoke drops the id", () => {
   assertEquals(argv(new NpmTrustSettings().revoke("abc").list()), [
     "trust",
     "list",
   ]);
 });
 
-Deno.test("trust carries the otp in the environment, not argv", () => {
+test("trust carries the otp in the environment, not argv", () => {
   const s = new NpmTrustSettings().list().otp("123456");
   assertEquals(argv(s), ["trust", "list"]);
 });

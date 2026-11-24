@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -76,7 +77,7 @@ function publish(
       .branch("main").message("app 1.2.3").fetch(fetchImpl);
 }
 
-Deno.test("publish: a new formula is created as Formula/<name>.rb in homebrew-<tap>", async () => {
+test("publish: a new formula is created as Formula/<name>.rb in homebrew-<tap>", async () => {
   const { fetch, seen } = fake([[404, { message: "Not Found" }], WRITTEN]);
   const result = await HomebrewTasks.publish(publish(fetch));
   assertEquals(result, {
@@ -98,7 +99,7 @@ Deno.test("publish: a new formula is created as Formula/<name>.rb in homebrew-<t
   assertEquals(seen[1].authorization, "Bearer tap-token");
 });
 
-Deno.test("publish: both tap spellings write to the same repository", async () => {
+test("publish: both tap spellings write to the same repository", async () => {
   for (const tap of ["acme/tap", "acme/homebrew-tap"]) {
     const { fetch, seen } = fake([[404, {}], WRITTEN]);
     const result = await HomebrewTasks.publish((s) =>
@@ -109,7 +110,7 @@ Deno.test("publish: both tap spellings write to the same repository", async () =
   }
 });
 
-Deno.test("publish: a changed formula is updated", async () => {
+test("publish: a changed formula is updated", async () => {
   const { fetch, seen } = fake([[200, { type: "file", sha: "old" }], WRITTEN]);
   const result = await HomebrewTasks.publish(publish(fetch));
   assertEquals(result.state, "updated");
@@ -117,7 +118,7 @@ Deno.test("publish: a changed formula is updated", async () => {
   assertEquals(seen[1].body.sha, "old");
 });
 
-Deno.test("publish: an identical formula makes no commit", async () => {
+test("publish: an identical formula makes no commit", async () => {
   const { fetch, seen } = fake([[200, {
     type: "file",
     sha: await sourceSha(),
@@ -131,7 +132,7 @@ Deno.test("publish: an identical formula makes no commit", async () => {
   assertEquals(seen.length, 1);
 });
 
-Deno.test("publish: the message defaults, and the default branch is used when none is named", async () => {
+test("publish: the message defaults, and the default branch is used when none is named", async () => {
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await HomebrewTasks.publish((s) =>
     s.tap("acme/tap").formula("app", SOURCE).token("t").fetch(fetch)
@@ -145,7 +146,7 @@ Deno.test("publish: the message defaults, and the default branch is used when no
   assertEquals("branch" in seen[1].body, false);
 });
 
-Deno.test("publish: a tap that does not exist fails at the write, naming the status", async () => {
+test("publish: a tap that does not exist fails at the write, naming the status", async () => {
   // The contents API answers 404 for a file in a missing repository too, so
   // the read cannot tell them apart; the write can, and is not swallowed.
   const { fetch } = fake([[404, {}], [404, { message: "Not Found" }]]);
@@ -157,7 +158,7 @@ Deno.test("publish: a tap that does not exist fails at the write, naming the sta
   assertEquals(error instanceof GhApiError ? error.status : 0, 404);
 });
 
-Deno.test("publish: a refused token fails without the token in the message", async () => {
+test("publish: a refused token fails without the token in the message", async () => {
   const { fetch } = fake([[401, { message: "Bad credentials" }]]);
   const error = await assertRejects(
     () => HomebrewTasks.publish(publish(fetch)),
@@ -167,7 +168,7 @@ Deno.test("publish: a refused token fails without the token in the message", asy
   assertEquals(error.message.includes("tap-token"), false);
 });
 
-Deno.test("publish: GITHUB_REPOSITORY never redirects the write; GITHUB_TOKEN is the token fallback", async () => {
+test("publish: GITHUB_REPOSITORY never redirects the write; GITHUB_TOKEN is the token fallback", async () => {
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await withEnv(
     { GITHUB_REPOSITORY: "acme/app", GITHUB_TOKEN: "env-token" },
@@ -181,7 +182,7 @@ Deno.test("publish: GITHUB_REPOSITORY never redirects the write; GITHUB_TOKEN is
   assertEquals(seen[0].authorization, "Bearer env-token");
 });
 
-Deno.test("publish: required settings, and everything that could leave the tap, are refused before any request", async () => {
+test("publish: required settings, and everything that could leave the tap, are refused before any request", async () => {
   const { fetch, seen } = fake([]);
   const cases: Array<
     [(s: HomebrewPublishSettings) => HomebrewPublishSettings, string]

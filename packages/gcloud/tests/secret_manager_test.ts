@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -30,7 +31,7 @@ function b64(value: string): string {
   return btoa(binary);
 }
 
-Deno.test("access decodes the latest payload of a secret", async () => {
+test("access decodes the latest payload of a secret", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(JSON.stringify({ payload: { data: b64("s3cr3t-ü") } }), {
       status: 200,
@@ -52,7 +53,7 @@ Deno.test("access decodes the latest payload of a secret", async () => {
   );
 });
 
-Deno.test("access honours an explicit version", async () => {
+test("access honours an explicit version", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(JSON.stringify({ payload: { data: b64("v3") } }), {
       status: 200,
@@ -70,7 +71,7 @@ Deno.test("access honours an explicit version", async () => {
   assertStringIncludes(calls[0].url, "/versions/3:access");
 });
 
-Deno.test("access throws when the response carries no payload", async () => {
+test("access throws when the response carries no payload", async () => {
   const { fetch } = fakeFetch(() => new Response("{}", { status: 200 }));
   await assertRejects(
     () => SecretManagerTasks.access("s", { project: "p", token: "t0", fetch }),
@@ -79,7 +80,7 @@ Deno.test("access throws when the response carries no payload", async () => {
   );
 });
 
-Deno.test("access rejects a non-UTF-8 (binary) payload instead of corrupting it", async () => {
+test("access rejects a non-UTF-8 (binary) payload instead of corrupting it", async () => {
   // Base64 of raw bytes that are not valid UTF-8 (e.g. key material).
   let binary = "";
   for (const byte of [0xff, 0xfe, 0x80]) binary += String.fromCharCode(byte);
@@ -96,7 +97,7 @@ Deno.test("access rejects a non-UTF-8 (binary) payload instead of corrupting it"
   );
 });
 
-Deno.test("addVersion creates the secret then adds the version (idempotent on 409)", async () => {
+test("addVersion creates the secret then adds the version (idempotent on 409)", async () => {
   const seen: Array<{ url: string; method: string; body: string }> = [];
   const { fetch } = fakeFetch((url, init) => {
     seen.push({ url, method: init?.method ?? "GET", body: String(init?.body) });
@@ -122,7 +123,7 @@ Deno.test("addVersion creates the secret then adds the version (idempotent on 40
   assertStringIncludes(seen[1].body, b64("hunter2")); // value base64-encoded
 });
 
-Deno.test("addVersion works when the secret is created fresh", async () => {
+test("addVersion works when the secret is created fresh", async () => {
   const { fetch } = fakeFetch((url) =>
     url.includes(":addVersion")
       ? new Response(JSON.stringify({ name: "n" }), { status: 200 })
@@ -138,7 +139,7 @@ Deno.test("addVersion works when the secret is created fresh", async () => {
   );
 });
 
-Deno.test("addVersion propagates a real create failure (non-409)", async () => {
+test("addVersion propagates a real create failure (non-409)", async () => {
   const { fetch } = fakeFetch((url) =>
     url.includes(":addVersion")
       ? new Response("{}", { status: 200 })
@@ -155,7 +156,7 @@ Deno.test("addVersion propagates a real create failure (non-409)", async () => {
   );
 });
 
-Deno.test("the project falls back to the ambient GOOGLE_CLOUD_PROJECT env var", async () => {
+test("the project falls back to the ambient GOOGLE_CLOUD_PROJECT env var", async () => {
   const { fetch } = fakeFetch(() =>
     new Response(JSON.stringify({ payload: { data: b64("x") } }), {
       status: 200,
@@ -173,7 +174,7 @@ Deno.test("the project falls back to the ambient GOOGLE_CLOUD_PROJECT env var", 
   }
 });
 
-Deno.test("the project resolves from the environment, else errors", async () => {
+test("the project resolves from the environment, else errors", async () => {
   const { fetch } = fakeFetch(() =>
     new Response(JSON.stringify({ payload: { data: b64("x") } }), {
       status: 200,

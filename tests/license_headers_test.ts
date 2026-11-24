@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 
 const COPYRIGHT = "Copyright (c) ";
@@ -43,7 +44,7 @@ async function allSources(): Promise<string[]> {
   return files.sort();
 }
 
-Deno.test("every source file carries the copyright and SPDX header", async () => {
+test("every source file carries the copyright and SPDX header", async () => {
   const missing: string[] = [];
   for (const file of await allSources()) {
     // Only the head is inspected: the header belongs at the top (after a

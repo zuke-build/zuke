@@ -13,6 +13,7 @@
  * region and name, has a uid, and remembers the last traffic move made on it.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -179,7 +180,7 @@ function quotedCommand(message: string, lead: string): string[] {
   return splitShellArgs(text);
 }
 
-Deno.test("Cloud Run: staged, stepped, parked, and promoted by a later process", async () => {
+test("Cloud Run: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -203,7 +204,7 @@ Deno.test("Cloud Run: staged, stepped, parked, and promoted by a later process",
   });
 });
 
-Deno.test("Cloud Run: a failed analysis takes the candidate's traffic back", async () => {
+test("Cloud Run: a failed analysis takes the candidate's traffic back", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -214,7 +215,7 @@ Deno.test("Cloud Run: a failed analysis takes the candidate's traffic back", asy
   });
 });
 
-Deno.test("Cloud Run: a revision deployed mid-rollout is never promoted", async () => {
+test("Cloud Run: a revision deployed mid-rollout is never promoted", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -277,7 +278,7 @@ async function recover(message: string): Promise<void> {
   assertEquals(traffic["prod/europe-west1/api"], "api-00001-old=100");
 }
 
-Deno.test("Cloud Run: a resume or cancel configured for another service changes nothing, and says how to recover", async () => {
+test("Cloud Run: a resume or cancel configured for another service changes nothing, and says how to recover", async () => {
   for (const [label, change] of CHANGES) {
     for (const command of ["resume", "cancel"]) {
       fresh();
@@ -310,7 +311,7 @@ Deno.test("Cloud Run: a resume or cancel configured for another service changes 
   }
 });
 
-Deno.test("Cloud Run: a service gcloud now resolves elsewhere is neither promoted nor rolled back", async () => {
+test("Cloud Run: a service gcloud now resolves elsewhere is neither promoted nor rolled back", async () => {
   for (const command of ["resume", "cancel"]) {
     fresh();
     await withStateDir(async (dir) => {
@@ -349,7 +350,7 @@ Deno.test("Cloud Run: a service gcloud now resolves elsewhere is neither promote
   }
 });
 
-Deno.test("Cloud Run: a rollback run by hand goes to the configured stable revision", async () => {
+test("Cloud Run: a rollback run by hand goes to the configured stable revision", async () => {
   fresh();
   stable = "api-00001-old";
   await withStateDir(async () => {
@@ -359,7 +360,7 @@ Deno.test("Cloud Run: a rollback run by hand goes to the configured stable revis
   });
 });
 
-Deno.test("Cloud Run: a rollback run by hand with no stable revision refuses", async () => {
+test("Cloud Run: a rollback run by hand with no stable revision refuses", async () => {
   // After a promote the tag's route is already at 0 %, so taking it back
   // would change nothing while the summary said "Rolled back".
   fresh();
@@ -371,7 +372,7 @@ Deno.test("Cloud Run: a rollback run by hand with no stable revision refuses", a
   });
 });
 
-Deno.test("Cloud Run: a stage that fails on its own settings rolls nothing back", async () => {
+test("Cloud Run: a stage that fails on its own settings rolls nothing back", async () => {
   // A bad setting fails stage before it touches the service; the engine's
   // inline rollback must not then send production to the stable revision.
   fresh();

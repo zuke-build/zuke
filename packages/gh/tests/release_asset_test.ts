@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -89,7 +90,7 @@ async function assetFixture(dir: string): Promise<string> {
   return path;
 }
 
-Deno.test("an asset is uploaded to the latest release's upload host", async () => {
+test("an asset is uploaded to the latest release's upload host", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -117,7 +118,7 @@ Deno.test("an asset is uploaded to the latest release's upload host", async () =
   });
 });
 
-Deno.test("a tag setting resolves that release instead of latest", async () => {
+test("a tag setting resolves that release instead of latest", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -129,7 +130,7 @@ Deno.test("a tag setting resolves that release instead of latest", async () => {
   });
 });
 
-Deno.test("an asset the release already carries is kept, not re-sent", async () => {
+test("an asset the release already carries is kept, not re-sent", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -144,7 +145,7 @@ Deno.test("an asset the release already carries is kept, not re-sent", async () 
   });
 });
 
-Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () => {
+test("a stuck asset (state not uploaded) is deleted and re-sent", async () => {
   // GitHub's documented failure mode: an errored/interrupted upload reserves
   // the asset name in a non-`uploaded` state. Skipping it would leave the
   // release serving a corpse forever — the one case a re-run must repair.
@@ -188,7 +189,7 @@ Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () 
   });
 });
 
-Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async () => {
+test("a failed deletion of a stuck asset surfaces, a 404 does not", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const github = (deleteStatus: number): typeof fetch => async (i, init) => {
@@ -230,7 +231,7 @@ async function digestOf(data: Uint8Array<ArrayBuffer>): Promise<string> {
   return `sha256:${hex}`;
 }
 
-Deno.test("refresh replaces an asset whose digest differs", async () => {
+test("refresh replaces an asset whose digest differs", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const file = await assetFixture(dir);
@@ -277,7 +278,7 @@ Deno.test("refresh replaces an asset whose digest differs", async () => {
   }
 });
 
-Deno.test("refresh keeps an asset whose digest matches the file", async () => {
+test("refresh keeps an asset whose digest matches the file", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const file = await assetFixture(dir);
@@ -312,7 +313,7 @@ Deno.test("refresh keeps an asset whose digest matches the file", async () => {
   }
 });
 
-Deno.test("refresh keeps an asset whose digest the API does not report", async () => {
+test("refresh keeps an asset whose digest the API does not report", async () => {
   // Without a comparison to trust, replacing would churn the release's
   // assets on every run — the exact thing the default protects against.
   const dir = await Deno.makeTempDir();
@@ -330,7 +331,7 @@ Deno.test("refresh keeps an asset whose digest the API does not report", async (
   }
 });
 
-Deno.test("a repository with no releases reports no-release, not an error", async () => {
+test("a repository with no releases reports no-release, not an error", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const result = await GhTasks.uploadReleaseAsset((s) =>
@@ -341,7 +342,7 @@ Deno.test("a repository with no releases reports no-release, not an error", asyn
   });
 });
 
-Deno.test("a missing tag IS an error — the caller named a release", async () => {
+test("a missing tag IS an error — the caller named a release", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     await assertRejects(
@@ -356,7 +357,7 @@ Deno.test("a missing tag IS an error — the caller named a release", async () =
   });
 });
 
-Deno.test("the name, content type, and their defaults follow the file", async () => {
+test("the name, content type, and their defaults follow the file", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -369,7 +370,7 @@ Deno.test("the name, content type, and their defaults follow the file", async ()
   });
 });
 
-Deno.test("missing settings fail with messages that name the fix", async () => {
+test("missing settings fail with messages that name the fix", async () => {
   await assertRejects(
     () => GhTasks.uploadReleaseAsset((s) => s.repo("a/b").token("t")),
     Error,
@@ -397,7 +398,7 @@ Deno.test("missing settings fail with messages that name the fix", async () => {
   );
 });
 
-Deno.test("the token and repo default to the Actions environment", async () => {
+test("the token and repo default to the Actions environment", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     await withEnv(
@@ -415,7 +416,7 @@ Deno.test("the token and repo default to the Actions environment", async () => {
   });
 });
 
-Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
+test("a GHES base URL is honored, trailing slash and all", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -432,7 +433,7 @@ Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
   });
 });
 
-Deno.test("a name that cannot be derived from the file asks for .name(...)", async () => {
+test("a name that cannot be derived from the file asks for .name(...)", async () => {
   await assertRejects(
     () =>
       GhTasks.uploadReleaseAsset((s) =>
@@ -443,7 +444,7 @@ Deno.test("a name that cannot be derived from the file asks for .name(...)", asy
   );
 });
 
-Deno.test("malformed release responses fail with what came back", async () => {
+test("malformed release responses fail with what came back", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const answering = (body: string): typeof fetch => async () => {
@@ -487,7 +488,7 @@ Deno.test("malformed release responses fail with what came back", async () => {
   });
 });
 
-Deno.test("a repository that is not owner/name is refused before anything is sent", async () => {
+test("a repository that is not owner/name is refused before anything is sent", async () => {
   // The slug is interpolated into the release lookup's path, so `..` in it
   // would send a `contents: write` token somewhere the caller never named. The
   // repo-relative calls route through the shared caller, which checks it.
@@ -503,7 +504,7 @@ Deno.test("a repository that is not owner/name is refused before anything is sen
   );
 });
 
-Deno.test("an upload rejection surfaces GitHub's own message", async () => {
+test("an upload rejection surfaces GitHub's own message", async () => {
   await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const failing: typeof fetch = async (input) => {

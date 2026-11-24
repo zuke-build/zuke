@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -24,7 +25,7 @@ import {
   DenoTestSettings,
 } from "../mod.ts";
 
-Deno.test("run: script, permissions, config, reload, script args", () => {
+test("run: script, permissions, config, reload, script args", () => {
   const argv = new DenoRunSettings()
     .allowAll()
     .frozen()
@@ -47,7 +48,7 @@ Deno.test("run: script, permissions, config, reload, script args", () => {
   ]);
 });
 
-Deno.test("run: scoped permissions render as --allow-<perm>=<values>", () => {
+test("run: scoped permissions render as --allow-<perm>=<values>", () => {
   const argv = new DenoRunSettings()
     .allow("read", "a.txt", "b.txt")
     .allow("net")
@@ -62,7 +63,7 @@ Deno.test("run: scoped permissions render as --allow-<perm>=<values>", () => {
   ]);
 });
 
-Deno.test("run: .script() is required", () => {
+test("run: .script() is required", () => {
   assertThrows(
     () => new DenoRunSettings().argv(),
     Error,
@@ -70,7 +71,7 @@ Deno.test("run: .script() is required", () => {
   );
 });
 
-Deno.test("test: coverage, filter, parallel, fail-fast, paths", () => {
+test("test: coverage, filter, parallel, fail-fast, paths", () => {
   const argv = new DenoTestSettings()
     .allowAll()
     .frozen()
@@ -95,11 +96,11 @@ Deno.test("test: coverage, filter, parallel, fail-fast, paths", () => {
   ]);
 });
 
-Deno.test("test: bare invocation is just `test`", () => {
+test("test: bare invocation is just `test`", () => {
   assertEquals(new DenoTestSettings().argv().slice(1), ["test"]);
 });
 
-Deno.test("check: paths are required", () => {
+test("check: paths are required", () => {
   assertThrows(
     () => new DenoCheckSettings().argv(),
     Error,
@@ -133,7 +134,7 @@ Deno.test("check: paths are required", () => {
   assertEquals(plain.includes("--no-lock"), false);
 });
 
-Deno.test("fmt: optional --check and paths", () => {
+test("fmt: optional --check and paths", () => {
   assertEquals(new DenoFmtSettings().argv().slice(1), ["fmt"]);
   assertEquals(
     new DenoFmtSettings().check().paths("src/").argv().slice(1),
@@ -141,7 +142,7 @@ Deno.test("fmt: optional --check and paths", () => {
   );
 });
 
-Deno.test("lint: optional --fix and paths", () => {
+test("lint: optional --fix and paths", () => {
   assertEquals(new DenoLintSettings().argv().slice(1), ["lint"]);
   assertEquals(
     new DenoLintSettings().fix().paths("src/").argv().slice(1),
@@ -149,11 +150,11 @@ Deno.test("lint: optional --fix and paths", () => {
   );
 });
 
-Deno.test("doc: bare invocation is just `doc`", () => {
+test("doc: bare invocation is just `doc`", () => {
   assertEquals(new DenoDocSettings().argv().slice(1), ["doc"]);
 });
 
-Deno.test("doc: flags precede the source paths", () => {
+test("doc: flags precede the source paths", () => {
   assertEquals(
     new DenoDocSettings()
       .json()
@@ -179,7 +180,7 @@ Deno.test("doc: flags precede the source paths", () => {
   );
 });
 
-Deno.test("doc: HTML output options", () => {
+test("doc: HTML output options", () => {
   assertEquals(
     new DenoDocSettings()
       .html()
@@ -202,7 +203,7 @@ Deno.test("doc: HTML output options", () => {
   );
 });
 
-Deno.test("cache: paths required, optional --reload", () => {
+test("cache: paths required, optional --reload", () => {
   assertThrows(
     () => new DenoCacheSettings().argv(),
     Error,
@@ -218,7 +219,7 @@ Deno.test("cache: paths required, optional --reload", () => {
   );
 });
 
-Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
+test("coverage: dir, --lcov, --output, --exclude", () => {
   assertEquals(
     new DenoCoverageSettings()
       .dir("cov_profile")
@@ -237,7 +238,7 @@ Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
   );
 });
 
-Deno.test("coverage: a threshold forces --lcov and stays off the argv", () => {
+test("coverage: a threshold forces --lcov and stays off the argv", () => {
   const s = new DenoCoverageSettings().dir("cov_profile").threshold(95);
   // The threshold is enforced by the task, not a `deno coverage` flag.
   assertEquals(s.argv().slice(1), ["coverage", "cov_profile", "--lcov"]);
@@ -248,14 +249,14 @@ Deno.test("coverage: a threshold forces --lcov and stays off the argv", () => {
   });
 });
 
-Deno.test("coverage: line and branch thresholds can differ", () => {
+test("coverage: line and branch thresholds can differ", () => {
   const s = new DenoCoverageSettings().linesThreshold(90).branchesThreshold(80);
   assertEquals(s.thresholds, { lines: 90, branches: 80, perFile: undefined });
   assertEquals(s.outputPath, undefined);
   assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
 });
 
-Deno.test("coverage: a per-file floor alone forces --lcov and is exposed", () => {
+test("coverage: a per-file floor alone forces --lcov and is exposed", () => {
   const s = new DenoCoverageSettings().perFileThreshold(50);
   assertEquals(s.thresholds, {
     lines: undefined,
@@ -266,7 +267,7 @@ Deno.test("coverage: a per-file floor alone forces --lcov and is exposed", () =>
   assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
 });
 
-Deno.test("task: name required, then task args", () => {
+test("task: name required, then task args", () => {
   assertThrows(
     () => new DenoTaskSettings().argv(),
     Error,
@@ -282,7 +283,7 @@ Deno.test("task: name required, then task args", () => {
   );
 });
 
-Deno.test("the default binary is the deno running here, not this process", () => {
+test("the default binary is the deno running here, not this process", () => {
   // Under `deno test` the two are the same, which is the point: the wrapper
   // spawns the Deno running the build. The distinction that matters is that it
   // asks `denoExecutable` rather than spawning its own executable — a compiled
@@ -291,7 +292,7 @@ Deno.test("the default binary is the deno running here, not this process", () =>
   assertEquals(new DenoTestSettings().argv()[0], Deno.execPath());
 });
 
-Deno.test("DenoTasks.run executes a script for real", async () => {
+test("DenoTasks.run executes a script for real", async () => {
   const dir = await Deno.makeTempDir();
   const file = `${dir}/hello.ts`;
   try {
@@ -304,7 +305,7 @@ Deno.test("DenoTasks.run executes a script for real", async () => {
   }
 });
 
-Deno.test("DenoTasks.check executes against a real file", async () => {
+test("DenoTasks.check executes against a real file", async () => {
   const dir = await Deno.makeTempDir();
   const file = `${dir}/ok.ts`;
   try {
@@ -316,7 +317,7 @@ Deno.test("DenoTasks.check executes against a real file", async () => {
   }
 });
 
-Deno.test("install: global executable from an npm module, with perms", () => {
+test("install: global executable from an npm module, with perms", () => {
   const argv = new DenoInstallSettings()
     .global()
     .force()
@@ -350,7 +351,7 @@ Deno.test("install: global executable from an npm module, with perms", () => {
   ]);
 });
 
-Deno.test("run: --frozen sits before the script, after the permissions", () => {
+test("run: --frozen sits before the script, after the permissions", () => {
   assertEquals(
     new DenoRunSettings()
       .allowAll()
@@ -368,11 +369,11 @@ Deno.test("run: --frozen sits before the script, after the permissions", () => {
   );
 });
 
-Deno.test("install: bare run is just the subcommand", () => {
+test("install: bare run is just the subcommand", () => {
   assertEquals(new DenoInstallSettings().argv().slice(1), ["install"]);
 });
 
-Deno.test("publish: bare and all options", () => {
+test("publish: bare and all options", () => {
   assertEquals(new DenoPublishSettings().argv().slice(1), ["publish"]);
   assertEquals(
     new DenoPublishSettings()
@@ -400,7 +401,7 @@ Deno.test("publish: bare and all options", () => {
   );
 });
 
-Deno.test("every remaining DenoTasks function reaches execution", async () => {
+test("every remaining DenoTasks function reaches execution", async () => {
   await assertRejects(() => DenoTasks.test(missingTool), ToolNotFoundError);
   await assertRejects(() => DenoTasks.fmt(missingTool), ToolNotFoundError);
   await assertRejects(() => DenoTasks.lint(missingTool), ToolNotFoundError);
@@ -421,7 +422,7 @@ Deno.test("every remaining DenoTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("the publish token is registered as a secret, and still in argv", () => {
+test("the publish token is registered as a secret, and still in argv", () => {
   // Both halves, because only one can be fixed here. `deno publish` takes the
   // token as a flag and has no environment variable for it — `DENO_AUTH_TOKENS`
   // authenticates module *fetches*, not publishing — so the value reaches the

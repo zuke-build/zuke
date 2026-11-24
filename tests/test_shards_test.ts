@@ -8,6 +8,7 @@
  * is spawned here — `tests/integration/test_shards_test.ts` runs real ones.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -30,27 +31,27 @@ function shard(code: number, result: string, stderr = ""): ShardOutput {
   return { code, stdout: `...\n\n${result} (1s)\n`, stderr };
 }
 
-Deno.test("partition: files are dealt round-robin, in order", () => {
+test("partition: files are dealt round-robin, in order", () => {
   assertEquals(
     partitionShards(["a", "b", "c", "d", "e"], 2),
     [["a", "c", "e"], ["b", "d"]],
   );
 });
 
-Deno.test("partition: never more shards than files, never an empty one", () => {
+test("partition: never more shards than files, never an empty one", () => {
   assertEquals(partitionShards(["a", "b"], 8), [["a"], ["b"]]);
   assertEquals(partitionShards([], 4), []);
   assertEquals(partitionShards(["a", "b"], 0), [["a", "b"]]);
 });
 
-Deno.test("shardCount: one per CPU, at least one, at most eight", () => {
+test("shardCount: one per CPU, at least one, at most eight", () => {
   assertEquals(shardCount(4), 4);
   assertEquals(shardCount(0), 1);
   assertEquals(shardCount(64), 8);
   assertEquals(shardCount() >= 1, true);
 });
 
-Deno.test("discover: every *_test.ts, sorted, never inside node_modules", async () => {
+test("discover: every *_test.ts, sorted, never inside node_modules", async () => {
   await withTemp(async (dir) => {
     for (
       const path of [
@@ -102,13 +103,13 @@ async function denoDiscoverable(dir: string): Promise<string[]> {
   return found;
 }
 
-Deno.test("discover: a directory gone before it is read holds no test", async () => {
+test("discover: a directory gone before it is read holds no test", async () => {
   const dir = await Deno.makeTempDir();
   await Deno.remove(dir);
   assertEquals(await denoDiscoverable(dir), []);
 });
 
-Deno.test("discover: no file deno would run as a test is left out of the shards", async () => {
+test("discover: no file deno would run as a test is left out of the shards", async () => {
   // The shards run explicit file lists, so a test module named another way
   // deno accepts (`foo.test.ts`, `test.ts`) would run under a plain
   // `deno test` but silently in no shard. Rename it to `*_test.ts`.
@@ -117,7 +118,7 @@ Deno.test("discover: no file deno would run as a test is left out of the shards"
   assertEquals(missing, [], "rename these to *_test.ts");
 });
 
-Deno.test("runShards: prints each shard in order and sums the counts", async () => {
+test("runShards: prints each shard in order and sums the counts", async () => {
   const printed: string[] = [];
   const outputs = [
     shard(0, "ok | 3 passed | 0 failed | 1 ignored"),
@@ -140,7 +141,7 @@ Deno.test("runShards: prints each shard in order and sums the counts", async () 
   assertStringIncludes(printed[3], "2 passed");
 });
 
-Deno.test("runShards: a failing shard fails the run after every shard printed", async () => {
+test("runShards: a failing shard fails the run after every shard printed", async () => {
   const printed: string[] = [];
   const outputs = [
     shard(1, "FAILED | 1 passed | 2 failed", "error: Test failed"),
@@ -164,7 +165,7 @@ Deno.test("runShards: a failing shard fails the run after every shard printed", 
   assertEquals(printed[2], "── test shard 2/2 ──"); // the passing shard printed too
 });
 
-Deno.test("runShards: a shard that crashed before its result line still fails", async () => {
+test("runShards: a shard that crashed before its result line still fails", async () => {
   const printed: string[] = [];
   let attempts = 0;
   await assertRejects(
@@ -197,7 +198,7 @@ const DIED: ShardOutput = {
   stderr: "error: No such file or directory (os error 2)\n",
 };
 
-Deno.test("runShards: a shard whose deno died before testing is run again", async () => {
+test("runShards: a shard whose deno died before testing is run again", async () => {
   const printed: string[] = [];
   const seen: string[][] = [];
   const counts = await runShards(
@@ -222,7 +223,7 @@ Deno.test("runShards: a shard whose deno died before testing is run again", asyn
   assertStringIncludes(printed[3], "2 passed");
 });
 
-Deno.test("runShards: a shard that started a test file is never run again", async () => {
+test("runShards: a shard that started a test file is never run again", async () => {
   // The colour codes deno prints are no disguise for its start line.
   const grey = "\x1b[0m\x1b[38;5;245m";
   const started: ShardOutput = {
@@ -244,7 +245,7 @@ Deno.test("runShards: a shard that started a test file is never run again", asyn
   assertStringIncludes(error.message, "Shard(s) 1 exited before printing");
 });
 
-Deno.test("runShards: a shard that printed its result line is never run again", async () => {
+test("runShards: a shard that printed its result line is never run again", async () => {
   let attempts = 0;
   await assertRejects(
     () =>
@@ -258,7 +259,7 @@ Deno.test("runShards: a shard that printed its result line is never run again", 
   assertEquals(attempts, 1);
 });
 
-Deno.test("the hermetic env blanks the job's summary and remote cache", () => {
+test("the hermetic env blanks the job's summary and remote cache", () => {
   // A ci job with the action's `actions-cache` input, and a developer's own
   // remote cache: either would hand every test build a remote cache, so a
   // target with declared inputs restores another test's outputs and skips its
@@ -277,7 +278,7 @@ Deno.test("the hermetic env blanks the job's summary and remote cache", () => {
   assertEquals(hermetic.GITHUB_STEP_SUMMARY, "");
 });
 
-Deno.test("pruneEmptyProfiles: drops the zero-byte profiles and keeps the rest", async () => {
+test("pruneEmptyProfiles: drops the zero-byte profiles and keeps the rest", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/full.json`, "{}");
     await Deno.writeTextFile(`${dir}/cut-off.json`, "");

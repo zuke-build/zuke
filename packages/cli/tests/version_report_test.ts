@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   homeRelative,
@@ -8,7 +9,7 @@ import {
   projectLockPath,
 } from "../src/version_report.ts";
 
-Deno.test("lockedCoreVersions reads the core a lock resolves, once per version", () => {
+test("lockedCoreVersions reads the core a lock resolves, once per version", () => {
   const lock = JSON.stringify({
     version: "5",
     specifiers: {
@@ -28,7 +29,7 @@ Deno.test("lockedCoreVersions reads the core a lock resolves, once per version",
   assertEquals(lockedCoreVersions(split), ["0.9.4", "1.66.0"]);
 });
 
-Deno.test("lockedCoreVersions is empty for a lock without core, or not a lock", () => {
+test("lockedCoreVersions is empty for a lock without core, or not a lock", () => {
   assertEquals(
     lockedCoreVersions(JSON.stringify({ specifiers: { "npm:x@1": "1.0.0" } })),
     [],
@@ -36,7 +37,7 @@ Deno.test("lockedCoreVersions is empty for a lock without core, or not a lock", 
   assertEquals(lockedCoreVersions("not json"), []);
 });
 
-Deno.test("homeRelative writes home as ~, and only a whole leading directory", () => {
+test("homeRelative writes home as ~, and only a whole leading directory", () => {
   assertEquals(
     homeRelative("/home/me/work/app", "/home/me", false),
     "~/work/app",
@@ -57,7 +58,7 @@ Deno.test("homeRelative writes home as ~, and only a whole leading directory", (
   assertEquals(homeRelative("/Home/me/app", "/home/me", false), "/Home/me/app");
 });
 
-Deno.test("homeRelative matches a Windows home given with backslashes, ignoring case", () => {
+test("homeRelative matches a Windows home given with backslashes, ignoring case", () => {
   if (Deno.build.os !== "windows") return; // absolutePath reads Windows paths only there.
   assertEquals(
     homeRelative("C:/Users/Me/proj", "C:\\Users\\me", true),
@@ -69,7 +70,7 @@ Deno.test("homeRelative matches a Windows home given with backslashes, ignoring 
   );
 });
 
-Deno.test("lockedCoreVersions drops a resolved value that is not a release version", () => {
+test("lockedCoreVersions drops a resolved value that is not a release version", () => {
   const lock = JSON.stringify({
     specifiers: {
       "jsr:@zuke/core@^1": "1.2.3\n::error::forged",
@@ -80,7 +81,7 @@ Deno.test("lockedCoreVersions drops a resolved value that is not a release versi
   assertEquals(lockedCoreVersions(lock), ["3.0.0-rc.1"]);
 });
 
-Deno.test("projectLockPath follows Deno's lock setting", () => {
+test("projectLockPath follows Deno's lock setting", () => {
   const root = "/work/app";
   assertEquals(projectLockPath(root, undefined), "/work/app/deno.lock");
   assertEquals(projectLockPath(root, "{}"), "/work/app/deno.lock");
@@ -103,7 +104,7 @@ Deno.test("projectLockPath follows Deno's lock setting", () => {
   assertEquals(projectLockPath(root, "[]"), "/work/app/deno.lock");
 });
 
-Deno.test("projectLockPath keeps an absolute lock path as it is", () => {
+test("projectLockPath keeps an absolute lock path as it is", () => {
   if (Deno.build.os === "windows") return; // "/x" has no drive there.
   assertEquals(
     projectLockPath("/work/app", '{"lock": "/elsewhere/z.lock"}'),
@@ -111,7 +112,7 @@ Deno.test("projectLockPath keeps an absolute lock path as it is", () => {
   );
 });
 
-Deno.test("projectLockPath reads a config the way Deno does, comments and trailing commas included", () => {
+test("projectLockPath reads a config the way Deno does, comments and trailing commas included", () => {
   const root = "/work/app";
   // A commented config with no lock setting keeps deno.lock, as before.
   assertEquals(
@@ -136,7 +137,7 @@ Deno.test("projectLockPath reads a config the way Deno does, comments and traili
   assertEquals(projectLockPath(root, '{"a": 1,, "lock": false}'), null);
 });
 
-Deno.test("projectLockPath refuses to guess at a config it cannot parse", () => {
+test("projectLockPath refuses to guess at a config it cannot parse", () => {
   assertEquals(projectLockPath("/work/app", '{ "lock": false'), null);
   assertEquals(projectLockPath("/work/app", '{ "lock": false, /* open'), null);
   assertEquals(projectLockPath("/work/app", "[1,"), null);

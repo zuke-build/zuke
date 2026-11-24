@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -33,13 +34,13 @@ import {
   DartVersionSettings,
 } from "../mod.ts";
 
-Deno.test("dart resolves its binary from PATH", async () => {
+test("dart resolves its binary from PATH", async () => {
   await assertWrapperConformance(() => new DartAnalyzeSettings(), "dart", {
     resolution: "path",
   });
 });
 
-Deno.test("analyze: flags before path operands, dashed paths made safe", () => {
+test("analyze: flags before path operands, dashed paths made safe", () => {
   assertEquals(new DartAnalyzeSettings().argv(), ["dart", "analyze"]);
   assertEquals(
     new DartAnalyzeSettings().path("lib").path("-x").fatalInfos()
@@ -59,7 +60,7 @@ Deno.test("analyze: flags before path operands, dashed paths made safe", () => {
   );
 });
 
-Deno.test("format: every flag renders, then paths; no path means the current directory", () => {
+test("format: every flag renders, then paths; no path means the current directory", () => {
   // Bare `dart format` reads stdin, which in CI is empty and passes vacuously.
   assertEquals(new DartFormatSettings().argv(), ["dart", "format", "."]);
   assertEquals(
@@ -98,7 +99,7 @@ Deno.test("format: every flag renders, then paths; no path means the current dir
   );
 });
 
-Deno.test("test: every flag renders, then paths", () => {
+test("test: every flag renders, then paths", () => {
   assertEquals(
     new DartTestSettings().path("test/a_test.dart").path("--fail-fast")
       .name("^a").plainName("b").tags("fast").excludeTags("slow")
@@ -149,7 +150,7 @@ Deno.test("test: every flag renders, then paths", () => {
   );
 });
 
-Deno.test("test: concurrency and shard numbers are validated", () => {
+test("test: concurrency and shard numbers are validated", () => {
   assertThrows(
     () => new DartTestSettings().concurrency(0),
     Error,
@@ -177,7 +178,7 @@ Deno.test("test: concurrency and shard numbers are validated", () => {
   );
 });
 
-Deno.test("compile: target, flags, VM flags, then the required entry", () => {
+test("compile: target, flags, VM flags, then the required entry", () => {
   assertEquals(
     new DartCompileSettings("exe").output("build/app").targetOs("linux")
       .saveDebuggingInfo("build/app.sym").depfile("build/app.d")
@@ -229,7 +230,7 @@ Deno.test("compile: target, flags, VM flags, then the required entry", () => {
   );
 });
 
-Deno.test("compile: a setter the target's grammar lacks is refused", () => {
+test("compile: a setter the target's grammar lacks is refused", () => {
   // One rejected setter per target, from the SDK's own option tables.
   const rejected: Array<[DartCompileTarget, (s: DartCompileSettings) => void]> =
     [
@@ -286,7 +287,7 @@ const TASK_NAME: Record<DartCompileTarget, string> = {
   wasm: "compileWasm",
 };
 
-Deno.test("run: VM flags, then the entry; .args() lands after it", () => {
+test("run: VM flags, then the entry; .args() lands after it", () => {
   assertEquals(new DartRunSettings().argv(), ["dart", "run"]);
   // --observe and --enable-vm-service take a value, so it is attached with
   // `=`: a bare flag would consume the entry point as its value.
@@ -316,7 +317,7 @@ Deno.test("run: VM flags, then the entry; .args() lands after it", () => {
   ]);
 });
 
-Deno.test("pub: get, upgrade, downgrade, outdated, deps, publish", () => {
+test("pub: get, upgrade, downgrade, outdated, deps, publish", () => {
   assertEquals(new DartPubGetSettings().argv(), ["dart", "pub", "get"]);
   assertEquals(
     new DartPubGetSettings().offline().enforceLockfile().dryRun()
@@ -397,7 +398,7 @@ Deno.test("pub: get, upgrade, downgrade, outdated, deps, publish", () => {
   );
 });
 
-Deno.test("pub: add and remove need a package and refuse dashed names", () => {
+test("pub: add and remove need a package and refuse dashed names", () => {
   assertEquals(
     new DartPubPackagesSettings("add").offline().dryRun().package("http:^1.2.0")
       .package("dev:mocktail").argv(),
@@ -433,7 +434,7 @@ Deno.test("pub: add and remove need a package and refuse dashed names", () => {
   );
 });
 
-Deno.test("create, doc and fix: flags, then the directory", () => {
+test("create, doc and fix: flags, then the directory", () => {
   assertEquals(
     new DartCreateSettings().template("cli").noPub().force().dir("-app").argv(),
     ["dart", "create", "--template", "cli", "--no-pub", "--force", "./-app"],
@@ -465,7 +466,7 @@ Deno.test("create, doc and fix: flags, then the directory", () => {
   );
 });
 
-Deno.test("info and version", () => {
+test("info and version", () => {
   assertEquals(new DartInfoSettings().argv(), ["dart", "info"]);
   assertEquals(new DartInfoSettings().noRemoveFilePaths().argv(), [
     "dart",
@@ -475,7 +476,7 @@ Deno.test("info and version", () => {
   assertEquals(new DartVersionSettings().argv(), ["dart", "--version"]);
 });
 
-Deno.test("DartTasks: every task reaches execution with its subcommand", async () => {
+test("DartTasks: every task reaches execution with its subcommand", async () => {
   const seen: string[][] = [];
   // Records the argv each task built, then points it at a binary that cannot exist.
   const probe = <S extends { argv(): string[] }>(s: S): S => {

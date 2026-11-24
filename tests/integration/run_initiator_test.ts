@@ -14,6 +14,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -55,7 +56,7 @@ class Simple extends Build {
   deploy = target().description("Deploy").executes(() => {});
 }
 
-Deno.test("a run records who started it, beside its last writer", async () => {
+test("a run records who started it, beside its last writer", async () => {
   await withStateDir(async (dir) => {
     const { code } = await runCli(Simple, [
       "deploy",
@@ -73,7 +74,7 @@ Deno.test("a run records who started it, beside its last writer", async () => {
   });
 });
 
-Deno.test("--actor-kind states a service claim", async () => {
+test("--actor-kind states a service claim", async () => {
   await withStateDir(async (dir) => {
     const { code } = await runCli(Simple, [
       "deploy",
@@ -89,7 +90,7 @@ Deno.test("--actor-kind states a service claim", async () => {
   });
 });
 
-Deno.test("a typo in --actor-kind fails the run rather than defaulting", async () => {
+test("a typo in --actor-kind fails the run rather than defaulting", async () => {
   // An explicit flag was typed by someone who meant something by it, so a
   // misspelling is an error — unlike ZUKE_ACTOR_KIND, which stays lenient
   // because it can arrive from anywhere.
@@ -103,7 +104,7 @@ Deno.test("a typo in --actor-kind fails the run rather than defaulting", async (
   assertStringIncludes(err, "robot");
 });
 
-Deno.test("a resume moves the actor and leaves the initiator alone", async () => {
+test("a resume moves the actor and leaves the initiator alone", async () => {
   // The guarantee the whole field exists for: an engineer starts a deploy, it
   // parks on a gate, and a sweep's service account resumes it. `actor` becomes
   // the sweep; the answer to "whose run is this" must not.
@@ -137,7 +138,7 @@ Deno.test("a resume moves the actor and leaves the initiator alone", async () =>
   });
 });
 
-Deno.test("runs show names the initiator, and runs list filters by it", async () => {
+test("runs show names the initiator, and runs list filters by it", async () => {
   await withStateDir(async (dir) => {
     assertEquals(
       (await runCli(Simple, ["deploy", "--state", "--actor", "engineer-a"]))
@@ -172,7 +173,7 @@ Deno.test("runs show names the initiator, and runs list filters by it", async ()
   });
 });
 
-Deno.test("a resumed run is still found by the person who started it", async () => {
+test("a resumed run is still found by the person who started it", async () => {
   // The filter reads the initiator, not the actor — so a run a sweep has
   // touched is still the engineer's when they go looking for it.
   await withStateDir(async (dir) => {
@@ -211,7 +212,7 @@ Deno.test("a resumed run is still found by the person who started it", async () 
 
 // ---- Regressions from the adversarial review -------------------------------
 
-Deno.test("a legacy record keeps its starter when a resume would erase it", async () => {
+test("a legacy record keeps its starter when a resume would erase it", async () => {
   // A record written before initiators existed still knows who started it — in
   // `actor`, right until a resume overwrites that. Without a backfill the run
   // would silently become the sweep's, which is the exact confusion the field
@@ -266,7 +267,7 @@ Deno.test("a legacy record keeps its starter when a resume would erase it", asyn
   });
 });
 
-Deno.test("--initiator with --limit returns that actor's newest, not nothing", async () => {
+test("--initiator with --limit returns that actor's newest, not nothing", async () => {
   // `--limit` is applied by the store and the initiator filter runs after it,
   // so truncating first would answer "whose runs are among the newest N" —
   // usually none of them — when the question was "this actor's newest N".
@@ -313,7 +314,7 @@ Deno.test("--initiator with --limit returns that actor's newest, not nothing", a
   });
 });
 
-Deno.test("both new flags are in the CLI surface", async () => {
+test("both new flags are in the CLI surface", async () => {
   // They drive `--list --json` and the generated shell completions, so a flag
   // missing from the registry is invisible to every tool that reads it.
   const { code, out } = await runCli(Simple, ["--list", "--json"]);

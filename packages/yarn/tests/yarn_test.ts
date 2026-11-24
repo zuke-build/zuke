@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -20,11 +21,11 @@ import {
   YarnTasks,
 } from "../src/yarn.ts";
 
-Deno.test("the default binary is yarn", () => {
+test("the default binary is yarn", () => {
   assertEquals(new YarnInstallSettings().argv()[0], "yarn");
 });
 
-Deno.test("install: bare, --immutable (Berry), --frozen-lockfile (Classic)", () => {
+test("install: bare, --immutable (Berry), --frozen-lockfile (Classic)", () => {
   assertEquals(new YarnInstallSettings().argv().slice(1), ["install"]);
   assertEquals(
     new YarnInstallSettings().immutable().frozenLockfile().argv().slice(1),
@@ -32,7 +33,7 @@ Deno.test("install: bare, --immutable (Berry), --frozen-lockfile (Classic)", () 
   );
 });
 
-Deno.test("add: packages required; --dev, --exact", () => {
+test("add: packages required; --dev, --exact", () => {
   assertThrows(
     () => new YarnAddSettings().argv(),
     Error,
@@ -49,7 +50,7 @@ Deno.test("add: packages required; --dev, --exact", () => {
   );
 });
 
-Deno.test("remove: names required", () => {
+test("remove: names required", () => {
   assertThrows(
     () => new YarnRemoveSettings().argv(),
     Error,
@@ -61,7 +62,7 @@ Deno.test("remove: names required", () => {
   );
 });
 
-Deno.test("run: script required; forwarded args", () => {
+test("run: script required; forwarded args", () => {
   assertThrows(
     () => new YarnRunSettings().argv(),
     Error,
@@ -75,7 +76,7 @@ Deno.test("run: script required; forwarded args", () => {
   );
 });
 
-Deno.test("dlx: command required; --package and forwarded args", () => {
+test("dlx: command required; --package and forwarded args", () => {
   assertThrows(
     () => new YarnDlxSettings().argv(),
     Error,
@@ -92,7 +93,7 @@ Deno.test("dlx: command required; --package and forwarded args", () => {
   );
 });
 
-Deno.test("every YarnTasks function reaches execution", async () => {
+test("every YarnTasks function reaches execution", async () => {
   await assertRejects(() => YarnTasks.install(missingTool), ToolNotFoundError);
   await assertRejects(
     () => YarnTasks.add((s) => missingTool(s).packages("x")),
@@ -112,7 +113,7 @@ Deno.test("every YarnTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("yarn: conforms to the wrapper contract", async () => {
+test("yarn: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new YarnInstallSettings(), "yarn", {
     resolution: "path",
   });

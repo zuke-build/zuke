@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -31,7 +32,7 @@ function read(net: typeof fetch, sleeps: number[] = []) {
   );
 }
 
-Deno.test("transport: a transient status is retried with a doubling delay", async () => {
+test("transport: a transient status is retried with a doubling delay", async () => {
   for (const code of [429, 502, 503, 504]) {
     const net = routes({
       [`GET ${STATUS_URL}`]: [
@@ -47,7 +48,7 @@ Deno.test("transport: a transient status is retried with a doubling delay", asyn
   }
 });
 
-Deno.test("transport: the retries run out into the refusal", async () => {
+test("transport: the retries run out into the refusal", async () => {
   const net = fakeFetch(() => new Response("still busy", { status: 503 }));
   const sleeps: number[] = [];
   const error = await assertRejects(
@@ -75,14 +76,14 @@ Deno.test("transport: the retries run out into the refusal", async () => {
   assertEquals(long.at(-1), 30000);
 });
 
-Deno.test("transport: a client error is not retried", async () => {
+test("transport: a client error is not retried", async () => {
   const net = fakeFetch(() => new Response("", { status: 404 }));
   const error = await assertRejects(() => read(net), SignPathApiError);
   assertEquals(net.sent.length, 1);
   assertEquals(error instanceof SignPathApiError && error.detail, undefined);
 });
 
-Deno.test("transport: a network error is retried for a read, then reported scrubbed", async () => {
+test("transport: a network error is retried for a read, then reported scrubbed", async () => {
   let calls = 0;
   const flaky = fakeFetch(() => {
     calls++;
@@ -115,7 +116,7 @@ Deno.test("transport: a network error is retried for a read, then reported scrub
   );
 });
 
-Deno.test("transport: a call that times out says so", async () => {
+test("transport: a call that times out says so", async () => {
   const hang = fakeFetch((request) =>
     new Promise((_resolve, reject) => {
       request.signal?.addEventListener("abort", () => reject(new Error("x")));
@@ -132,7 +133,7 @@ Deno.test("transport: a call that times out says so", async () => {
   );
 });
 
-Deno.test("transport: an answer whose body stalls past the timeout says so", async () => {
+test("transport: an answer whose body stalls past the timeout says so", async () => {
   const stall = fakeFetch((request) =>
     new Response(
       new ReadableStream({
@@ -156,7 +157,7 @@ Deno.test("transport: an answer whose body stalls past the timeout says so", asy
   );
 });
 
-Deno.test("transport: an API redirect is refused, never followed", async () => {
+test("transport: an API redirect is refused, never followed", async () => {
   const net = fakeFetch(() =>
     new Response(null, {
       status: 302,
@@ -171,12 +172,12 @@ Deno.test("transport: an API redirect is refused, never followed", async () => {
   assertEquals(net.sent.length, 1);
 });
 
-Deno.test("transport: an oversized answer is refused", async () => {
+test("transport: an oversized answer is refused", async () => {
   const net = fakeFetch(() => new Response("x".repeat(1024 * 1024 + 1)));
   await assertRejects(() => read(net), SignPathRequestError, "larger than");
 });
 
-Deno.test("transport: a refusal's detail comes from the documented fields, capped", async () => {
+test("transport: a refusal's detail comes from the documented fields, capped", async () => {
   const cases: Array<[unknown, string | undefined]> = [
     [{ detail: "the detail" }, "the detail"],
     [{ title: "the title" }, "the title"],

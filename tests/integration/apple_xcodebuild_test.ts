@@ -19,6 +19,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
@@ -102,7 +103,7 @@ function iosRelease(
   };
 }
 
-Deno.test({
+test({
   name: "xcodebuild: a build archives, writes export options, then exports",
   ignore: Deno.build.os === "windows",
   fn: () =>
@@ -147,7 +148,7 @@ Deno.test({
     }),
 });
 
-Deno.test({
+test({
   name: "xcodebuild: a failed archive fails the run before exporting",
   ignore: Deno.build.os === "windows",
   fn: () =>
@@ -188,7 +189,7 @@ function serveAppStoreConnect(calls: string[]): Deno.HttpServer<Deno.NetAddr> {
   );
 }
 
-Deno.test({
+test({
   name: "TestFlight: profile, archive, upload and distribute in one build",
   ignore: Deno.build.os === "windows",
   fn: () =>

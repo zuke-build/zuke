@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -10,11 +11,11 @@ import {
 import { GhApiSettings } from "../src/api_command.ts";
 import { GhTasks } from "../src/gh.ts";
 
-Deno.test("gh api: the minimal call is just the endpoint", () => {
+test("gh api: the minimal call is just the endpoint", () => {
   assertEquals(new GhApiSettings("user").argv(), ["gh", "api", "user"]);
 });
 
-Deno.test("gh api: starring a repository is a PUT with no body", () => {
+test("gh api: starring a repository is a PUT with no body", () => {
   const argv = new GhApiSettings("user/starred/zuke-build/zuke")
     .method("PUT")
     .silent()
@@ -29,7 +30,7 @@ Deno.test("gh api: starring a repository is a PUT with no body", () => {
   ]);
 });
 
-Deno.test("gh api: fields, headers, and jq render in call order", () => {
+test("gh api: fields, headers, and jq render in call order", () => {
   const argv = new GhApiSettings("repos/acme/app/issues")
     .method("POST")
     .rawField("title", "Bug")
@@ -54,13 +55,13 @@ Deno.test("gh api: fields, headers, and jq render in call order", () => {
   ]);
 });
 
-Deno.test("gh api conforms as a PATH-resolved gh wrapper", async () => {
+test("gh api conforms as a PATH-resolved gh wrapper", async () => {
   await assertWrapperConformance(() => new GhApiSettings("user"), "gh", {
     resolution: "path",
   });
 });
 
-Deno.test("GhTasks.api reaches execution", async () => {
+test("GhTasks.api reaches execution", async () => {
   await assertRejects(
     () =>
       GhTasks.api(

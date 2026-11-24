@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { S3CacheStore } from "../src/s3_cache.ts";
 import { signSigV4 } from "../src/aws_sigv4.ts";
@@ -50,7 +51,7 @@ const store = (fetchFn: typeof fetch, sessionToken?: string) =>
     now: () => NOW,
   });
 
-Deno.test("S3CacheStore.get signs the request and returns the bytes", async () => {
+test("S3CacheStore.get signs the request and returns the bytes", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(new Blob([new Uint8Array([1, 2, 3])]))
   );
@@ -93,7 +94,7 @@ Deno.test("S3CacheStore.get signs the request and returns the bytes", async () =
   );
 });
 
-Deno.test("S3CacheStore.put signs the body hash and sends the session token", async () => {
+test("S3CacheStore.put signs the body hash and sends the session token", async () => {
   const { fetch, calls } = fakeFetch(() => new Response(null, { status: 200 }));
   const artifact = new Uint8Array([9, 8, 7]);
   await store(fetch, "session-token").put("k1", artifact);
@@ -116,7 +117,7 @@ Deno.test("S3CacheStore.put signs the body hash and sends the session token", as
   );
 });
 
-Deno.test("S3CacheStore reports a 404 as a miss and other errors as errors", async () => {
+test("S3CacheStore reports a 404 as a miss and other errors as errors", async () => {
   const miss = fakeFetch(() => new Response(null, { status: 404 }));
   assertEquals(await store(miss.fetch).get("nope"), null);
 
@@ -126,7 +127,7 @@ Deno.test("S3CacheStore reports a 404 as a miss and other errors as errors", asy
   assertEquals(err instanceof HttpError, true);
 });
 
-Deno.test("S3CacheStore.getStream signs the request and streams the body", async () => {
+test("S3CacheStore.getStream signs the request and streams the body", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(new Blob([new Uint8Array([4, 5, 6])]))
   );

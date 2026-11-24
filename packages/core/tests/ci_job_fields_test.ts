@@ -7,6 +7,7 @@
  * where dropping them would change what the pipeline runs or guards.
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   cicd,
@@ -31,12 +32,12 @@ const PAGES_URL = "${{ steps.deployment.outputs.page_url }}";
 
 // --- environment ------------------------------------------------------------
 
-Deno.test("github: a named environment renders as a bare name", () => {
+test("github: a named environment renders as a bare name", () => {
   const yaml = generateCi(oneJob({ environment: "production" }), "github");
   assertStringIncludes(yaml, "    environment: production\n");
 });
 
-Deno.test("github: an environment URL expression is preserved verbatim", () => {
+test("github: an environment URL expression is preserved verbatim", () => {
   const yaml = generateCi(
     oneJob({ environment: { name: "github-pages", url: PAGES_URL } }),
     "github",
@@ -47,7 +48,7 @@ Deno.test("github: an environment URL expression is preserved verbatim", () => {
   );
 });
 
-Deno.test("github: an environment without a URL renders only the name", () => {
+test("github: an environment without a URL renders only the name", () => {
   const yaml = generateCi(
     oneJob({ environment: { name: "staging" } }),
     "github",
@@ -56,7 +57,7 @@ Deno.test("github: an environment without a URL renders only the name", () => {
   assertEquals(yaml.includes("url:"), false);
 });
 
-Deno.test("an omitted environment or outputs leaves the output unchanged", () => {
+test("an omitted environment or outputs leaves the output unchanged", () => {
   for (const provider of ["github", "gitlab", "azure", "bitbucket"] as const) {
     const yaml = generateCi(oneJob({}), provider);
     assertEquals(yaml.includes("environment"), false, provider);
@@ -64,7 +65,7 @@ Deno.test("an omitted environment or outputs leaves the output unchanged", () =>
   }
 });
 
-Deno.test("gitlab: an environment renders with the same name and url", () => {
+test("gitlab: an environment renders with the same name and url", () => {
   assertStringIncludes(
     generateCi(oneJob({ environment: "review" }), "gitlab"),
     "  environment: review\n",
@@ -78,7 +79,7 @@ Deno.test("gitlab: an environment renders with the same name and url", () => {
   );
 });
 
-Deno.test("azure and bitbucket refuse an environment rather than drop it", () => {
+test("azure and bitbucket refuse an environment rather than drop it", () => {
   // Dropping it would also drop the approval gate the environment carries.
   for (const provider of ["azure", "bitbucket"] as const) {
     assertThrows(
@@ -91,7 +92,7 @@ Deno.test("azure and bitbucket refuse an environment rather than drop it", () =>
 
 // --- outputs ----------------------------------------------------------------
 
-Deno.test("github: job outputs render verbatim for a consumer to read", () => {
+test("github: job outputs render verbatim for a consumer to read", () => {
   const yaml = generateCi({
     bootstrap: false,
     jobs: [
@@ -117,7 +118,7 @@ Deno.test("github: job outputs render verbatim for a consumer to read", () => {
   assertStringIncludes(yaml, "needs.deploy.outputs.page-url");
 });
 
-Deno.test("only github carries job outputs; the rest refuse them", () => {
+test("only github carries job outputs; the rest refuse them", () => {
   for (const provider of ["gitlab", "azure", "bitbucket"] as const) {
     assertThrows(
       () => generateCi(oneJob({ outputs: { url: PAGES_URL } }), provider),
@@ -127,7 +128,7 @@ Deno.test("only github carries job outputs; the rest refuse them", () => {
   }
 });
 
-Deno.test("a DST-guarded schedule keeps a job's own outputs and environment", () => {
+test("a DST-guarded schedule keeps a job's own outputs and environment", () => {
   const yaml = generateCi(
     oneJob(
       { environment: "production", outputs: { url: PAGES_URL } },
@@ -151,7 +152,7 @@ const FORGE_ROWS = [
   { node: "26", os: "macos-latest" },
 ];
 
-Deno.test("github: an include-only matrix renders its rows and picks the runner", () => {
+test("github: an include-only matrix renders its rows and picks the runner", () => {
   const yaml = generateCi(
     oneJob({ failFast: false, matrixInclude: FORGE_ROWS }),
     "github",
@@ -167,7 +168,7 @@ Deno.test("github: an include-only matrix renders its rows and picks the runner"
   assertEquals(yaml.includes("exclude"), false);
 });
 
-Deno.test("github: axes plus exclude render natively beside each other", () => {
+test("github: axes plus exclude render natively beside each other", () => {
   const yaml = generateCi(
     oneJob({
       matrix: { os: ["ubuntu-latest", "windows-latest"], node: ["22", "24"] },
@@ -187,7 +188,7 @@ Deno.test("github: axes plus exclude render natively beside each other", () => {
   assertStringIncludes(yaml, `runs-on: "\${{ matrix.os }}"`);
 });
 
-Deno.test("github: axes plus an extending include keep the axis runner", () => {
+test("github: axes plus an extending include keep the axis runner", () => {
   const yaml = generateCi(
     oneJob({
       matrix: { os: ["ubuntu-latest", "macos-latest"] },
@@ -199,7 +200,7 @@ Deno.test("github: axes plus an extending include keep the axis runner", () => {
   assertStringIncludes(yaml, "        include:\n          - os: macos-latest");
 });
 
-Deno.test("github: a matrix without os runs on runsOn", () => {
+test("github: a matrix without os runs on runsOn", () => {
   const yaml = generateCi(
     oneJob({ runsOn: "windows-latest", matrixInclude: [{ node: "22" }] }),
     "github",
@@ -207,7 +208,7 @@ Deno.test("github: a matrix without os runs on runsOn", () => {
   assertStringIncludes(yaml, "runs-on: windows-latest");
 });
 
-Deno.test("github: os in only some rows is refused, not an empty runner", () => {
+test("github: os in only some rows is refused, not an empty runner", () => {
   assertThrows(
     () =>
       generateCi(
@@ -219,7 +220,7 @@ Deno.test("github: os in only some rows is refused, not an empty runner", () => 
   );
 });
 
-Deno.test("gitlab: a sparse matrix lists exactly its combinations", () => {
+test("gitlab: a sparse matrix lists exactly its combinations", () => {
   const yaml = generateCi(oneJob({ matrixInclude: FORGE_ROWS }), "gitlab");
   assertStringIncludes(
     yaml,
@@ -228,7 +229,7 @@ Deno.test("gitlab: a sparse matrix lists exactly its combinations", () => {
   assertEquals(yaml.split("- node:").length - 1, 5);
 });
 
-Deno.test("gitlab: an excluded combination is absent from the expansion", () => {
+test("gitlab: an excluded combination is absent from the expansion", () => {
   const yaml = generateCi(
     oneJob({
       matrix: { os: ["linux", "win"], node: ["22", "24"] },
@@ -243,7 +244,7 @@ Deno.test("gitlab: an excluded combination is absent from the expansion", () => 
   assertStringIncludes(yaml, `os: win\n        node: "24"`);
 });
 
-Deno.test("gitlab: axes alone keep GitLab's own product form", () => {
+test("gitlab: axes alone keep GitLab's own product form", () => {
   const yaml = generateCi(
     oneJob({ matrix: { os: ["linux", "win"] } }),
     "gitlab",
@@ -254,7 +255,7 @@ Deno.test("gitlab: axes alone keep GitLab's own product form", () => {
   );
 });
 
-Deno.test("azure: a sparse matrix becomes exactly its named configurations", () => {
+test("azure: a sparse matrix becomes exactly its named configurations", () => {
   const yaml = generateCi(oneJob({ matrixInclude: FORGE_ROWS }), "azure");
   assertStringIncludes(yaml, "22.22.2_ubuntu-latest:");
   assertStringIncludes(yaml, "26_macos-latest:");
@@ -262,7 +263,7 @@ Deno.test("azure: a sparse matrix becomes exactly its named configurations", () 
   assertEquals(yaml.split("_ubuntu-latest:").length - 1, 4);
 });
 
-Deno.test("azure: rows that share a configuration name are refused", () => {
+test("azure: rows that share a configuration name are refused", () => {
   assertThrows(
     () =>
       generateCi(
@@ -274,7 +275,7 @@ Deno.test("azure: rows that share a configuration name are refused", () => {
   );
 });
 
-Deno.test("a bad exclude row is an error on every provider that renders matrices", () => {
+test("a bad exclude row is an error on every provider that renders matrices", () => {
   for (const provider of ["github", "gitlab", "azure"] as const) {
     assertThrows(
       () =>
@@ -291,7 +292,7 @@ Deno.test("a bad exclude row is an error on every provider that renders matrices
   }
 });
 
-Deno.test("an axis named include or exclude is refused on every matrix provider", () => {
+test("an axis named include or exclude is refused on every matrix provider", () => {
   // GitHub would read the axis as its own row list and drop or overwrite it.
   for (const provider of ["github", "gitlab", "azure"] as const) {
     for (const name of ["include", "exclude"]) {
@@ -304,7 +305,7 @@ Deno.test("an axis named include or exclude is refused on every matrix provider"
   }
 });
 
-Deno.test("gitlab: an axis with no values is refused, as on github and azure", () => {
+test("gitlab: an axis with no values is refused, as on github and azure", () => {
   for (const provider of ["github", "gitlab", "azure"] as const) {
     assertThrows(
       () => generateCi(oneJob({ matrix: { os: [] } }), provider),
@@ -318,7 +319,7 @@ Deno.test("gitlab: an axis with no values is refused, as on github and azure", (
 
 const WEBSITE = ["website/**", ".github/workflows/website-project.yml"];
 
-Deno.test("github: per-event paths and paths-ignore render under each trigger", () => {
+test("github: per-event paths and paths-ignore render under each trigger", () => {
   const yaml = generateCi(
     oneJob({}, {
       triggers: {
@@ -343,7 +344,7 @@ Deno.test("github: per-event paths and paths-ignore render under each trigger", 
   );
 });
 
-Deno.test("github: a path filter on an every-branch trigger has no branches key", () => {
+test("github: a path filter on an every-branch trigger has no branches key", () => {
   const yaml = generateCi(
     oneJob({}, { triggers: { push: [], pushPaths: { paths: ["src/**"] } } }),
     "github",
@@ -351,7 +352,7 @@ Deno.test("github: a path filter on an every-branch trigger has no branches key"
   assertStringIncludes(yaml, `  push:\n    paths:\n      - "src/**"\n`);
 });
 
-Deno.test("a path filter needs the event it narrows, on every provider", () => {
+test("a path filter needs the event it narrows, on every provider", () => {
   for (const provider of ["github", "gitlab", "azure", "bitbucket"] as const) {
     assertThrows(
       () =>
@@ -367,7 +368,7 @@ Deno.test("a path filter needs the event it narrows, on every provider", () => {
   }
 });
 
-Deno.test("an empty path filter is refused rather than read two ways", () => {
+test("an empty path filter is refused rather than read two ways", () => {
   assertThrows(
     () =>
       generateCi(
@@ -379,7 +380,7 @@ Deno.test("an empty path filter is refused rather than read two ways", () => {
   );
 });
 
-Deno.test("a filter setting both lists is refused, as GitHub would", () => {
+test("a filter setting both lists is refused, as GitHub would", () => {
   assertThrows(
     () =>
       generateCi(
@@ -398,7 +399,7 @@ Deno.test("a filter setting both lists is refused, as GitHub would", () => {
   );
 });
 
-Deno.test("azure: path filters use the include/exclude pair", () => {
+test("azure: path filters use the include/exclude pair", () => {
   const yaml = generateCi(
     oneJob({}, {
       triggers: {
@@ -422,7 +423,7 @@ Deno.test("azure: path filters use the include/exclude pair", () => {
   );
 });
 
-Deno.test("gitlab: paths become a changes: clause on each trigger rule", () => {
+test("gitlab: paths become a changes: clause on each trigger rule", () => {
   const yaml = generateCi(
     oneJob({}, {
       triggers: {
@@ -438,7 +439,7 @@ Deno.test("gitlab: paths become a changes: clause on each trigger rule", () => {
   assertStringIncludes(yaml, `      changes:\n        - "website/**"\n`);
 });
 
-Deno.test("gitlab: an every-branch push filter gets a push-source rule", () => {
+test("gitlab: an every-branch push filter gets a push-source rule", () => {
   const yaml = generateCi(
     oneJob({}, { triggers: { push: [], pushPaths: { paths: ["src/**"] } } }),
     "gitlab",
@@ -450,7 +451,7 @@ Deno.test("gitlab: an every-branch push filter gets a push-source rule", () => {
   assertStringIncludes(yaml, `      changes:\n        - "src/**"\n`);
 });
 
-Deno.test("gitlab refuses pathsIgnore; bitbucket refuses any path filter", () => {
+test("gitlab refuses pathsIgnore; bitbucket refuses any path filter", () => {
   const cases: Array<[CiProvider, CiPipeline, string]> = [
     [
       "gitlab",
@@ -494,7 +495,7 @@ Deno.test("gitlab refuses pathsIgnore; bitbucket refuses any path filter", () =>
 
 // --- invokes ----------------------------------------------------------------
 
-Deno.test("invokes: environment, outputs and sparse matrix reach the job", () => {
+test("invokes: environment, outputs and sparse matrix reach the job", () => {
   class B extends Build {
     deploy = target().executes(() => {});
     test = target().executes(() => {});
@@ -524,7 +525,7 @@ Deno.test("invokes: environment, outputs and sparse matrix reach the job", () =>
   assertStringIncludes(yaml, "include:");
 });
 
-Deno.test("invokes: matrixExclude is carried to the job", () => {
+test("invokes: matrixExclude is carried to the job", () => {
   class B extends Build {
     test = target().executes(() => {});
     wf = cicd({

@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -40,7 +41,7 @@ const CREDENTIALS = {
   notaryIssuer: "00000000-0000-0000-0000-000000000000",
 };
 
-Deno.test("signingCredentials reads all five variables", () => {
+test("signingCredentials reads all five variables", () => {
   const env: Record<string, string> = {
     APPLE_CERTIFICATE_P12: CREDENTIALS.certificate,
     APPLE_CERTIFICATE_PASSWORD: CREDENTIALS.certificatePassword,
@@ -52,7 +53,7 @@ Deno.test("signingCredentials reads all five variables", () => {
   assertEquals(Object.values(SIGNING_ENV).sort(), Object.keys(env).sort());
 });
 
-Deno.test("signingCredentials fails closed, naming every missing variable", () => {
+test("signingCredentials fails closed, naming every missing variable", () => {
   // An empty secret is how Actions renders one that is not configured.
   const env: Record<string, string> = {
     APPLE_CERTIFICATE_P12: CREDENTIALS.certificate,
@@ -127,7 +128,7 @@ async function binaries(dir: string): Promise<string> {
   return bin;
 }
 
-Deno.test("signMacBinaries signs and verifies each macOS binary inside the keychain, then notarizes", async () => {
+test("signMacBinaries signs and verifies each macOS binary inside the keychain, then notarizes", async () => {
   await withTemp(async (dir) => {
     const bin = await binaries(dir);
     const calls: string[] = [];
@@ -193,7 +194,7 @@ Deno.test("signMacBinaries signs and verifies each macOS binary inside the keych
   });
 });
 
-Deno.test("signMacBinaries restores the execute bit an artifact download drops", async () => {
+test("signMacBinaries restores the execute bit an artifact download drops", async () => {
   if (Deno.build.os === "windows") return;
   await withTemp(async (dir) => {
     const bin = await binaries(dir);
@@ -208,7 +209,7 @@ Deno.test("signMacBinaries restores the execute bit an artifact download drops",
   });
 });
 
-Deno.test("signMacBinaries fails on a missing binary before opening a keychain", async () => {
+test("signMacBinaries fails on a missing binary before opening a keychain", async () => {
   await withTemp(async (dir) => {
     const calls: string[] = [];
     await assertRejects(
@@ -219,7 +220,7 @@ Deno.test("signMacBinaries fails on a missing binary before opening a keychain",
   });
 });
 
-Deno.test("signMacBinaries removes the key file even when notarization fails", async () => {
+test("signMacBinaries removes the key file even when notarization fails", async () => {
   await withTemp(async (dir) => {
     const bin = await binaries(dir);
     let keyFile = "";

@@ -20,6 +20,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 
@@ -83,7 +84,7 @@ async function docWith(
   return { code, stderr: new TextDecoder().decode(stderr) };
 }
 
-Deno.test({
+test({
   name: "a compiled build documents a module with Deno rather than with itself",
   // The binary is ~90 MB and the compile is the expensive part; the resolution
   // itself is unit tested on every OS, and this proves the compiled case on the

@@ -8,10 +8,11 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { tapRepository } from "../src/tap.ts";
 
-Deno.test("tap: the short and the repository spelling name the same repository", () => {
+test("tap: the short and the repository spelling name the same repository", () => {
   // Finding 5 of the adversarial review: only the repository is ever used,
   // so only the repository is returned.
   assertEquals(tapRepository("acme/tap"), "acme/homebrew-tap");
@@ -23,7 +24,7 @@ Deno.test("tap: the short and the repository spelling name the same repository",
   assertEquals(tapRepository("a_b/x.y"), "a_b/homebrew-x.y");
 });
 
-Deno.test("tap: anything that could address another repository is refused", () => {
+test("tap: anything that could address another repository is refused", () => {
   for (
     const value of [
       "",

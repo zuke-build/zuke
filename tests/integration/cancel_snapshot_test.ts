@@ -11,6 +11,7 @@
  * arrived with it. Driven through the real CLI `main()` (via {@link runCli}).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -50,7 +51,7 @@ class SettlesAfterCancelling extends FileSystemStateStore {
   }
 }
 
-Deno.test("zuke cancel compensates a target settled after the transition", async () => {
+test("zuke cancel compensates a target settled after the transition", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     const store = new SettlesAfterCancelling(`${dir}/runs`, defaultStateHost);

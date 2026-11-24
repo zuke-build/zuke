@@ -15,6 +15,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Redactor } from "../src/redact.ts";
 import { RunStateWriter } from "../src/state/writer.ts";
@@ -50,7 +51,7 @@ async function adopted(store: MemStateStore): Promise<{
   return { writer, handle: writer.stateHandle("deploy"), warnings };
 }
 
-Deno.test("a retained write lost to the next write's conflict is reported", async () => {
+test("a retained write lost to the next write's conflict is reported", async () => {
   const store = new MemStateStore();
   const { writer, handle, warnings } = await adopted(store);
 
@@ -72,7 +73,7 @@ Deno.test("a retained write lost to the next write's conflict is reported", asyn
   assertStringIncludes(warnings[1], "held back and is now lost");
 });
 
-Deno.test("a retained write carried by the next write is not reported lost", async () => {
+test("a retained write carried by the next write is not reported lost", async () => {
   const store = new MemStateStore();
   const { writer, handle, warnings } = await adopted(store);
 
@@ -98,7 +99,7 @@ Deno.test("a retained write carried by the next write is not reported lost", asy
   assertEquals(warnings.length, 1);
 });
 
-Deno.test("an ordinary conflict with nothing retained reports no loss", async () => {
+test("an ordinary conflict with nothing retained reports no loss", async () => {
   const store = new MemStateStore();
   const { writer, handle, warnings } = await adopted(store);
 
@@ -112,7 +113,7 @@ Deno.test("an ordinary conflict with nothing retained reports no loss", async ()
   assertEquals(warnings.length, 0);
 });
 
-Deno.test("an effect write that lands carries the retained mutation and clears the debt", async () => {
+test("an effect write that lands carries the retained mutation and clears the debt", async () => {
   const store = new MemStateStore();
   const { writer, handle, warnings } = await adopted(store);
 
@@ -133,7 +134,7 @@ Deno.test("an effect write that lands carries the retained mutation and clears t
   assertEquals(warnings.length, 1); // only the store error itself
 });
 
-Deno.test("a retained write lost to an effect write's conflict is reported", async () => {
+test("a retained write lost to an effect write's conflict is reported", async () => {
   const store = new MemStateStore();
   const { writer, handle, warnings } = await adopted(store);
 

@@ -9,6 +9,7 @@
  * not a unit seam.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -16,7 +17,7 @@ import {
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("before/after soft ordering hints are honoured", async () => {
+test("before/after soft ordering hints are honoured", async () => {
   const log: string[] = [];
   class B extends Build {
     setup = target().executes(() => void log.push("setup"));
@@ -36,7 +37,7 @@ Deno.test("before/after soft ordering hints are honoured", async () => {
   assertEquals(log[log.length - 1], "all");
 });
 
-Deno.test("a dependency cycle exits 1 and names the cycle path", async () => {
+test("a dependency cycle exits 1 and names the cycle path", async () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -51,7 +52,7 @@ Deno.test("a dependency cycle exits 1 and names the cycle path", async () => {
   assertStringIncludes(err, "Dependency cycle detected: a → b → a");
 });
 
-Deno.test("a forward reference exits 1 with a validateReferences error", async () => {
+test("a forward reference exits 1 with a validateReferences error", async () => {
   class B extends Build {
     // TypeScript catches this forward reference at compile time; the
     // suppression simulates a consumer that bypassed type-checking,
@@ -66,7 +67,7 @@ Deno.test("a forward reference exits 1 with a validateReferences error", async (
   assertStringIncludes(err, 'Target "early" depends on an undefined target.');
 });
 
-Deno.test("an unknown target name exits 1 with a helpful message", async () => {
+test("an unknown target name exits 1 with a helpful message", async () => {
   class B extends Build {
     build = target().executes(() => {});
   }

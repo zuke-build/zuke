@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -65,7 +66,7 @@ function fakeGithub(
   };
 }
 
-Deno.test("a tag with no release gets one, and the notes go with it", async () => {
+test("a tag with no release gets one, and the notes go with it", async () => {
   const seen: Seen[] = [];
   const result = await GhTasks.ensureRelease((s) =>
     s
@@ -91,7 +92,7 @@ Deno.test("a tag with no release gets one, and the notes go with it", async () =
   assertEquals(JSON.parse(seen[1].body ?? "{}").body, "Updates something.");
 });
 
-Deno.test("a tag that already has a release is left exactly as it is", async () => {
+test("a tag that already has a release is left exactly as it is", async () => {
   // The whole reason this is safe to run on every push. A maintainer's
   // hand-written notes are better than generated ones, and re-publishing over
   // them would replace them with a worse version on the next run — silently,
@@ -113,7 +114,7 @@ Deno.test("a tag that already has a release is left exactly as it is", async () 
   assertEquals(seen.map((r) => r.method), ["GET"]);
 });
 
-Deno.test("the latest pointer moves only when the caller asked", async () => {
+test("the latest pointer moves only when the caller asked", async () => {
   // GitHub's own default is the other way round: a new release becomes latest
   // unless told otherwise. Back-filling a backlog creates releases
   // oldest-first, so taking that default would walk the pointer backwards and
@@ -135,7 +136,7 @@ Deno.test("the latest pointer moves only when the caller asked", async () => {
   assertEquals(JSON.parse(loud[1].body ?? "{}").make_latest, "true");
 });
 
-Deno.test("each required setter is named when it is the missing one", async () => {
+test("each required setter is named when it is the missing one", async () => {
   // Three guards rather than one covering all three, so the message names the
   // setter the caller actually forgot.
   const cases: [
@@ -152,7 +153,7 @@ Deno.test("each required setter is named when it is the missing one", async () =
   }
 });
 
-Deno.test("an empty body is a release with no notes, not a missing setter", async () => {
+test("an empty body is a release with no notes, not a missing setter", async () => {
   // `.body("")` is a deliberate choice and has to be distinguishable from
   // never calling it — an `?? ""` fallback would make the guard unreachable
   // and the empty case untestable.
@@ -165,7 +166,7 @@ Deno.test("an empty body is a release with no notes, not a missing setter", asyn
   assertEquals(JSON.parse(seen[1].body ?? "{}").body, "");
 });
 
-Deno.test("a tag name that would redirect the request is refused", async () => {
+test("a tag name that would redirect the request is refused", async () => {
   // The tag is interpolated into a request path with the token attached, so a
   // `..` in it would send the call somewhere else entirely.
   const error = await assertRejects(() =>
@@ -176,7 +177,7 @@ Deno.test("a tag name that would redirect the request is refused", async () => {
   assertStringIncludes(error.message, "not a valid git ref name");
 });
 
-Deno.test("a lookup failure that is not a 404 is not mistaken for absence", async () => {
+test("a lookup failure that is not a 404 is not mistaken for absence", async () => {
   // A 403 from a token missing `contents: write`, or a 500, must not read as
   // "no release yet" — that would turn a permissions problem into a POST that
   // fails second, reporting the wrong cause.
@@ -195,7 +196,7 @@ Deno.test("a lookup failure that is not a 404 is not mistaken for absence", asyn
   assertEquals(seen.map((r) => r.method), ["GET"]);
 });
 
-Deno.test("the repository and token fall back to the Actions environment", async () => {
+test("the repository and token fall back to the Actions environment", async () => {
   await withEnv(
     { GITHUB_TOKEN: undefined, GITHUB_REPOSITORY: undefined },
     async () => {
@@ -229,7 +230,7 @@ Deno.test("the repository and token fall back to the Actions environment", async
   assertEquals(seen[1].url, "https://api.github.com/repos/acme/app/releases");
 });
 
-Deno.test("an enterprise base URL is used, with its trailing slash trimmed", async () => {
+test("an enterprise base URL is used, with its trailing slash trimmed", async () => {
   // Same seam as the sibling REST operations. A trailing slash would otherwise
   // produce a double slash in the path, which GitHub Enterprise answers with a
   // 404 that names nothing useful.

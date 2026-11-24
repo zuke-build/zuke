@@ -22,6 +22,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -90,7 +91,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-Deno.test("a target signs from a temporary keychain that is gone afterwards", async () => {
+test("a target signs from a temporary keychain that is gone afterwards", async () => {
   await inFakeSecurityDir({}, async () => {
     let seen = { keychain: "", hash: "", certificateWasPrivate: false };
     class Sign extends Build {
@@ -129,7 +130,7 @@ Deno.test("a target signs from a temporary keychain that is gone afterwards", as
   });
 });
 
-Deno.test("a failing keychain step fails the target, masks the password, and still cleans up", async () => {
+test("a failing keychain step fails the target, masks the password, and still cleans up", async () => {
   await inFakeSecurityDir({
     "unlock-keychain": { stderr: "SecKeychainUnlock: bad password", code: 51 },
   }, async () => {
@@ -178,7 +179,7 @@ Deno.test("a failing keychain step fails the target, masks the password, and sti
   });
 });
 
-Deno.test("a rejected notarization fails the target with the log's issues", async () => {
+test("a rejected notarization fails the target with the log's issues", async () => {
   const id = "2efe2717-52ef-43a5-96dc-0797e4ca1041";
   const dir = await fakeNotarytool({
     submit: {
@@ -214,7 +215,7 @@ Deno.test("a rejected notarization fails the target with the log's issues", asyn
   }
 });
 
-Deno.test("an accepted notarization passes the target and returns the result", async () => {
+test("an accepted notarization passes the target and returns the result", async () => {
   const id = "4b8c1c8e-0000-4000-8000-000000000000";
   const dir = await fakeNotarytool({
     submit: {

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -33,7 +34,7 @@ class ChattyBuild extends Build {
     });
 }
 
-Deno.test("a build capturing oversized output succeeds and reports truncation", async () => {
+test("a build capturing oversized output succeeds and reports truncation", async () => {
   const { code, out } = await runCli(ChattyBuild, ["chatty"]);
   assertEquals(code, 0);
   assertStringIncludes(out, "code=0 truncated=true");
@@ -71,13 +72,13 @@ class WrapperBuild extends Build {
     });
 }
 
-Deno.test("a tool wrapper can cap its captured output through the settings lambda", async () => {
+test("a tool wrapper can cap its captured output through the settings lambda", async () => {
   const { code, out } = await runCli(WrapperBuild, ["capped"]);
   assertEquals(code, 0);
   assertStringIncludes(out, "truncated=true cap=4096 bytes=4096");
 });
 
-Deno.test("an impossible wrapper cap fails the target with a friendly error", async () => {
+test("an impossible wrapper cap fails the target with a friendly error", async () => {
   const { code, err } = await runCli(WrapperBuild, ["badCap"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "maxCapturedBytes");

@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -52,7 +53,7 @@ function headAt(
     Promise.resolve(version === null ? null : JSON.stringify({ version }));
 }
 
-Deno.test("skill paths are the two trees the marketplace serves", () => {
+test("skill paths are the two trees the marketplace serves", () => {
   assertEquals(isSkillPath("skills/zuke-write-build/SKILL.md"), true);
   assertEquals(isSkillPath("plugins/zuke/skills/zuke-setup/SKILL.md"), true);
   // The manifests themselves are not "skills" — changing only the version must
@@ -66,7 +67,7 @@ Deno.test("skill paths are the two trees the marketplace serves", () => {
   );
 });
 
-Deno.test("a manifest version is read, or reported missing rather than thrown", () => {
+test("a manifest version is read, or reported missing rather than thrown", () => {
   assertEquals(manifestVersion('{"version":"0.3.0"}'), "0.3.0");
   assertEquals(manifestVersion(null), undefined);
   assertEquals(manifestVersion("not json{"), undefined);
@@ -74,7 +75,7 @@ Deno.test("a manifest version is read, or reported missing rather than thrown", 
   assertEquals(manifestVersion("[]"), undefined);
 });
 
-Deno.test("skills changed and the version did not — the check fails", async () => {
+test("skills changed and the version did not — the check fails", async () => {
   const verdict = await checkPluginVersionBump(
     fakeGit({
       changed: ["skills/zuke-write-build/SKILL.md", "plugins/zuke/skills/x.md"],
@@ -101,7 +102,7 @@ Deno.test("skills changed and the version did not — the check fails", async ()
   assertStringIncludes(message, "gemini-extension.json");
 });
 
-Deno.test("skills changed and the version moved — the check passes", async () => {
+test("skills changed and the version moved — the check passes", async () => {
   const verdict = await checkPluginVersionBump(
     fakeGit({
       changed: ["skills/zuke-write-build/references/cheatsheet.md"],
@@ -116,7 +117,7 @@ Deno.test("skills changed and the version moved — the check passes", async () 
   assertEquals(verdict.headVersion, "0.3.0");
 });
 
-Deno.test("a version that moved down is not a bump", async () => {
+test("a version that moved down is not a bump", async () => {
   // The shape a badly resolved conflict takes: the branch keeps its own lower
   // number over the base's. It "differs", and shipping it would put the skills
   // under a version clients already hold.
@@ -135,7 +136,7 @@ Deno.test("a version that moved down is not a bump", async () => {
   assertStringIncludes(message, "Set a version above 0.33.0");
 });
 
-Deno.test("the same version on two branches is a collision, not a bump", async () => {
+test("the same version on two branches is a collision, not a bump", async () => {
   // What a push-to-master run sees after the second of two branches that each
   // bumped 0.31.0 to 0.32.0 lands: the merge changed skills, and the version
   // is what the previous commit already had. Neither branch's own check could
@@ -160,7 +161,7 @@ Deno.test("the same version on two branches is a collision, not a bump", async (
   );
 });
 
-Deno.test("a version that cannot be ordered is refused, not waved through", async () => {
+test("a version that cannot be ordered is refused, not waved through", async () => {
   // A manifest version that is not a plain triple cannot be compared, so it
   // cannot be shown to be an increase. The gate refuses what it did not
   // understand instead of assuming the best.
@@ -177,7 +178,7 @@ Deno.test("a version that cannot be ordered is refused, not waved through", asyn
   }
 });
 
-Deno.test("a change that touches no skill needs no bump", async () => {
+test("a change that touches no skill needs no bump", async () => {
   // The common case: an ordinary source PR must not be asked to bump a plugin
   // it never touched.
   const verdict = await checkPluginVersionBump(
@@ -193,7 +194,7 @@ Deno.test("a change that touches no skill needs no bump", async () => {
   assertEquals(verdict.bumped, false); // and the caller treats this as a pass
 });
 
-Deno.test("a missing base ref is reported skipped, never passed", async () => {
+test("a missing base ref is reported skipped, never passed", async () => {
   // The one honest skip. It must not look like a success: `checked` is false,
   // and the caller prints the reason rather than a green line.
   const verdict = await checkPluginVersionBump(
@@ -206,7 +207,7 @@ Deno.test("a missing base ref is reported skipped, never passed", async () => {
   assertStringIncludes(verdict.reason ?? "", "origin/master");
 });
 
-Deno.test("a plugin absent at the base is new, so no bump is demanded", async () => {
+test("a plugin absent at the base is new, so no bump is demanded", async () => {
   // Introducing the plugin on a branch: there is no previous version for the
   // new one to differ from, and demanding a bump would be unsatisfiable.
   const verdict = await checkPluginVersionBump(
@@ -219,7 +220,7 @@ Deno.test("a plugin absent at the base is new, so no bump is demanded", async ()
   assertEquals(verdict.baseVersion, undefined);
 });
 
-Deno.test("an unreadable head manifest fails the check, it does not skip it", async () => {
+test("an unreadable head manifest fails the check, it does not skip it", async () => {
   // The working tree's manifest is the one file that must always be readable.
   // Treating it as "nothing to compare" would let a corrupted manifest through.
   const verdict = await checkPluginVersionBump(
@@ -232,7 +233,7 @@ Deno.test("an unreadable head manifest fails the check, it does not skip it", as
   assertStringIncludes(verdict.reason ?? "", PLUGIN_MANIFEST);
 });
 
-Deno.test("the base ref follows the PR base, then an override, then master", () => {
+test("the base ref follows the PR base, then an override, then master", () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   assertEquals(resolveBaseRef(env({})), "origin/master");
@@ -253,7 +254,7 @@ Deno.test("the base ref follows the PR base, then an override, then master", () 
   assertEquals(resolveBaseRef(env({ GITHUB_BASE_REF: "" })), "origin/master");
 });
 
-Deno.test("a skip is information locally and a failure on CI", async () => {
+test("a skip is information locally and a failure on CI", async () => {
   // The gate stopped guarding anything for months because a skip reads as
   // green. Locally — a shallow clone, a worktree whose base is not fetched —
   // it is still ordinary, so the two outcomes are asserted together.
@@ -276,7 +277,7 @@ Deno.test("a skip is information locally and a failure on CI", async () => {
   assertStringIncludes(ci.message, "fetch-depth 0");
 });
 
-Deno.test("every other verdict reports the level its outcome deserves", async () => {
+test("every other verdict reports the level its outcome deserves", async () => {
   const changed = ["skills/zuke-write-build/SKILL.md"];
   const base = "origin/master";
 
@@ -332,7 +333,7 @@ Deno.test("every other verdict reports the level its outcome deserves", async ()
  */
 const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");
 
-Deno.test("the gate job checks out enough history for this check to run", () => {
+test("the gate job checks out enough history for this check to run", () => {
   // A shallow checkout has no `origin/<base>` at all, so the check reported
   // itself skipped on every CI run — honestly, and invisibly. Full history is
   // what makes it able to fail.
@@ -343,7 +344,7 @@ Deno.test("the gate job checks out enough history for this check to run", () => 
   assertStringIncludes(job, 'fetch-depth: "0"');
 });
 
-Deno.test("a push to master compares against the previous commit", () => {
+test("a push to master compares against the previous commit", () => {
   // The one place a same-version collision between two branches is visible:
   // neither pull request's check could see the other, because each compared
   // against a base that had not moved yet.

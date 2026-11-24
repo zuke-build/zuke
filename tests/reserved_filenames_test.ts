@@ -18,6 +18,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 
 /** The device names Windows reserves, whatever extension follows them. */
@@ -72,7 +73,7 @@ async function walk(dir: string): Promise<string[]> {
   return found;
 }
 
-Deno.test("no path is named after a reserved DOS device", async () => {
+test("no path is named after a reserved DOS device", async () => {
   const offending: string[] = [];
   for (const path of await walk(".")) {
     const name = path.slice(path.lastIndexOf("/") + 1);
@@ -88,7 +89,7 @@ Deno.test("no path is named after a reserved DOS device", async () => {
   );
 });
 
-Deno.test("the device check reads the name before the extension", () => {
+test("the device check reads the name before the extension", () => {
   // The rule this test exists for: an extension does not make it a file.
   assertEquals(deviceName("nul.ts"), "nul");
   assertEquals(deviceName("NUL"), "nul");

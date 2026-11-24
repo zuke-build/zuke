@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
@@ -45,7 +46,7 @@ class FrozenBuild extends Build {
     });
 }
 
-Deno.test("a build runs `deno run --frozen` end-to-end through the CLI", async () => {
+test("a build runs `deno run --frozen` end-to-end through the CLI", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-frozen-" });
   scriptPath = `${dir}/ok.ts`;
   try {
@@ -58,7 +59,7 @@ Deno.test("a build runs `deno run --frozen` end-to-end through the CLI", async (
   }
 });
 
-Deno.test("a provisioned CLI launcher resolves through the workspace lock", async () => {
+test("a provisioned CLI launcher resolves through the workspace lock", async () => {
   // `deno install --global` ignores the workspace lock entirely (it resolves
   // into a throwaway lockfile under its own install root), so a launcher that
   // shells out to `deno run --frozen` from the repository root is what actually

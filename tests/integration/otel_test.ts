@@ -9,6 +9,7 @@
  * OTLP/HTTP JSON request body.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -86,7 +87,7 @@ class OtelWaits extends Build {
   done = target().dependsOn(this.gate).executes(() => {});
 }
 
-Deno.test("otel exports a run trace and counters for a successful build", async () => {
+test("otel exports a run trace and counters for a successful build", async () => {
   await withStateDir(async () => {
     const { fetch, requests } = capturingFetch();
     const plugin = otelWith((s) => s.endpoint("http://collector:4318"), {
@@ -112,7 +113,7 @@ Deno.test("otel exports a run trace and counters for a successful build", async 
   });
 });
 
-Deno.test("otel reports a failed run and marks the failing target span", async () => {
+test("otel reports a failed run and marks the failing target span", async () => {
   await withStateDir(async () => {
     const { fetch, requests } = capturingFetch();
     const plugin = otelWith((s) => s.endpoint("http://collector:4318"), {
@@ -138,7 +139,7 @@ Deno.test("otel reports a failed run and marks the failing target span", async (
   });
 });
 
-Deno.test("otel exports a terminal trace when a wait times out on resume", async () => {
+test("otel exports a terminal trace when a wait times out on resume", async () => {
   await withStateDir(async (dir) => {
     const { fetch, requests } = capturingFetch();
     // One plugin instance across both CLI calls (dedup is per instance).

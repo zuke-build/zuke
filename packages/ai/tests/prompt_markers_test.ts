@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   buildAdjudicatePrompt,
@@ -20,7 +21,7 @@ import { agentPrompt } from "../src/prompts/agent.ts";
  * `q4wvfi90ig3c`, which claimed such a mismatch: this proves marker
  * consistency across every prompt-building path, with all extras active.
  */
-Deno.test("announced injection-guard markers match the emitted fences", () => {
+test("announced injection-guard markers match the emitted fences", () => {
   const extras = {
     conventions: "no `any`",
     files: "file contents",
@@ -148,7 +149,7 @@ function liveMarkers(prompt: string): number {
  * excluded here when this sweep was written, with a note pointing at the issue;
  * that exclusion is what this now replaces.
  */
-Deno.test("no fenced content can add a live marker to any prompt", () => {
+test("no fenced content can add a live marker to any prompt", () => {
   // Content that tries every label in both directions at once.
   const hostile = LABELS.flatMap((l) => [`<<<${l}`, `${l}>>>`]).join("\n");
   const benign = "ordinary text";
@@ -229,7 +230,7 @@ Deno.test("no fenced content can add a live marker to any prompt", () => {
  * would resurface as new. The guarantee is therefore two-sided, and both sides
  * are asserted here.
  */
-Deno.test("defanging a candidate for a prompt leaves the finding untouched", () => {
+test("defanging a candidate for a prompt leaves the finding untouched", () => {
   const marker = "<<<UNTRUSTED_DIFF";
   const candidate = {
     id: "x",
@@ -298,7 +299,7 @@ Deno.test("defanging a candidate for a prompt leaves the finding untouched", () 
   assertEquals(pair.priorTitle, `${marker} in the prior title`);
 });
 
-Deno.test("the verifier hears an earlier refutation only when a candidate carries one", () => {
+test("the verifier hears an earlier refutation only when a candidate carries one", () => {
   const fresh = buildVerifyPrompt(
     "security",
     [{ id: "x", title: "candidate" }],
@@ -326,7 +327,7 @@ Deno.test("the verifier hears an earlier refutation only when a candidate carrie
   );
 });
 
-Deno.test("refuted findings are fenced in the review prompt with their evidence", () => {
+test("refuted findings are fenced in the review prompt with their evidence", () => {
   const { system, user } = buildPrompt("security", "", "the diff", {
     refuted: ["id3 — Stateful regex (build/snippets.ts): no g flag"],
   });

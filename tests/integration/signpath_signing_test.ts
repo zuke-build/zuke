@@ -12,6 +12,7 @@
  * plain string the build's own redactor knows nothing about.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -98,7 +99,7 @@ class Release extends Build {
   });
 }
 
-Deno.test("a build signs through SignPath with GitHub origin verification", async () => {
+test("a build signs through SignPath with GitHub origin verification", async () => {
   finalStatus = "Completed";
   net = server();
   seen.length = 0;
@@ -127,7 +128,7 @@ Deno.test("a build signs through SignPath with GitHub origin verification", asyn
   assertEquals(withoutMaskDirectives(out + err).includes(TOKEN), false);
 });
 
-Deno.test("a denied signing request fails the build, naming it and its page", async () => {
+test("a denied signing request fails the build, naming it and its page", async () => {
   finalStatus = "Denied";
   net = server();
   const { code, out, err } = await runCli(Release, [
@@ -142,7 +143,7 @@ Deno.test("a denied signing request fails the build, naming it and its page", as
   );
 });
 
-Deno.test("a SignPath answer echoing the token never gets it printed", async () => {
+test("a SignPath answer echoing the token never gets it printed", async () => {
   class Leaky extends Build {
     sign = target().executes(async () => {
       await SignPathTasks.status((s) =>

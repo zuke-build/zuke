@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { RunLockHolder } from "../src/run_locks.ts";
 import { assertEquals, messageOf } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
@@ -108,7 +109,7 @@ class FailsPut extends FileSystemStateStore {
   }
 }
 
-Deno.test("an effect with no state store fails the target before its body runs", async () => {
+test("an effect with no state store fails the target before its body runs", async () => {
   // The fail-closed half of durable effects: with nowhere to record the
   // intent, running the body would perform a side effect nothing knows was
   // owed. execute() refuses such a run up front; this is the scheduler's own
@@ -134,7 +135,7 @@ Deno.test("an effect with no state store fails the target before its body runs",
   );
 });
 
-Deno.test("a re-driven target skips an effect already recorded done", async () => {
+test("a re-driven target skips an effect already recorded done", async () => {
   // The no-op that makes re-driving free: a process died after the effect
   // settled `done` but before the target did, so a resume runs the target
   // again — and must not repeat the effect (it is at-least-once, not twice).
@@ -183,7 +184,7 @@ Deno.test("a re-driven target skips an effect already recorded done", async () =
   });
 });
 
-Deno.test("a failed settle write never masks the effect's own failure", async () => {
+test("a failed settle write never masks the effect's own failure", async () => {
   // The incident-report rule: when recording an effect's failure fails too,
   // the caller must still see the API error that actually happened — the
   // bookkeeping failure is reported alongside, never in its place.
@@ -229,7 +230,7 @@ Deno.test("a failed settle write never masks the effect's own failure", async ()
   });
 });
 
-Deno.test("a resumed body reads outcomes another process settled", async () => {
+test("a resumed body reads outcomes another process settled", async () => {
   // A resume is a fresh process: its in-memory settlement map starts empty, so
   // `ctx.outcomeOf`/`ctx.outcomes` must fall back to the durable record for
   // targets an earlier process ran — and still omit rows with no outcome yet.
@@ -284,7 +285,7 @@ Deno.test("a resumed body reads outcomes another process settled", async () => {
   });
 });
 
-Deno.test("a satisfied gate whose effect fails fails the target, not silently", async () => {
+test("a satisfied gate whose effect fails fails the target, not silently", async () => {
   // A `.waitsFor(...)` gate that opens is the target's real run, so its
   // effects are owed at that moment — and an effect that throws must fail the
   // gate rather than letting the run report success over a dropped effect.
@@ -330,7 +331,7 @@ Deno.test("a satisfied gate whose effect fails fails the target, not silently", 
   });
 });
 
-Deno.test("teardown stranded behind a parked gate settles skipped when the run fails", async () => {
+test("teardown stranded behind a parked gate settles skipped when the run fails", async () => {
   // A run that both parked a wait and failed will never resume, so nothing
   // behind the gate can ever run — including an `always` teardown waiting for
   // the gate to settle. The gate parked *before* the failure, so it was never
@@ -372,7 +373,7 @@ Deno.test("teardown stranded behind a parked gate settles skipped when the run f
   });
 });
 
-Deno.test("a re-driven effect settles done and knows it is a second attempt", async () => {
+test("a re-driven effect settles done and knows it is a second attempt", async () => {
   // The at-least-once half: a previously failed effect is re-armed, its body
   // told it is being re-driven (so it can favour idempotent variants), and a
   // completed attempt is durably `done` for the next process to skip.
@@ -429,7 +430,7 @@ Deno.test("a re-driven effect settles done and knows it is a second attempt", as
   });
 });
 
-Deno.test("outcomeOf falls back to a record row this process never settled", async () => {
+test("outcomeOf falls back to a record row this process never settled", async () => {
   // The concurrent-writer shape: the snapshot can hold a settled row this
   // process never ran (a conflicting write re-read adopts the fresh record).
   // `outcomeOf` must answer from the record then — and still say nothing for a
@@ -466,7 +467,7 @@ Deno.test("outcomeOf falls back to a record row this process never settled", asy
   });
 });
 
-Deno.test("a dry-runnable target runs its body in preview; a failure is reported", async () => {
+test("a dry-runnable target runs its body in preview; a failure is reported", async () => {
   // `.dryRunnable()` opts a target into executing under --dry-run (with `$` in
   // echo mode) so the operator previews the real commands; a preview body that
   // throws must surface as a failed target, exactly like a real run.
@@ -496,7 +497,7 @@ Deno.test("a dry-runnable target runs its body in preview; a failure is reported
   assertEquals(messageOf(run.failure), "preview boom");
 });
 
-Deno.test("a store-less run still reports outcomes and holds state in memory", async () => {
+test("a store-less run still reports outcomes and holds state in memory", async () => {
   // Without a state store there is no record to fall back to; the live
   // settlement map alone must answer `ctx.outcomes()`, and `ctx.stateOf(...)`
   // hands out in-memory handles so bodies written for durable runs still work.

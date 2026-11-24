@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
@@ -40,7 +41,7 @@ function callText(result: unknown): { text: string; isError: boolean } {
   return { text: content[0].text, isError };
 }
 
-Deno.test("initialize echoes the client's protocol version and names the server", async () => {
+test("initialize echoes the client's protocol version and names the server", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(
     req("initialize", { protocolVersion: "2024-11-05" }),
@@ -65,13 +66,13 @@ Deno.test("initialize echoes the client's protocol version and names the server"
   );
 });
 
-Deno.test("ping returns an empty result", async () => {
+test("ping returns an empty result", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(req("ping"));
   assertEquals(res?.result, {});
 });
 
-Deno.test("tools/list is read-only until running is allowed", async () => {
+test("tools/list is read-only until running is allowed", async () => {
   const readOnly = new McpServer(new Demo());
   const res = await readOnly.handleMessage(req("tools/list"));
   const tools = (res?.result as { tools: Array<{ name: string }> }).tools;
@@ -90,7 +91,7 @@ Deno.test("tools/list is read-only until running is allowed", async () => {
   assertEquals(names.includes("run:build"), true);
 });
 
-Deno.test("a run tool's schema is built from the build's parameters", async () => {
+test("a run tool's schema is built from the build's parameters", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const res = await server.handleMessage(req("tools/list"));
   const tools = (res?.result as {
@@ -114,7 +115,7 @@ Deno.test("a run tool's schema is built from the build's parameters", async () =
   assertEquals(run.annotations?.destructiveHint, true);
 });
 
-Deno.test("the read tools report the build's shape", async () => {
+test("the read tools report the build's shape", async () => {
   const server = new McpServer(new Demo());
   const targets = callText(
     (await server.handleMessage(
@@ -137,7 +138,7 @@ Deno.test("the read tools report the build's shape", async () => {
   assertStringIncludes(graph.text, "build -> lint");
 });
 
-Deno.test("running is refused until --allow-run", async () => {
+test("running is refused until --allow-run", async () => {
   const server = new McpServer(new Demo()); // allowRun defaults to false
   const res = await server.handleMessage(
     req("tools/call", { name: "run:build", arguments: { environment: "dev" } }),
@@ -147,7 +148,7 @@ Deno.test("running is refused until --allow-run", async () => {
   assertStringIncludes(out.text, "--allow-run");
 });
 
-Deno.test("running a target executes it and returns the captured output", async () => {
+test("running a target executes it and returns the captured output", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const res = await server.handleMessage(
     req("tools/call", { name: "run:build", arguments: { environment: "dev" } }),
@@ -158,7 +159,7 @@ Deno.test("running a target executes it and returns the captured output", async 
   assertStringIncludes(out.text, "succeeded");
 });
 
-Deno.test("a run redacts secret values from the captured output", async () => {
+test("a run redacts secret values from the captured output", async () => {
   class Secretive extends Build {
     // A secret sourced at run time; its value must never reach the client.
     token = parameter("API token").secret().from({
@@ -179,7 +180,7 @@ Deno.test("a run redacts secret values from the captured output", async () => {
   assertEquals(out.text.includes("s3cr3t-token-xyz"), false);
 });
 
-Deno.test("a run missing a required parameter fails through the result", async () => {
+test("a run missing a required parameter fails through the result", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   // environment is required and unset in the (hermetic) environment.
   const res = await server.handleMessage(
@@ -189,7 +190,7 @@ Deno.test("a run missing a required parameter fails through the result", async (
   assertEquals(out.isError, true);
 });
 
-Deno.test("a dry-run plans without failing on a missing body result", async () => {
+test("a dry-run plans without failing on a missing body result", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const res = await server.handleMessage(
     req("tools/call", {
@@ -201,7 +202,7 @@ Deno.test("a dry-run plans without failing on a missing body result", async () =
   assertEquals(out.isError, false);
 });
 
-Deno.test("an unknown target or tool is surfaced through the result, not the transport", async () => {
+test("an unknown target or tool is surfaced through the result, not the transport", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const unknownTarget = callText(
     (await server.handleMessage(
@@ -225,7 +226,7 @@ Deno.test("an unknown target or tool is surfaced through the result, not the tra
   assertStringIncludes(unknownTool.text, "Unknown tool");
 });
 
-Deno.test("a run rejects a non-scalar argument instead of coercing it", async () => {
+test("a run rejects a non-scalar argument instead of coercing it", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const res = await server.handleMessage(
     req("tools/call", {
@@ -240,7 +241,7 @@ Deno.test("a run rejects a non-scalar argument instead of coercing it", async ()
   assertStringIncludes(out.text, "environment");
 });
 
-Deno.test("a run accepts a list argument for an array parameter", async () => {
+test("a run accepts a list argument for an array parameter", async () => {
   class WithTags extends Build {
     tags = parameter("Image tags").array();
     ship = target().executes(() => {});
@@ -264,7 +265,7 @@ Deno.test("a run accepts a list argument for an array parameter", async () => {
   assertEquals(callText(bad?.result).isError, true);
 });
 
-Deno.test("tools/call validates its parameters", async () => {
+test("tools/call validates its parameters", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(req("tools/call", {}));
   assertEquals(res?.error?.message, "tools/call requires a tool name");
@@ -272,7 +273,7 @@ Deno.test("tools/call validates its parameters", async () => {
   assertStringIncludes(res2?.error?.message ?? "", "must be a string");
 });
 
-Deno.test("an unknown method errors; an invalid message is rejected", async () => {
+test("an unknown method errors; an invalid message is rejected", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(req("does/not/exist"));
   assertEquals(res?.error?.code, METHOD_NOT_FOUND);
@@ -280,7 +281,7 @@ Deno.test("an unknown method errors; an invalid message is rejected", async () =
   assertStringIncludes(bad?.error?.message ?? "", "Invalid Request");
 });
 
-Deno.test("notifications never get a reply", async () => {
+test("notifications never get a reply", async () => {
   const server = new McpServer(new Demo());
   const initialized = await server.handleMessage({
     jsonrpc: "2.0",
@@ -323,7 +324,7 @@ function capturingWriter(): { output: AwaitedWriter; messages(): unknown[] } {
   };
 }
 
-Deno.test("serveStdio frames messages and answers each request", async () => {
+test("serveStdio frames messages and answers each request", async () => {
   const seen: unknown[] = [];
   const { output, messages } = capturingWriter();
   await serveStdio(
@@ -347,7 +348,7 @@ Deno.test("serveStdio frames messages and answers each request", async () => {
   assertEquals((out[0] as { id: number }).id, 1);
 });
 
-Deno.test("serveStdio processes a final line the stream never terminated", async () => {
+test("serveStdio processes a final line the stream never terminated", async () => {
   const seen: unknown[] = [];
   const { output, messages } = capturingWriter();
   await serveStdio(
@@ -363,7 +364,7 @@ Deno.test("serveStdio processes a final line the stream never terminated", async
   assertEquals(messages().length, 1);
 });
 
-Deno.test("serveStdio survives a throwing dispatch and keeps reading", async () => {
+test("serveStdio survives a throwing dispatch and keeps reading", async () => {
   const { output, messages } = capturingWriter();
   await serveStdio(
     (message) => {
@@ -389,7 +390,7 @@ Deno.test("serveStdio survives a throwing dispatch and keeps reading", async () 
   assertEquals((out[1] as { id: number }).id, 2);
 });
 
-Deno.test("serveStdio answers an unparseable line with a parse error", async () => {
+test("serveStdio answers an unparseable line with a parse error", async () => {
   const { output, messages } = capturingWriter();
   await serveStdio(
     () => Promise.resolve(null),
@@ -400,7 +401,7 @@ Deno.test("serveStdio answers an unparseable line with a parse error", async () 
   assertEquals((out[0] as { error: { code: number } }).error.code, -32700);
 });
 
-Deno.test("serveMcp prints a startup banner to stderr unless quiet", async () => {
+test("serveMcp prints a startup banner to stderr unless quiet", async () => {
   const { output } = capturingWriter();
   const original = console.error;
   const banner: string[] = [];
@@ -417,7 +418,7 @@ Deno.test("serveMcp prints a startup banner to stderr unless quiet", async () =>
   assertStringIncludes(banner.join("\n"), "run enabled");
 });
 
-Deno.test("serveMcp runs the whole handshake over injected streams", async () => {
+test("serveMcp runs the whole handshake over injected streams", async () => {
   const { output, messages } = capturingWriter();
   const code = await serveMcp(new Demo(), {
     quiet: true,
@@ -434,7 +435,7 @@ Deno.test("serveMcp runs the whole handshake over injected streams", async () =>
   assertStringIncludes(JSON.stringify(out[1]), "list_targets");
 });
 
-Deno.test("the stdio banner reports read-only when running is not enabled", async () => {
+test("the stdio banner reports read-only when running is not enabled", async () => {
   const { output } = capturingWriter();
   const original = console.error;
   const banner: string[] = [];
@@ -449,7 +450,7 @@ Deno.test("the stdio banner reports read-only when running is not enabled", asyn
   assertEquals(text.includes("run enabled"), false);
 });
 
-Deno.test("the newest advertised revision is the newest one this server implements", () => {
+test("the newest advertised revision is the newest one this server implements", () => {
   // Guards against the version list drifting ahead of the behaviour. The
   // revision after this one, 2026-07-28, is not a superset: it removes
   // `initialize` and `ping`, requires a `server/discover` RPC, and makes
@@ -468,7 +469,7 @@ Deno.test("the newest advertised revision is the newest one this server implemen
   assertEquals(result.protocolVersion, "2025-11-25");
 });
 
-Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
+test("an unsupported MCP-Protocol-Version header is refused", () => {
   // Required of a server since 2025-06-18: a client must not proceed on a
   // revision the server never agreed to.
   assertEquals(unsupportedProtocolVersion(null), undefined);

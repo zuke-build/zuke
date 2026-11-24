@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
@@ -183,7 +184,7 @@ const CANARY_READ = [
 ];
 const UNINSTALL = ["uninstall", "api-canary", ...SCOPE, "--ignore-not-found"];
 
-Deno.test("stage checks both releases, installs the canary at 0 replicas, and records what it staged", async () => {
+test("stage checks both releases, installs the canary at 0 replicas, and records what it staged", async () => {
   const { runner, calls } = fakeHelm();
   const ctx = context();
   await platform(runner, (h) => h.values("values-prod.yaml")).stage(ctx);
@@ -213,7 +214,7 @@ Deno.test("stage checks both releases, installs the canary at 0 replicas, and re
   assertEquals(ctx.summary, { "Stable revision": 7 });
 });
 
-Deno.test("stage uses a custom canary release name throughout", async () => {
+test("stage uses a custom canary release name throughout", async () => {
   const { runner, calls } = fakeHelm();
   const p = platform(runner, (h) => h.canaryRelease("api-next"));
   const ctx = context();
@@ -229,7 +230,7 @@ Deno.test("stage uses a custom canary release name throughout", async () => {
   ]);
 });
 
-Deno.test("stage refuses a stable release that is not deployed", async () => {
+test("stage refuses a stable release that is not deployed", async () => {
   for (const status of ["failed", "pending-upgrade", "uninstalled"]) {
     const { runner, calls } = fakeHelm({ stable: `7 ${status} ${FIRST}` });
     const ctx = context();
@@ -243,7 +244,7 @@ Deno.test("stage refuses a stable release that is not deployed", async () => {
   }
 });
 
-Deno.test("stage refuses a canary release left over from an earlier rollout", async () => {
+test("stage refuses a canary release left over from an earlier rollout", async () => {
   const { runner, calls } = fakeHelm({ canary: true });
   const ctx = context();
   await assertRejects(
@@ -259,7 +260,7 @@ Deno.test("stage refuses a canary release left over from an earlier rollout", as
   assertEquals(undo, []);
 });
 
-Deno.test("stage reads only 'not found' as an absent canary release", async () => {
+test("stage reads only 'not found' as an absent canary release", async () => {
   const { runner, calls } = fakeHelm({
     canaryError: "Error: Kubernetes cluster unreachable",
   });
@@ -271,7 +272,7 @@ Deno.test("stage reads only 'not found' as an absent canary release", async () =
   assertEquals(calls.length, 2);
 });
 
-Deno.test("expose scales the canary up first, then the stable release down", async () => {
+test("expose scales the canary up first, then the stable release down", async () => {
   const { runner, calls } = fakeHelm();
   const p = platform(
     runner,
@@ -313,7 +314,7 @@ Deno.test("expose scales the canary up first, then the stable release down", asy
   ]);
 });
 
-Deno.test("expose renders the stable release from its own chart when named", async () => {
+test("expose renders the stable release from its own chart when named", async () => {
   const configs: Array<(h: HelmCanarySettings) => HelmCanarySettings> = [
     (h) => h.version("2.0.0").stableChart("repo/api").stableVersion("1.9.0"),
     // The same chart at another version.
@@ -331,7 +332,7 @@ Deno.test("expose renders the stable release from its own chart when named", asy
   }
 });
 
-Deno.test("expose quantises the staged count and reports the share achieved", async () => {
+test("expose quantises the staged count and reports the share achieved", async () => {
   const { runner, calls } = fakeHelm();
   // The configured count changed since stage; the staged one is used.
   const p = platform(runner, (h) => h.replicas(100));
@@ -352,7 +353,7 @@ Deno.test("expose quantises the staged count and reports the share achieved", as
   ]);
 });
 
-Deno.test("expose refuses a share outside 0 to 100", async () => {
+test("expose refuses a share outside 0 to 100", async () => {
   const { runner, calls } = fakeHelm();
   for (const bad of [-1, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
     await assertRejects(
@@ -364,7 +365,7 @@ Deno.test("expose refuses a share outside 0 to 100", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("expose and promote refuse without a staged record, or with a broken one", async () => {
+test("expose and promote refuse without a staged record, or with a broken one", async () => {
   const { runner, calls } = fakeHelm();
   await assertRejects(
     () => platform(runner).expose(10, context()),
@@ -415,7 +416,7 @@ Deno.test("expose and promote refuse without a staged record, or with a broken o
   assertEquals(calls, []);
 });
 
-Deno.test("promote moves the stable release to the staged image, then uninstalls the canary", async () => {
+test("promote moves the stable release to the staged image, then uninstalls the canary", async () => {
   const { runner, calls } = fakeHelm();
   // The configured image, chart and values changed since stage — a resumed
   // process with new parameters. The staged ones, analysed, are promoted.
@@ -450,7 +451,7 @@ Deno.test("promote moves the stable release to the staged image, then uninstalls
   assertEquals(calls.slice(3), calls.slice(0, 3));
 });
 
-Deno.test("abort mid-rollout rolls the stable release back to the recorded revision", async () => {
+test("abort mid-rollout rolls the stable release back to the recorded revision", async () => {
   const { runner, calls } = fakeHelm();
   const ctx = context();
   const p = platform(runner, (h) => h.timeout("2m").stableRevision(1));
@@ -477,7 +478,7 @@ Deno.test("abort mid-rollout rolls the stable release back to the recorded revis
   assertEquals(undo.slice(3), undo.slice(0, 3));
 });
 
-Deno.test("abort while the canary install was under way only uninstalls it", async () => {
+test("abort while the canary install was under way only uninstalls it", async () => {
   const ctx = context();
   const { runner: reads } = fakeHelm();
   const failing = platform((settings) =>
@@ -492,7 +493,7 @@ Deno.test("abort while the canary install was under way only uninstalls it", asy
   assertEquals(calls, [FIRST_READ, UNINSTALL]);
 });
 
-Deno.test("an engine rollback of a stage cut short during the install still uninstalls the canary", async () => {
+test("an engine rollback of a stage cut short during the install still uninstalls the canary", async () => {
   // The deploying marker is a record: the canary release may exist, so a
   // rollback removes it — the reason only matters when nothing is recorded.
   const ctx = context("rollback");
@@ -502,7 +503,7 @@ Deno.test("an engine rollback of a stage cut short during the install still unin
   assertEquals(calls, [FIRST_READ, UNINSTALL]);
 });
 
-Deno.test("a retried stage keeps the earlier attempt's record and its canary release", async () => {
+test("a retried stage keeps the earlier attempt's record and its canary release", async () => {
   // A first attempt was cut short during the canary install, so the canary
   // release is this rollout's own: the retry does not refuse it as a
   // leftover, and a retry that fails reading still has it cleaned up.
@@ -523,7 +524,7 @@ Deno.test("a retried stage keeps the earlier attempt's record and its canary rel
   assertEquals(undo, [FIRST_READ, UNINSTALL]);
 });
 
-Deno.test("a stage that fails before the canary install leaves a rollback nothing to do", async () => {
+test("a stage that fails before the canary install leaves a rollback nothing to do", async () => {
   // Configuration errors are caught after the marker is written, so even a
   // configured hand-run revision is not rolled back to.
   const bad: Array<(h: HelmCanarySettings) => HelmCanarySettings> = [
@@ -551,7 +552,7 @@ Deno.test("a stage that fails before the canary install leaves a rollback nothin
   assertEquals(calls, []);
 });
 
-Deno.test("a revision read-back that is not a revision is refused before anything changes", async () => {
+test("a revision read-back that is not a revision is refused before anything changes", async () => {
   for (
     const printed of [
       "",
@@ -592,7 +593,7 @@ Deno.test("a revision read-back that is not a revision is refused before anythin
   assertEquals(ctx.state.get(), { helmStage: "reading" });
 });
 
-Deno.test("a stage that cannot record itself staged stops before any exposure", async () => {
+test("a stage that cannot record itself staged stops before any exposure", async () => {
   const { runner, calls } = fakeHelm();
   const ctx = context();
   const record = ctx.state.trySet;
@@ -608,7 +609,7 @@ Deno.test("a stage that cannot record itself staged stops before any exposure", 
   assertEquals(ctx.summary, {});
 });
 
-Deno.test("a hand-run abort rolls back to the configured revision", async () => {
+test("a hand-run abort rolls back to the configured revision", async () => {
   const { runner, calls } = fakeHelm();
   await platform(runner, (h) => h.stableRevision(41)).abort(context());
   assertEquals(calls, [
@@ -617,7 +618,7 @@ Deno.test("a hand-run abort rolls back to the configured revision", async () => 
   ]);
 });
 
-Deno.test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
+test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so rolling the stable release back would change a
   // release no rollout touched — and the canary release is not this one's.
@@ -629,7 +630,7 @@ Deno.test("a rollback with nothing recorded runs nothing, even with a stable rev
   assertEquals(calls, []);
 });
 
-Deno.test("a rollback still refuses a record it does not recognise", async () => {
+test("a rollback still refuses a record it does not recognise", async () => {
   const { runner, calls } = fakeHelm();
   const unknown = context("rollback");
   await unknown.state.set({ helmStage: "bogus" });
@@ -641,7 +642,7 @@ Deno.test("a rollback still refuses a record it does not recognise", async () =>
   assertEquals(calls, []);
 });
 
-Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const { runner, calls } = fakeHelm();
     await platform(runner, (h) => h.stableRevision(41)).abort(context(reason));
@@ -652,7 +653,7 @@ Deno.test("a hand-run abort, named or from an engine that names no reason, falls
   }
 });
 
-Deno.test("a hand-run abort with no revision refuses rather than claim a rollback", async () => {
+test("a hand-run abort with no revision refuses rather than claim a rollback", async () => {
   const { runner, calls } = fakeHelm();
   await assertRejects(
     () => platform(runner).abort(context()),
@@ -670,7 +671,7 @@ Deno.test("a hand-run abort with no revision refuses rather than claim a rollbac
   assertEquals(calls, []);
 });
 
-Deno.test("abort refuses a record it does not recognise or that lacks the revision", async () => {
+test("abort refuses a record it does not recognise or that lacks the revision", async () => {
   const { runner, calls } = fakeHelm();
   const unknown = context();
   await unknown.state.set({ helmStage: "bogus" });
@@ -705,7 +706,7 @@ Deno.test("abort refuses a record it does not recognise or that lacks the revisi
   assertEquals(calls, []);
 });
 
-Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
+test("the lambda is evaluated on every call, so it sees resolved values", async () => {
   const { runner, calls } = fakeHelm();
   let image = "unresolved,";
   const p = platform(runner, (h) => h.image(image));
@@ -714,7 +715,7 @@ Deno.test("the lambda is evaluated on every call, so it sees resolved values", a
   assertEquals(calls[2].includes("image.tag=1.6.0"), true);
 });
 
-Deno.test("names, keys, files, versions, chart and image that would change argv meaning are refused", async () => {
+test("names, keys, files, versions, chart and image that would change argv meaning are refused", async () => {
   const { runner, calls } = fakeHelm();
   const cases: Array<[(h: HelmCanarySettings) => HelmCanarySettings, string]> =
     [
@@ -782,7 +783,7 @@ Deno.test("names, keys, files, versions, chart and image that would change argv 
   assertEquals(calls, []);
 });
 
-Deno.test("tags as OCI allows them, digests, and full references at a key that takes one", async () => {
+test("tags as OCI allows them, digests, and full references at a key that takes one", async () => {
   for (
     const [key, image] of [
       ["image.tag", "_b"],
@@ -800,7 +801,7 @@ Deno.test("tags as OCI allows them, digests, and full references at a key that t
   }
 });
 
-Deno.test("describe names the release and namespace", () => {
+test("describe names the release and namespace", () => {
   const { runner } = fakeHelm();
   assertEquals(platform(runner).describe(), "Helm release api in prod");
   assertEquals(
@@ -811,7 +812,7 @@ Deno.test("describe names the release and namespace", () => {
   assertEquals(platform(runner).exposure, "replicas");
 });
 
-Deno.test("the default runner runs helm itself", async () => {
+test("the default runner runs helm itself", async () => {
   // The default is the settings' own run(), so a helm that is not installed
   // surfaces as the wrapper's usual tool-not-found error.
   const p = helmCanary((h) =>
@@ -836,7 +837,7 @@ function failingHelm(verb: string, cluster: Cluster = {}) {
   return { runner, calls };
 }
 
-Deno.test("a failed canary install is never recorded as staged, even when the runner does not throw", async () => {
+test("a failed canary install is never recorded as staged, even when the runner does not throw", async () => {
   const { runner } = failingHelm("upgrade");
   const ctx = context();
   await assertRejects(
@@ -848,7 +849,7 @@ Deno.test("a failed canary install is never recorded as staged, even when the ru
   assertEquals(ctx.summary, {});
 });
 
-Deno.test("expose, promote and abort fail on a command that exited non-zero", async () => {
+test("expose, promote and abort fail on a command that exited non-zero", async () => {
   for (const verb of ["upgrade", "uninstall"]) {
     const { runner } = failingHelm(verb);
     await assertRejects(
@@ -887,7 +888,7 @@ Deno.test("expose, promote and abort fail on a command that exited non-zero", as
   );
 });
 
-Deno.test("a .noThrow() in the helm lambda does not hide a failed read or rollback", async () => {
+test("a .noThrow() in the helm lambda does not hide a failed read or rollback", async () => {
   // The running deno stands in for helm: `deno get …` and `deno rollback …`
   // exit 1, and the lambda asks run() not to throw on them.
   const p = helmCanary((h) =>
@@ -909,7 +910,7 @@ Deno.test("a .noThrow() in the helm lambda does not hide a failed read or rollba
   );
 });
 
-Deno.test("expose and promote use the chart, values and keys stage recorded, not the current configuration", async () => {
+test("expose and promote use the chart, values and keys stage recorded, not the current configuration", async () => {
   const { runner, calls } = fakeHelm();
   let chart = "./charts/v1";
   let key = "image.tag";
@@ -982,7 +983,7 @@ Deno.test("expose and promote use the chart, values and keys stage recorded, not
   ]);
 });
 
-Deno.test("a stable chart from a repository must be pinned with stableVersion", async () => {
+test("a stable chart from a repository must be pinned with stableVersion", async () => {
   for (const ref of ["repo/api", "oci://ghcr.io/o/api", "charts/api"]) {
     const { runner, calls } = fakeHelm();
     await assertRejects(
@@ -1003,7 +1004,7 @@ Deno.test("a stable chart from a repository must be pinned with stableVersion", 
   }
 });
 
-Deno.test("a stage that cannot record the canary install starting runs no install", async () => {
+test("a stage that cannot record the canary install starting runs no install", async () => {
   const { runner, calls } = fakeHelm();
   const ctx = context();
   ctx.state.trySet = () => Promise.resolve(false);
@@ -1016,7 +1017,7 @@ Deno.test("a stage that cannot record the canary install starting runs no instal
   assertEquals(ctx.state.get(), { helmStage: "reading" });
 });
 
-Deno.test("a candidate chart from a repository must be pinned with version", async () => {
+test("a candidate chart from a repository must be pinned with version", async () => {
   for (const ref of ["repo/api", "oci://ghcr.io/o/api", "charts/api"]) {
     const { runner, calls } = fakeHelm();
     const ctx = context();
@@ -1045,7 +1046,7 @@ const MOVED: Array<[(h: HelmCanarySettings) => HelmCanarySettings, string]> = [
   [(h) => h.namespace("staging"), 'namespace "prod"'],
 ];
 
-Deno.test("expose, promote and abort refuse a release identity that changed since stage", async () => {
+test("expose, promote and abort refuse a release identity that changed since stage", async () => {
   for (const [moved, recorded] of MOVED) {
     const { runner, calls } = fakeHelm();
     const ctx = context();
@@ -1070,7 +1071,7 @@ Deno.test("expose, promote and abort refuse a release identity that changed sinc
   }
 });
 
-Deno.test("a rollback of a canary install under way refuses a changed identity", async () => {
+test("a rollback of a canary install under way refuses a changed identity", async () => {
   for (const [moved, recorded] of MOVED) {
     const ctx = context();
     const { runner: reads } = fakeHelm();
@@ -1090,7 +1091,7 @@ Deno.test("a rollback of a canary install under way refuses a changed identity",
   }
 });
 
-Deno.test("a record without the release identity is damaged, and refused", async () => {
+test("a record without the release identity is damaged, and refused", async () => {
   const { runner, calls } = fakeHelm();
   for (
     const key of ["helmStableRelease", "helmCanaryRelease", "helmNamespace"]
@@ -1111,7 +1112,7 @@ Deno.test("a record without the release identity is damaged, and refused", async
   }
 });
 
-Deno.test("a recorded chart with no version that is not a local path is refused as damaged", async () => {
+test("a recorded chart with no version that is not a local path is refused as damaged", async () => {
   const { runner, calls } = fakeHelm();
   const unpinned: Array<Record<string, JsonValue>> = [
     { helmChart: "repo/api", helmVersion: null },
@@ -1127,7 +1128,7 @@ Deno.test("a recorded chart with no version that is not a local path is refused 
   assertEquals(calls, []);
 });
 
-Deno.test("a damaged record is reported as damaged, not as a setting to change", async () => {
+test("a damaged record is reported as damaged, not as a setting to change", async () => {
   const { runner } = fakeHelm();
   const tampered: Array<Record<string, JsonValue>> = [
     { helmImage: "1.5,x=1" },
@@ -1149,7 +1150,7 @@ Deno.test("a damaged record is reported as damaged, not as a setting to change",
   }
 });
 
-Deno.test("Windows drive paths count as local charts", async () => {
+test("Windows drive paths count as local charts", async () => {
   for (const ref of ["C:\\charts\\api", "d:/charts/api", ".\\charts\\api"]) {
     const { runner, calls } = fakeHelm();
     await platform(runner, (h) => h.chart(ref)).stage(context());
@@ -1163,7 +1164,7 @@ Deno.test("Windows drive paths count as local charts", async () => {
   );
 });
 
-Deno.test("a rollout started in helm's default namespace refuses a namespace added later", async () => {
+test("a rollout started in helm's default namespace refuses a namespace added later", async () => {
   const { runner, calls } = fakeHelm();
   const unscoped = (h: HelmCanarySettings) =>
     h.chart("./charts/api").stableRelease("api").image("1.5.0").replicas(4)
@@ -1188,7 +1189,7 @@ Deno.test("a rollout started in helm's default namespace refuses a namespace add
   );
 });
 
-Deno.test("a changed identity is refused with the hand-run recovery spelled out", async () => {
+test("a changed identity is refused with the hand-run recovery spelled out", async () => {
   const { runner, calls } = fakeHelm();
   const moved = platform(runner, (h) => h.canaryRelease("api-next"));
   const error = await assertRejects(
@@ -1208,7 +1209,7 @@ Deno.test("a changed identity is refused with the hand-run recovery spelled out"
   assertEquals(calls, []);
 });
 
-Deno.test("a recorded identity of the wrong type is a damaged record, not a configuration change", async () => {
+test("a recorded identity of the wrong type is a damaged record, not a configuration change", async () => {
   const { runner, calls } = fakeHelm();
   const patches: Array<Record<string, JsonValue>> = [
     { helmStableRelease: 1 },
@@ -1258,7 +1259,7 @@ function recordedCalls(
   ];
 }
 
-Deno.test("a stable release reinstalled since stage is refused before any change", async () => {
+test("a stable release reinstalled since stage is refused before any change", async () => {
   // The same name, first deployed later: another incarnation, whose history
   // does not hold the recorded revision.
   for (const [label, call] of recordedCalls()) {
@@ -1292,7 +1293,7 @@ Deno.test("a stable release reinstalled since stage is refused before any change
   }
 });
 
-Deno.test("a resumed stage refuses a stable release reinstalled since the earlier attempt", async () => {
+test("a resumed stage refuses a stable release reinstalled since the earlier attempt", async () => {
   for (const prior of [DEPLOYING, STAGED]) {
     const { runner, calls } = fakeHelm({
       stable: `7 deployed ${REINSTALLED}`,
@@ -1310,7 +1311,7 @@ Deno.test("a resumed stage refuses a stable release reinstalled since the earlie
   }
 });
 
-Deno.test("a record without a usable first-deployed time is damaged, and refused", async () => {
+test("a record without a usable first-deployed time is damaged, and refused", async () => {
   const damaged: JsonValue[] = [
     // A number cannot hold every such value exactly, so none is accepted.
     1759740000000000000,
@@ -1362,7 +1363,7 @@ Deno.test("a record without a usable first-deployed time is damaged, and refused
   assertEquals(calls, []);
 });
 
-Deno.test("a first-deployed read that is not a time is refused before any change", async () => {
+test("a first-deployed read that is not a time is refused before any change", async () => {
   for (
     const printed of ["", "abc", "-1", "1.5", `${FIRST} 1`, "<no value>"]
   ) {
@@ -1389,7 +1390,7 @@ Deno.test("a first-deployed read that is not a time is refused before any change
   }
 });
 
-Deno.test("a failed first-deployed read fails the call with nothing changed", async () => {
+test("a failed first-deployed read fails the call with nothing changed", async () => {
   for (const [label, call] of recordedCalls()) {
     const { runner, calls } = failingHelm("get");
     await assertRejects(
@@ -1401,7 +1402,7 @@ Deno.test("a failed first-deployed read fails the call with nothing changed", as
   }
 });
 
-Deno.test("a first-deployed time beyond a safe integer round-trips exactly", async () => {
+test("a first-deployed time beyond a safe integer round-trips exactly", async () => {
   // Nanoseconds since 1970 are beyond Number.MAX_SAFE_INTEGER: two times one
   // nanosecond apart are the same number, so the record must keep digits.
   const exact = "9007199254740993123";
@@ -1432,13 +1433,13 @@ Deno.test("a first-deployed time beyond a safe integer round-trips exactly", asy
   assertEquals(mutations(calls), []);
 });
 
-Deno.test("a hand-run abort has no first-deployed time to check, and reads nothing", async () => {
+test("a hand-run abort has no first-deployed time to check, and reads nothing", async () => {
   const { runner, calls } = fakeHelm({ firstDeployed: REINSTALLED });
   await platform(runner, (h) => h.stableRevision(41)).abort(context());
   assertEquals(calls.map((argv) => argv[0]), ["rollback", "uninstall"]);
 });
 
-Deno.test("a reinstall refusal names the hand-run recovery, not a resume or cancel", async () => {
+test("a reinstall refusal names the hand-run recovery, not a resume or cancel", async () => {
   // The refusal ends the run cancelled, so a resume or `zuke cancel` cannot
   // roll it back; the message must give the revision a hand-run abort needs.
   const { runner } = fakeHelm({ firstDeployed: REINSTALLED });

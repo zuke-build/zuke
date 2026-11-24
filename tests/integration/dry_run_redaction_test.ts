@@ -8,6 +8,7 @@
  * parameter reaches Zuke's own output verbatim. Driven through the real CLI.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -32,7 +33,7 @@ class Deploy extends Build {
     });
 }
 
-Deno.test("a dry-run command echo masks a secret argv token", async () => {
+test("a dry-run command echo masks a secret argv token", async () => {
   const { code, out } = await runCli(Deploy, [
     "push",
     "--dry-run",
@@ -51,7 +52,7 @@ Deno.test("a dry-run command echo masks a secret argv token", async () => {
   );
 });
 
-Deno.test("a failing command's error message masks a secret argv token", async () => {
+test("a failing command's error message masks a secret argv token", async () => {
   // The command line also reaches output through CommandError, reported when the
   // target fails — the same argv, a different sink.
   class Fail extends Build {
@@ -83,7 +84,7 @@ const MULTILINE_SECRET = [
   "-----END FAKE TEST KEY-----",
 ].join("\n");
 
-Deno.test("every line of a multi-line secret is masked in a command echo", async () => {
+test("every line of a multi-line secret is masked in a command echo", async () => {
   const { code, out } = await runCli(Deploy, [
     "push",
     "--dry-run",

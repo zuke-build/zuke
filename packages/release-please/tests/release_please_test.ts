@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -13,14 +14,14 @@ import {
   ReleasePleaseTasks,
 } from "../src/release_please.ts";
 
-Deno.test("the default binary is release-please", () => {
+test("the default binary is release-please", () => {
   assertEquals(
     new ReleasePleaseReleasePrSettings().argv()[0],
     "release-please",
   );
 });
 
-Deno.test("release-pr: bare subcommand and all options", () => {
+test("release-pr: bare subcommand and all options", () => {
   assertEquals(
     new ReleasePleaseReleasePrSettings().argv().slice(1),
     ["release-pr"],
@@ -54,14 +55,14 @@ Deno.test("release-pr: bare subcommand and all options", () => {
   );
 });
 
-Deno.test("github-release: subcommand token", () => {
+test("github-release: subcommand token", () => {
   assertEquals(
     new ReleasePleaseGithubReleaseSettings().token("t").argv().slice(1),
     ["github-release", "--token", "t"],
   );
 });
 
-Deno.test("every ReleasePleaseTasks function reaches execution", async () => {
+test("every ReleasePleaseTasks function reaches execution", async () => {
   await assertRejects(
     () => ReleasePleaseTasks.releasePr(missingTool),
     ToolNotFoundError,
@@ -72,7 +73,7 @@ Deno.test("every ReleasePleaseTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("release-please: conforms to the wrapper contract", async () => {
+test("release-please: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new ReleasePleaseReleasePrSettings(),
     "release-please",

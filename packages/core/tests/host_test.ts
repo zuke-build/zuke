@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import {
   archName,
@@ -44,7 +45,7 @@ function envMap(
   return (name) => map[name];
 }
 
-Deno.test("detectCiHost recognises each provider from its signal", () => {
+test("detectCiHost recognises each provider from its signal", () => {
   const cases: Array<[Record<string, string>, CiHost]> = [
     [{ GITHUB_ACTIONS: "true" }, "github"],
     [{ GITLAB_CI: "true" }, "gitlab"],
@@ -58,7 +59,7 @@ Deno.test("detectCiHost recognises each provider from its signal", () => {
   }
 });
 
-Deno.test("detectCiHost precedence prefers GitHub, then GitLab, then Azure", () => {
+test("detectCiHost precedence prefers GitHub, then GitLab, then Azure", () => {
   assertEquals(
     detectCiHost(envMap({ GITHUB_ACTIONS: "true", GITLAB_CI: "true" })),
     "github",
@@ -71,7 +72,7 @@ Deno.test("detectCiHost precedence prefers GitHub, then GitLab, then Azure", () 
   assertEquals(detectCiHost(envMap({ BITBUCKET_BUILD_NUMBER: "" })), "local");
 });
 
-Deno.test("ciHost maps hosts to their long names; isCI follows", async () => {
+test("ciHost maps hosts to their long names; isCI follows", async () => {
   await withEnv({ GITHUB_ACTIONS: "true" }, () => {
     assertEquals(ciHost(), "github-actions");
     assertEquals(isCI(), true);
@@ -98,7 +99,7 @@ Deno.test("ciHost maps hosts to their long names; isCI follows", async () => {
   });
 });
 
-Deno.test("operatingSystem normalises Deno's os names to a friendly union", () => {
+test("operatingSystem normalises Deno's os names to a friendly union", () => {
   assertEquals(operatingSystem("darwin"), "macos"); // the key normalisation
   assertEquals(operatingSystem("windows"), "windows");
   assertEquals(operatingSystem("linux"), "linux");
@@ -110,7 +111,7 @@ Deno.test("operatingSystem normalises Deno's os names to a friendly union", () =
   assertEquals(["linux", "macos", "windows"].includes(host), true);
 });
 
-Deno.test("isCI recognises a CI system Zuke has no specific support for", () => {
+test("isCI recognises a CI system Zuke has no specific support for", () => {
   // The dangerous direction is reading CI as local: a fixer scoped to CI stops
   // running, and one at its default applies changes to what it believes is a
   // working tree someone is editing. Jenkins is the case that matters — it sets
@@ -132,12 +133,12 @@ Deno.test("isCI recognises a CI system Zuke has no specific support for", () => 
   }
 });
 
-Deno.test("a developer's machine is still local", () => {
+test("a developer's machine is still local", () => {
   assertEquals(isCI(() => undefined), false);
   assertEquals(ciHost(() => undefined), "local");
 });
 
-Deno.test("CI=false is not CI, but another marker set to false still is", () => {
+test("CI=false is not CI, but another marker set to false still is", () => {
   // `CI` has a conventional "not CI" value; the others are presence-only, so a
   // literal "false" in one of them is still a set marker.
   assertEquals(isCI((name) => name === "CI" ? "false" : undefined), false);
@@ -148,7 +149,7 @@ Deno.test("CI=false is not CI, but another marker set to false still is", () => 
   );
 });
 
-Deno.test("a named host still wins over the generic markers", () => {
+test("a named host still wins over the generic markers", () => {
   const env = (name: string) =>
     name === "GITHUB_ACTIONS"
       ? "true"
@@ -159,14 +160,14 @@ Deno.test("a named host still wins over the generic markers", () => {
   assertEquals(detectCiHost(env), "github");
 });
 
-Deno.test("ciHost and isCI default to the process environment", () => {
+test("ciHost and isCI default to the process environment", () => {
   // The reader is an added optional parameter, so every existing call site keeps
   // reading the real environment — the property that makes this non-breaking.
   assertEquals(typeof ciHost(), "string");
   assertEquals(typeof isCI(), "boolean");
 });
 
-Deno.test("denoExecutable names the running deno, unless this is a compiled build", () => {
+test("denoExecutable names the running deno, unless this is a compiled build", () => {
   // Under `deno run` — and so under `deno test` — the executable running this
   // code is Deno itself, which is what a `deno doc`/`deno test` subprocess
   // should be: the same version as its parent, with no ambient install needed.
@@ -178,7 +179,7 @@ Deno.test("denoExecutable names the running deno, unless this is a compiled buil
   assertEquals(denoExecutable(true), "deno");
 });
 
-Deno.test("hostOs gives Node's platform names the names Zuke has always used", () => {
+test("hostOs gives Node's platform names the names Zuke has always used", () => {
   assertEquals(hostOs("win32"), "windows");
   assertEquals(hostOs("cygwin"), "windows");
   assertEquals(hostOs("sunos"), "solaris");
@@ -194,20 +195,20 @@ Deno.test("hostOs gives Node's platform names the names Zuke has always used", (
   assertEquals(hostOs(), Deno.build.os);
 });
 
-Deno.test("hostArch maps the two CPUs Zuke installs for, and names any other", () => {
+test("hostArch maps the two CPUs Zuke installs for, and names any other", () => {
   assertEquals(hostArch("x64"), "x86_64");
   assertEquals(hostArch("arm64"), "aarch64");
   assertEquals(hostArch(), Deno.build.arch);
   assertThrows(() => hostArch("ia32"), Error, 'architecture "ia32"');
 });
 
-Deno.test("archName maps the two CPUs Zuke recognises, and passes any other through", () => {
+test("archName maps the two CPUs Zuke recognises, and passes any other through", () => {
   assertEquals(archName("x64"), "x86_64");
   assertEquals(archName("arm64"), "aarch64");
   assertEquals(archName("ppc64"), "ppc64");
   assertEquals(archName(), Deno.build.arch);
 });
 
-Deno.test("platformLabel names the running host as the banner always has", () => {
+test("platformLabel names the running host as the banner always has", () => {
   assertEquals(platformLabel(), `${Deno.build.os}-${Deno.build.arch}`);
 });

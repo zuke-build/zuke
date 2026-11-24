@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import type { HostOs } from "../src/host.ts";
 import type { CommandStatus, Signal } from "../src/signal.ts";
@@ -15,7 +16,7 @@ const statusToDeno = (status: CommandStatus): Deno.CommandStatus => status;
 const osFromDeno = (os: typeof Deno.build.os): HostOs => os;
 const osToDeno = (os: HostOs): typeof Deno.build.os => os;
 
-Deno.test("Zuke's signal, status and host OS types are the runtime's, value for value", () => {
+test("Zuke's signal, status and host OS types are the runtime's, value for value", () => {
   assertEquals(signalToDeno(signalFromDeno("SIGTERM")), "SIGTERM");
   const status = {
     success: false,

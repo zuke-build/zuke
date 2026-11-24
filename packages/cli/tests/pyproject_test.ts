@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { parsePyproject } from "../src/pyproject.ts";
 
-Deno.test("parsePyproject reads poethepoet tasks in every form", () => {
+test("parsePyproject reads poethepoet tasks in every form", () => {
   const tasks = parsePyproject(`
 [tool.poe.tasks]
 lint = "ruff check ."
@@ -51,7 +52,7 @@ ci.sequence = ["check", "lint", "echo done", { cmd = "echo cmd" }, { ref = "test
   ]);
 });
 
-Deno.test("parsePyproject reads pdm scripts, skipping the shared _ options", () => {
+test("parsePyproject reads pdm scripts, skipping the shared _ options", () => {
   const tasks = parsePyproject(`
 [tool.pdm.scripts]
 _.env_file = ".env"
@@ -91,7 +92,7 @@ args_list = { cmd = ["pytest", "{args:tests}"] }
   }]);
 });
 
-Deno.test("parsePyproject reads hatch default-environment scripts", () => {
+test("parsePyproject reads hatch default-environment scripts", () => {
   const tasks = parsePyproject(`
 [tool.hatch.envs.default.scripts]
 test = "pytest"
@@ -107,7 +108,7 @@ cov = ["test", "coverage report", "coverage html"]
   ]);
 });
 
-Deno.test("parsePyproject reads taskipy and rye tables", () => {
+test("parsePyproject reads taskipy and rye tables", () => {
   assertEquals(
     parsePyproject(
       '[tool.taskipy.tasks]\ntest = { cmd = "pytest", help = "h" }',
@@ -133,7 +134,7 @@ lint = { chain = ["lint:black", "serve"] }
   );
 });
 
-Deno.test("parsePyproject reads only the first task table present", () => {
+test("parsePyproject reads only the first task table present", () => {
   const tasks = parsePyproject(`
 [tool.pdm.scripts]
 a = "x"
@@ -143,13 +144,13 @@ b = "y"
   assertEquals(tasks.map((t) => t.name), ["b"]);
 });
 
-Deno.test("parsePyproject finds no tasks without a task table", () => {
+test("parsePyproject finds no tasks without a task table", () => {
   assertEquals(parsePyproject('[project]\nname = "app"\n'), []);
   assertEquals(parsePyproject("[tool]\npoe = 1\n"), []);
   assertEquals(parsePyproject(""), []);
 });
 
-Deno.test("parsePyproject keeps a value it cannot read as a TODO", () => {
+test("parsePyproject keeps a value it cannot read as a TODO", () => {
   const tasks = parsePyproject(`
 [tool.poe.tasks]
 n = 3
@@ -167,7 +168,7 @@ odd = { cmd = [] }
   ]);
 });
 
-Deno.test("parsePyproject records a repeated or self-naming step once", () => {
+test("parsePyproject records a repeated or self-naming step once", () => {
   const [task] = parsePyproject(
     '[tool.poe.tasks]\nloop = ["loop", "loop", { ref = "loop" }]\n',
   );
@@ -175,7 +176,7 @@ Deno.test("parsePyproject records a repeated or self-naming step once", () => {
   assertEquals(task.deps, ["loop"]);
 });
 
-Deno.test("parsePyproject turns a pathologically nested value into a friendly error", () => {
+test("parsePyproject turns a pathologically nested value into a friendly error", () => {
   // The reader recurses per array level; a hostile file nesting deep enough
   // to exhaust the stack must still fail as "cannot read", not crash.
   assertThrows(
@@ -185,7 +186,7 @@ Deno.test("parsePyproject turns a pathologically nested value into a friendly er
   );
 });
 
-Deno.test("parsePyproject names the line of malformed TOML", () => {
+test("parsePyproject names the line of malformed TOML", () => {
   assertThrows(
     () => parsePyproject('[tool.poe.tasks]\nlint = "ruff\n'),
     Error,

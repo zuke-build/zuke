@@ -7,6 +7,7 @@
  * a failing source.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { Redactor } from "@zuke/core";
 import {
@@ -20,7 +21,7 @@ import {
 import { registerSecrets } from "../src/credentials.ts";
 import { BASE, fakeFetch, vector } from "./_fetch.ts";
 
-Deno.test("bearerToken, basicAuth and header each add their header", async () => {
+test("bearerToken, basicAuth and header each add their header", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fetcher).query("q").bearerToken("test-token")
@@ -44,7 +45,7 @@ Deno.test("bearerToken, basicAuth and header each add their header", async () =>
   );
 });
 
-Deno.test("an empty token and a username with a colon are refused", async () => {
+test("an empty token and a username with a colon are refused", async () => {
   await assertRejects(
     () => PrometheusTasks.query((s) => s.bearerToken("")),
     Error,
@@ -57,7 +58,7 @@ Deno.test("an empty token and a username with a colon are refused", async () => 
   );
 });
 
-Deno.test("a credentials callback sees the exact request and the injected seams", async () => {
+test("a credentials callback sees the exact request and the injected seams", async () => {
   const seen: Array<
     [PrometheusOutgoingRequest, PrometheusCredentialsContext]
   > = [];
@@ -99,7 +100,7 @@ Deno.test("a credentials callback sees the exact request and the injected seams"
   assertEquals(sent.headers.get("x-time"), "1700000000000");
 });
 
-Deno.test("the default seams read the real file system, environment and clock", async () => {
+test("the default seams read the real file system, environment and clock", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const path = `${dir}/token`;
@@ -128,7 +129,7 @@ Deno.test("the default seams read the real file system, environment and clock", 
   }
 });
 
-Deno.test("a GET request hands the callback an empty body and the query in the URL", async () => {
+test("a GET request hands the callback an empty body and the query in the URL", async () => {
   let seen: PrometheusOutgoingRequest | undefined;
   await PrometheusTasks.labelValues((s) =>
     s.url(BASE).fetch(
@@ -149,7 +150,7 @@ Deno.test("a GET request hands the callback an empty body and the query in the U
   assertEquals(seen?.headers, { accept: "application/json" });
 });
 
-Deno.test("a source cannot change the body that is sent", async () => {
+test("a source cannot change the body that is sent", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fetcher).query("q").credentials((request) => {
@@ -160,7 +161,7 @@ Deno.test("a source cannot change the body that is sent", async () => {
   assertEquals(fetcher.sent[0].body, "query=q");
 });
 
-Deno.test("two sources setting the same header fail the call, naming the header", async () => {
+test("two sources setting the same header fail the call, naming the header", async () => {
   const fetcher = fakeFetch(() => vector());
   await assertRejects(
     () =>
@@ -194,7 +195,7 @@ Deno.test("two sources setting the same header fail the call, naming the header"
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a basic-auth password echoed back decoded is masked", async () => {
+test("a basic-auth password echoed back decoded is masked", async () => {
   const echo = fakeFetch((request) => {
     const header = request.headers.get("authorization") ?? "";
     const decoded = atob(header.replace("Basic ", ""));
@@ -221,7 +222,7 @@ Deno.test("a basic-auth password echoed back decoded is masked", async () => {
   }
 });
 
-Deno.test("a failing source fails the call, with earlier sources' secrets masked", async () => {
+test("a failing source fails the call, with earlier sources' secrets masked", async () => {
   const fetcher = fakeFetch(() => vector());
   const error = await assertRejects(
     () =>
@@ -238,7 +239,7 @@ Deno.test("a failing source fails the call, with earlier sources' secrets masked
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a header named __proto__ stays a header", async () => {
+test("a header named __proto__ stays a header", async () => {
   let seen: PrometheusOutgoingRequest | undefined;
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fakeFetch(() => vector())).query("q")
@@ -251,7 +252,7 @@ Deno.test("a header named __proto__ stays a header", async () => {
   assertEquals(Object.hasOwn(seen?.headers ?? {}, "__proto__"), true);
 });
 
-Deno.test("short values are not masked; a scheme's credential is masked alone", () => {
+test("short values are not masked; a scheme's credential is masked alone", () => {
   const redactor = new Redactor();
   registerSecrets(redactor, "1");
   registerSecrets(redactor, "Bearer short");

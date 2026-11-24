@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   CORE_PACKAGE,
@@ -22,7 +23,7 @@ function reader(contents: Record<string, string>): (path: string) => string {
   };
 }
 
-Deno.test("readCoreFloor: extracts the declared specifier and imports", () => {
+test("readCoreFloor: extracts the declared specifier and imports", () => {
   const floor = readCoreFloor(
     "gh",
     reader({
@@ -37,7 +38,7 @@ Deno.test("readCoreFloor: extracts the declared specifier and imports", () => {
   assertEquals(floor?.imports[CORE_PACKAGE], "jsr:@zuke/core@^1.31.0");
 });
 
-Deno.test("readCoreFloor: keeps a package's other imports", () => {
+test("readCoreFloor: keeps a package's other imports", () => {
   const floor = readCoreFloor(
     "docs",
     reader({
@@ -52,7 +53,7 @@ Deno.test("readCoreFloor: keeps a package's other imports", () => {
   assertEquals(floor?.imports["@zuke/deno"], "jsr:@zuke/deno@^0.4.0");
 });
 
-Deno.test("readCoreFloor: no core dependency means nothing to verify", () => {
+test("readCoreFloor: no core dependency means nothing to verify", () => {
   // Core itself: it has no self-dependency, so it is skipped rather than failed.
   assertEquals(
     readCoreFloor(
@@ -70,7 +71,7 @@ Deno.test("readCoreFloor: no core dependency means nothing to verify", () => {
   );
 });
 
-Deno.test("readCoreFloor: a config it cannot parse is skipped, not thrown", () => {
+test("readCoreFloor: a config it cannot parse is skipped, not thrown", () => {
   assertEquals(
     readCoreFloor("bad", reader({ "packages/bad/deno.json": "{ not json" })),
     undefined,
@@ -89,7 +90,7 @@ Deno.test("readCoreFloor: a config it cannot parse is skipped, not thrown", () =
   );
 });
 
-Deno.test("readCoreFloor: a non-string import value is dropped", () => {
+test("readCoreFloor: a non-string import value is dropped", () => {
   const floor = readCoreFloor(
     "odd",
     reader({
@@ -101,7 +102,7 @@ Deno.test("readCoreFloor: a non-string import value is dropped", () => {
   assertEquals(floor?.specifier, "jsr:@zuke/core@^1.25.0");
 });
 
-Deno.test("exactFloorSpecifier: pins the minimum of each range operator", () => {
+test("exactFloorSpecifier: pins the minimum of each range operator", () => {
   // The point of the whole check: a caret range would otherwise resolve to the
   // newest matching version and never exercise the declared floor.
   assertEquals(
@@ -126,7 +127,7 @@ Deno.test("exactFloorSpecifier: pins the minimum of each range operator", () => 
   );
 });
 
-Deno.test("exactFloorSpecifier: an ambiguous range has no single minimum", () => {
+test("exactFloorSpecifier: an ambiguous range has no single minimum", () => {
   // Reported rather than guessed at — a wrong guess would silently check the
   // wrong version and claim the floor verified.
   assertEquals(exactFloorSpecifier("jsr:@zuke/core@*"), undefined);
@@ -138,7 +139,7 @@ Deno.test("exactFloorSpecifier: an ambiguous range has no single minimum", () =>
   assertEquals(exactFloorSpecifier("@leading-only"), undefined);
 });
 
-Deno.test("floorConfig: pins core, keeps siblings, declares no workspace", () => {
+test("floorConfig: pins core, keeps siblings, declares no workspace", () => {
   const floor: CoreFloor = {
     package: "docs",
     specifier: "jsr:@zuke/core@^1.25.0",
@@ -159,7 +160,7 @@ Deno.test("floorConfig: pins core, keeps siblings, declares no workspace", () =>
   assertEquals(parsed.minimumDependencyAge, 0);
 });
 
-Deno.test("isAllowedSpecifier: only workspace registry specifiers pass", () => {
+test("isAllowedSpecifier: only workspace registry specifiers pass", () => {
   assertEquals(isAllowedSpecifier("jsr:@zuke/core@^1.25.0"), true);
   assertEquals(isAllowedSpecifier("jsr:@other/pkg@1.0.0"), false);
   assertEquals(isAllowedSpecifier("https://evil.example/payload.ts"), false);
@@ -169,7 +170,7 @@ Deno.test("isAllowedSpecifier: only workspace registry specifiers pass", () => {
   assertEquals(isAllowedSpecifier("jsr:@zuke-evil/core@1.0.0"), false);
 });
 
-Deno.test("floorConfig: drops a specifier the check must not fetch", () => {
+test("floorConfig: drops a specifier the check must not fetch", () => {
   // A pull request controls this file, and the check runs with no lockfile, so
   // an arbitrary URL here would make CI fetch it. Only @zuke/* survives.
   const floor: CoreFloor = {
@@ -189,7 +190,7 @@ Deno.test("floorConfig: drops a specifier the check must not fetch", () => {
   assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.25.0");
 });
 
-Deno.test("floorConfig: the pinned core always wins over the declared range", () => {
+test("floorConfig: the pinned core always wins over the declared range", () => {
   const floor: CoreFloor = {
     package: "gh",
     specifier: "jsr:@zuke/core@^1.31.0",
@@ -199,7 +200,7 @@ Deno.test("floorConfig: the pinned core always wins over the declared range", ()
   assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.31.0");
 });
 
-Deno.test("floorConfig: a workspace sibling resolves to its local source, core never does", () => {
+test("floorConfig: a workspace sibling resolves to its local source, core never does", () => {
   const floor: CoreFloor = {
     package: "ai",
     specifier: "jsr:@zuke/core@^1.58.0",
@@ -224,7 +225,7 @@ Deno.test("floorConfig: a workspace sibling resolves to its local source, core n
   assertEquals(parsed.imports["@zuke/deno"], "jsr:@zuke/deno@^0.4.0");
 });
 
-Deno.test("floorConfig: a sibling is resolved by name, never by the mapping's target", () => {
+test("floorConfig: a sibling is resolved by name, never by the mapping's target", () => {
   // The mapping is attacker-controlled on a pull request; only names the
   // workspace lists are made local, and the target is never read for it.
   const floor: CoreFloor = {
@@ -243,7 +244,7 @@ Deno.test("floorConfig: a sibling is resolved by name, never by the mapping's ta
   assertEquals(parsed.imports["@zuke/gh"], undefined);
 });
 
-Deno.test("workspaceSiblings: POSIX and Windows roots become file URLs", () => {
+test("workspaceSiblings: POSIX and Windows roots become file URLs", () => {
   assertEquals(
     workspaceSiblings(["gh"], "/work/zuke/").get("@zuke/gh"),
     "file:///work/zuke/packages/gh/",
@@ -254,7 +255,7 @@ Deno.test("workspaceSiblings: POSIX and Windows roots become file URLs", () => {
   );
 });
 
-Deno.test("formatFloorFailures: silent when every package passes", () => {
+test("formatFloorFailures: silent when every package passes", () => {
   assertEquals(formatFloorFailures([]), []);
   assertEquals(
     formatFloorFailures([
@@ -264,7 +265,7 @@ Deno.test("formatFloorFailures: silent when every package passes", () => {
   );
 });
 
-Deno.test("formatFloorFailures: names the package, its range, and the error", () => {
+test("formatFloorFailures: names the package, its range, and the error", () => {
   const lines = formatFloorFailures([
     { package: "gh", specifier: "jsr:@zuke/core@^1.31.0", ok: true },
     {
@@ -287,7 +288,7 @@ Deno.test("formatFloorFailures: names the package, its range, and the error", ()
   assertEquals(text.includes("workspace resolution"), true);
 });
 
-Deno.test("formatFloorFailures: tolerates a failure with no detail", () => {
+test("formatFloorFailures: tolerates a failure with no detail", () => {
   const lines = formatFloorFailures([
     { package: "cli", specifier: "jsr:@zuke/core@^1.25.0", ok: false },
   ]);

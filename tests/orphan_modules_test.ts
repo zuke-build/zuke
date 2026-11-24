@@ -25,6 +25,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { withTemp } from "../packages/core/tests/_temp.ts";
 
@@ -174,7 +175,7 @@ async function problemsIn(packagesDir: string): Promise<string[]> {
   return problems.sort();
 }
 
-Deno.test("every shipped module is reachable from a package entrypoint", async () => {
+test("every shipped module is reachable from a package entrypoint", async () => {
   const problems = await problemsIn("packages");
   assertEquals(
     problems,
@@ -210,7 +211,7 @@ async function withFixture(
 /** The `deno.json` of a one-entrypoint fixture package. */
 const MOD_EXPORTS = `{"exports":{".":"./mod.ts"}}`;
 
-Deno.test("a module reached only through imports is not an orphan", async () => {
+test("a module reached only through imports is not an orphan", async () => {
   await withFixture({
     "fx/deno.json": MOD_EXPORTS,
     "fx/mod.ts": `export * from "./src/a.ts";`,
@@ -224,7 +225,7 @@ Deno.test("a module reached only through imports is not an orphan", async () => 
   });
 });
 
-Deno.test("a commented-out import does not make an orphan reachable", async () => {
+test("a commented-out import does not make an orphan reachable", async () => {
   // The regression this guard exists for: parking a module behind a TODO is
   // how orphans are created, so the note must not also hide the orphan.
   await withFixture({
@@ -239,7 +240,7 @@ Deno.test("a commented-out import does not make an orphan reachable", async () =
   });
 });
 
-Deno.test("a module reached only from a test is an orphan", async () => {
+test("a module reached only from a test is an orphan", async () => {
   await withFixture({
     "fx/deno.json": MOD_EXPORTS,
     "fx/mod.ts": `export const live = 1;`,
@@ -252,7 +253,7 @@ Deno.test("a module reached only from a test is an orphan", async () => {
   });
 });
 
-Deno.test("a specifier pointing at nothing names the file that pointed at it", async () => {
+test("a specifier pointing at nothing names the file that pointed at it", async () => {
   await withFixture({
     "fx/deno.json": `{"exports":{".":"./mod.ts","./gone":"./src/gone.ts"}}`,
     "fx/mod.ts": `import "./src/missing.ts";`,
@@ -264,7 +265,7 @@ Deno.test("a specifier pointing at nothing names the file that pointed at it", a
   });
 });
 
-Deno.test("a package with no deno.json or no exports is named, not skipped", async () => {
+test("a package with no deno.json or no exports is named, not skipped", async () => {
   await withFixture({
     "no-config/mod.ts": `export const x = 1;`,
     "no-exports/deno.json": `{"name":"@zuke/no-exports"}`,
@@ -276,7 +277,7 @@ Deno.test("a package with no deno.json or no exports is named, not skipped", asy
   });
 });
 
-Deno.test("a single-string exports field names one entrypoint", async () => {
+test("a single-string exports field names one entrypoint", async () => {
   await withFixture({
     "fx/deno.json": `{"exports":"./mod.ts"}`,
     "fx/mod.ts": `export const x = 1;`,
@@ -285,7 +286,7 @@ Deno.test("a single-string exports field names one entrypoint", async () => {
   });
 });
 
-Deno.test("a read failure that is not a missing file is not swallowed", async () => {
+test("a read failure that is not a missing file is not swallowed", async () => {
   // A directory named like a module: readTextFile fails with something other
   // than NotFound, which must surface rather than be reported as "missing".
   await withFixture(

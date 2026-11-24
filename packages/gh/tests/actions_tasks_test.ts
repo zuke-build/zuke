@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -25,7 +26,7 @@ import { GhCacheListSettings } from "../src/cache.ts";
 import { GhLabelListSettings } from "../src/label.ts";
 import { GhRepoListSettings } from "../src/repo.ts";
 
-Deno.test("the new command groups conform to the gh wrapper's contract", async () => {
+test("the new command groups conform to the gh wrapper's contract", async () => {
   for (
     const make of [
       () => new GhRunListSettings(),
@@ -41,7 +42,7 @@ Deno.test("the new command groups conform to the gh wrapper's contract", async (
   }
 });
 
-Deno.test("every gh run and workflow task reaches execution", async () => {
+test("every gh run and workflow task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.runList((s) => missingTool(s.limit(1))),
     ToolNotFoundError,
@@ -100,7 +101,7 @@ Deno.test("every gh run and workflow task reaches execution", async () => {
   );
 });
 
-Deno.test("every gh secret, variable and cache task reaches execution", async () => {
+test("every gh secret, variable and cache task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.secretSet((s) => missingTool(s.name("A").body("b"))),
     ToolNotFoundError,
@@ -155,7 +156,7 @@ Deno.test("every gh secret, variable and cache task reaches execution", async ()
   );
 });
 
-Deno.test("every gh repo and label task reaches execution", async () => {
+test("every gh repo and label task reaches execution", async () => {
   await assertRejects(
     () => GhTasks.repoClone((s) => missingTool(s.repository("acme/app"))),
     ToolNotFoundError,
@@ -233,7 +234,7 @@ Deno.test("every gh repo and label task reaches execution", async () => {
   );
 });
 
-Deno.test("each new reader pins its own field set into the argv it runs", async () => {
+test("each new reader pins its own field set into the argv it runs", async () => {
   // Asserting the constants alone would not catch a reader wired to the wrong
   // one, so capture the settings each reader configures and read back the
   // argv it was about to spawn.

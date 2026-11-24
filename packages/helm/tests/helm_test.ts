@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -25,11 +26,11 @@ import {
   HelmUpgradeSettings,
 } from "../src/helm.ts";
 
-Deno.test("the default binary is helm", () => {
+test("the default binary is helm", () => {
   assertEquals(new HelmUninstallSettings().release("api").argv()[0], "helm");
 });
 
-Deno.test("install: requires release+chart; values, set, version, global, flags", () => {
+test("install: requires release+chart; values, set, version, global, flags", () => {
   assertThrows(
     () => new HelmInstallSettings().release("api").argv(),
     Error,
@@ -78,7 +79,7 @@ Deno.test("install: requires release+chart; values, set, version, global, flags"
   );
 });
 
-Deno.test("upgrade: requires release+chart; --install and flags", () => {
+test("upgrade: requires release+chart; --install and flags", () => {
   assertThrows(
     () => new HelmUpgradeSettings().chart("c").argv(),
     Error,
@@ -112,7 +113,7 @@ Deno.test("upgrade: requires release+chart; --install and flags", () => {
   );
 });
 
-Deno.test("uninstall: requires release; --keep-history, --wait", () => {
+test("uninstall: requires release; --keep-history, --wait", () => {
   assertThrows(
     () => new HelmUninstallSettings().argv(),
     Error,
@@ -125,7 +126,7 @@ Deno.test("uninstall: requires release; --keep-history, --wait", () => {
   );
 });
 
-Deno.test("template: requires release+chart; --output-dir", () => {
+test("template: requires release+chart; --output-dir", () => {
   assertThrows(
     () => new HelmTemplateSettings().release("api").argv(),
     Error,
@@ -151,7 +152,7 @@ Deno.test("template: requires release+chart; --output-dir", () => {
   );
 });
 
-Deno.test("lint: requires chart; values and --strict", () => {
+test("lint: requires chart; values and --strict", () => {
   assertThrows(
     () => new HelmLintSettings().argv(),
     Error,
@@ -165,7 +166,7 @@ Deno.test("lint: requires chart; values and --strict", () => {
   );
 });
 
-Deno.test("dependencyUpdate: requires chart", () => {
+test("dependencyUpdate: requires chart", () => {
   assertThrows(
     () => new HelmDependencyUpdateSettings().argv(),
     Error,
@@ -177,7 +178,7 @@ Deno.test("dependencyUpdate: requires chart", () => {
   );
 });
 
-Deno.test("repoAdd: requires name and url", () => {
+test("repoAdd: requires name and url", () => {
   assertThrows(
     () => new HelmRepoAddSettings().name("charts").argv(),
     Error,
@@ -190,7 +191,7 @@ Deno.test("repoAdd: requires name and url", () => {
   );
 });
 
-Deno.test("package: requires chart; destination, version, app-version", () => {
+test("package: requires chart; destination, version, app-version", () => {
   assertThrows(
     () => new HelmPackageSettings().argv(),
     Error,
@@ -217,7 +218,7 @@ Deno.test("package: requires chart; destination, version, app-version", () => {
   );
 });
 
-Deno.test("every HelmTasks function reaches execution", async () => {
+test("every HelmTasks function reaches execution", async () => {
   await assertRejects(
     () => HelmTasks.install((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
@@ -260,7 +261,7 @@ Deno.test("every HelmTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("set-string follows --set, and upgrade can --reuse-values", () => {
+test("set-string follows --set, and upgrade can --reuse-values", () => {
   assertEquals(
     new HelmUpgradeSettings()
       .release("api")
@@ -285,7 +286,7 @@ Deno.test("set-string follows --set, and upgrade can --reuse-values", () => {
   );
 });
 
-Deno.test("uninstall: --ignore-not-found", () => {
+test("uninstall: --ignore-not-found", () => {
   assertEquals(
     new HelmUninstallSettings().release("api").ignoreNotFound().wait().argv()
       .slice(1),
@@ -293,7 +294,7 @@ Deno.test("uninstall: --ignore-not-found", () => {
   );
 });
 
-Deno.test("rollback: requires release; revision, --wait, --timeout", () => {
+test("rollback: requires release; revision, --wait, --timeout", () => {
   assertThrows(
     () => new HelmRollbackSettings().argv(),
     Error,
@@ -319,7 +320,7 @@ Deno.test("rollback: requires release; revision, --wait, --timeout", () => {
   );
 });
 
-Deno.test("getAll: requires release; --revision, --template", () => {
+test("getAll: requires release; --revision, --template", () => {
   assertThrows(
     () => new HelmGetAllSettings().argv(),
     Error,
@@ -340,7 +341,7 @@ Deno.test("getAll: requires release; --revision, --template", () => {
   );
 });
 
-Deno.test("upgrade: --reset-then-reuse-values and --history-max", () => {
+test("upgrade: --reset-then-reuse-values and --history-max", () => {
   assertEquals(
     new HelmUpgradeSettings().release("api").chart("c").resetThenReuseValues()
       .historyMax(0).argv().slice(1),
@@ -355,7 +356,7 @@ Deno.test("upgrade: --reset-then-reuse-values and --history-max", () => {
   );
 });
 
-Deno.test("rollback: --history-max", () => {
+test("rollback: --history-max", () => {
   assertEquals(
     new HelmRollbackSettings().release("api").revision(3).historyMax(0)
       .argv().slice(1),
@@ -363,7 +364,7 @@ Deno.test("rollback: --history-max", () => {
   );
 });
 
-Deno.test("rollback and getAll refuse a revision helm could not have", () => {
+test("rollback and getAll refuse a revision helm could not have", () => {
   for (const bad of [0, -1, 1.5, Number.NaN]) {
     assertThrows(
       () => new HelmRollbackSettings().release("api").revision(bad),
@@ -378,7 +379,7 @@ Deno.test("rollback and getAll refuse a revision helm could not have", () => {
   }
 });
 
-Deno.test("helm: conforms to the wrapper contract", async () => {
+test("helm: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new HelmLintSettings().chart("./charts/api"),
     "helm",
@@ -388,7 +389,7 @@ Deno.test("helm: conforms to the wrapper contract", async () => {
   );
 });
 
-Deno.test("upgrade and rollback refuse a --history-max helm could not take", () => {
+test("upgrade and rollback refuse a --history-max helm could not take", () => {
   for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
     assertThrows(
       () => new HelmUpgradeSettings().historyMax(bad),

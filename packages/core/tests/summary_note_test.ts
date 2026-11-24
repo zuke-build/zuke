@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
   reportSummary,
@@ -9,7 +10,7 @@ import {
   withAmbientSummary,
 } from "../src/summary_note.ts";
 
-Deno.test("TargetSummary keeps first-reported key order and replaces a repeated key in place", () => {
+test("TargetSummary keeps first-reported key order and replaces a repeated key in place", () => {
   const s = new TargetSummary();
   s.add({ Tests: 3, Passed: 2 });
   s.add({ Failed: 1, Tests: 4 });
@@ -20,7 +21,7 @@ Deno.test("TargetSummary keeps first-reported key order and replaces a repeated 
   ]);
 });
 
-Deno.test("TargetSummary collapses a key or value to one printable line", () => {
+test("TargetSummary collapses a key or value to one printable line", () => {
   const s = new TargetSummary();
   s.add({
     "Multi\nline  key": " a\r\nb\t c ",
@@ -34,13 +35,13 @@ Deno.test("TargetSummary collapses a key or value to one printable line", () => 
   ]);
 });
 
-Deno.test("TargetSummary drops a key that is empty once collapsed", () => {
+test("TargetSummary drops a key that is empty once collapsed", () => {
   const s = new TargetSummary();
   s.add({ "": "nothing", " \n ": "still nothing", Kept: "" });
   assertEquals(s.entries(), [{ key: "Kept", value: "" }]);
 });
 
-Deno.test("reportSummary lands in the ambient collector, scoped to its async subtree", async () => {
+test("reportSummary lands in the ambient collector, scoped to its async subtree", async () => {
   const a = new TargetSummary();
   const b = new TargetSummary();
   // Two collectors interleaved on the same event loop: each report must reach
@@ -63,7 +64,7 @@ Deno.test("reportSummary lands in the ambient collector, scoped to its async sub
   ]);
 });
 
-Deno.test("reportSummary outside a running target is a no-op", () => {
+test("reportSummary outside a running target is a no-op", () => {
   // No collector is installed here — the call must neither throw nor leak
   // into a collector installed later.
   reportSummary({ Lost: 1 });
@@ -74,7 +75,7 @@ Deno.test("reportSummary outside a running target is a no-op", () => {
   });
 });
 
-Deno.test("withAmbientSummary returns the function's result and unwinds the collector", async () => {
+test("withAmbientSummary returns the function's result and unwinds the collector", async () => {
   const s = new TargetSummary();
   const value = await withAmbientSummary(s, () => Promise.resolve(42));
   assertEquals(value, 42);
@@ -82,7 +83,7 @@ Deno.test("withAmbientSummary returns the function's result and unwinds the coll
   assertEquals(s.entries(), []);
 });
 
-Deno.test("reportTestCounts totals every category and names the optional ones only when non-zero", async () => {
+test("reportTestCounts totals every category and names the optional ones only when non-zero", async () => {
   const bare = new TargetSummary();
   await withAmbientSummary(bare, () => {
     reportTestCounts({ passed: 4, failed: 1 });
@@ -121,7 +122,7 @@ Deno.test("reportTestCounts totals every category and names the optional ones on
   ]);
 });
 
-Deno.test("reportTestCounts outside a running target is a no-op", () => {
+test("reportTestCounts outside a running target is a no-op", () => {
   reportTestCounts({ passed: 1, failed: 0 });
   const s = new TargetSummary();
   return withAmbientSummary(s, async () => {

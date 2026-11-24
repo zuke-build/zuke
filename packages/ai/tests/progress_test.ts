@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { ReviewProgress } from "../src/progress.ts";
 import type { ReviewReactions, ReviewSignal } from "../src/hosts/types.ts";
@@ -45,7 +46,7 @@ function recorder(
 
 const noFetch = (() => Promise.reject(new Error("unused"))) as typeof fetch;
 
-Deno.test("a review shows 👀, clears the verdict an earlier run left, then shows its own", async () => {
+test("a review shows 👀, clears the verdict an earlier run left, then shows its own", async () => {
   const { reactions, log, held } = recorder(["minor"]);
   const finish = await new ReviewProgress().start("run-1", reactions, noFetch);
   assertEquals(log, ["+reviewing", "-minor"]);
@@ -56,7 +57,7 @@ Deno.test("a review shows 👀, clears the verdict an earlier run left, then sho
   assertEquals([...held], ["passed"]);
 });
 
-Deno.test("reviewers in sequence keep the worst verdict, and a later one does not clear it", async () => {
+test("reviewers in sequence keep the worst verdict, and a later one does not clear it", async () => {
   const progress = new ReviewProgress();
   const { reactions, log, held } = recorder();
   await (await progress.start("run", reactions, noFetch))("passed");
@@ -73,7 +74,7 @@ Deno.test("reviewers in sequence keep the worst verdict, and a later one does no
   assertEquals([...held], ["minor"]);
 });
 
-Deno.test("a new run starts afresh, in the same process", async () => {
+test("a new run starts afresh, in the same process", async () => {
   const progress = new ReviewProgress();
   const { reactions, held } = recorder();
   await (await progress.start("run-1", reactions, noFetch))("minor");
@@ -82,7 +83,7 @@ Deno.test("a new run starts afresh, in the same process", async () => {
   assertEquals([...held], ["passed"]);
 });
 
-Deno.test("a pass after a failed run shows 🎉, and only while no reviewer of the run fails", async () => {
+test("a pass after a failed run shows 🎉, and only while no reviewer of the run fails", async () => {
   const progress = new ReviewProgress();
   const { reactions, held } = recorder(["failed"]);
   const first = await progress.start("run", reactions, noFetch);
@@ -96,7 +97,7 @@ Deno.test("a pass after a failed run shows 🎉, and only while no reviewer of t
   assertEquals([...held], ["passed"]);
 });
 
-Deno.test("👀 stays until the last reviewer in flight finishes", async () => {
+test("👀 stays until the last reviewer in flight finishes", async () => {
   const progress = new ReviewProgress();
   const { reactions, log } = recorder();
   const first = await progress.start("run", reactions, noFetch);
@@ -108,7 +109,7 @@ Deno.test("👀 stays until the last reviewer in flight finishes", async () => {
   assertEquals(log, ["+failed", "-reviewing"]);
 });
 
-Deno.test("a skipped review withdraws 👀 without claiming a verdict", async () => {
+test("a skipped review withdraws 👀 without claiming a verdict", async () => {
   const progress = new ReviewProgress();
   const { reactions, log, held } = recorder(["failed"]);
   await (await progress.start("run", reactions, noFetch))("skipped");
@@ -116,7 +117,7 @@ Deno.test("a skipped review withdraws 👀 without claiming a verdict", async ()
   assertEquals([...held], []);
 });
 
-Deno.test("a verdict that cannot be posted still takes the wrong one down, and the next reviewer retries", async () => {
+test("a verdict that cannot be posted still takes the wrong one down, and the next reviewer retries", async () => {
   const progress = new ReviewProgress();
   const { reactions, held, refuse } = recorder();
   await (await progress.start("run", reactions, noFetch))("passed");
@@ -129,7 +130,7 @@ Deno.test("a verdict that cannot be posted still takes the wrong one down, and t
   assertEquals([...held], ["failed"]);
 });
 
-Deno.test("a host that throws does not poison the pull request's later steps", async () => {
+test("a host that throws does not poison the pull request's later steps", async () => {
   const progress = new ReviewProgress();
   const { reactions, held } = recorder();
   let thrown = false;
@@ -149,7 +150,7 @@ Deno.test("a host that throws does not poison the pull request's later steps", a
   assertEquals([...held], ["minor"]);
 });
 
-Deno.test("pull requests are tracked apart, by key", async () => {
+test("pull requests are tracked apart, by key", async () => {
   const progress = new ReviewProgress();
   const one = recorder([], "one");
   const two = recorder([], "two");
@@ -160,7 +161,7 @@ Deno.test("pull requests are tracked apart, by key", async () => {
   assertEquals([...two.held], ["passed"]);
 });
 
-Deno.test("the run reviewed nothing only when its last reviewer finishes with no verdict", async () => {
+test("the run reviewed nothing only when its last reviewer finishes with no verdict", async () => {
   const progress = new ReviewProgress();
   const { reactions } = recorder();
   const skipped = await progress.start("run", reactions, noFetch);

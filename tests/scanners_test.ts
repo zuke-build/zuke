@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   type InstallPlatform,
   type Platform,
@@ -63,7 +64,7 @@ const LINUX = { os: "linux", arch: "x86_64" } as const;
 const MAC_ARM = { os: "macos", arch: "aarch64" } as const;
 const WINDOWS = { os: "windows", arch: "x86_64" } as const;
 
-Deno.test("zizmor resolves its cargo-dist target triple per platform", () => {
+test("zizmor resolves its cargo-dist target triple per platform", () => {
   // The Ubuntu runner the security workflow uses.
   const linux = resolve(zizmorTool, LINUX);
   assertEquals(
@@ -87,7 +88,7 @@ Deno.test("zizmor resolves its cargo-dist target triple per platform", () => {
   assertEquals(win.url.endsWith("zizmor-x86_64-pc-windows-msvc.zip"), true);
 });
 
-Deno.test("actionlint resolves its os_arch asset name per platform", () => {
+test("actionlint resolves its os_arch asset name per platform", () => {
   const linux = resolve(actionlintTool, LINUX);
   assertEquals(
     linux.url,
@@ -107,7 +108,7 @@ Deno.test("actionlint resolves its os_arch asset name per platform", () => {
   assertEquals(win.binaryPath, "actionlint.exe");
 });
 
-Deno.test("gitleaks spells x86-64 x64, unlike actionlint's amd64", () => {
+test("gitleaks spells x86-64 x64, unlike actionlint's amd64", () => {
   const linux = resolve(gitleaksTool, LINUX);
   assertEquals(
     linux.url,
@@ -120,7 +121,7 @@ Deno.test("gitleaks spells x86-64 x64, unlike actionlint's amd64", () => {
   );
 });
 
-Deno.test("codecov resolves its per-OS binary on Codecov's CDN", () => {
+test("codecov resolves its per-OS binary on Codecov's CDN", () => {
   const linux = resolve(codecovTool, LINUX);
   assertEquals(
     linux.url,
@@ -137,7 +138,7 @@ Deno.test("codecov resolves its per-OS binary on Codecov's CDN", () => {
   );
 });
 
-Deno.test("every tool the build provisions pins a 64-hex SHA-256 for each supported platform", () => {
+test("every tool the build provisions pins a 64-hex SHA-256 for each supported platform", () => {
   // The toolchain build.ts installs, so a tool added there without a checksum
   // — downloaded and run unverified, never cached — fails here.
   const chain = buildToolchain(".tools");
@@ -166,7 +167,7 @@ Deno.test("every tool the build provisions pins a 64-hex SHA-256 for each suppor
   }
 });
 
-Deno.test("an unpublished platform is named, not left to fail as a 404", () => {
+test("an unpublished platform is named, not left to fail as a 404", () => {
   // zizmor publishes no Windows-on-ARM build. The checksum resolver is what
   // notices, so the message has to say which tool and which platform.
   assertThrows(

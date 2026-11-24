@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -38,19 +39,19 @@ const SIGSTORE: ExpectedProvenance = {
 const SIGSTORE_INTEGRITY =
   "sha512-LNdyRQ9ex5Nola93z1Xfm9WewHiy1v3XDH8SVizrWzPcGTuHpi3C5U6EQuCNH7Oo7G3j+16cnNf9Vd3VZxpafA==";
 
-Deno.test("sha512Hex reads an SRI string's sha512", () => {
+test("sha512Hex reads an SRI string's sha512", () => {
   assertEquals(sha512Hex(integrityOf(1).integrity), integrityOf(1).hex);
   assertEquals(sha512Hex("sha1-abc sha512-" + btoa("\x01")), "01");
   assertEquals(sha512Hex("sha1-abc"), null);
   assertEquals(sha512Hex("sha512-***"), null);
 });
 
-Deno.test("a real npm attestation passes for its integrity, repository, workflow and ref", () => {
+test("a real npm attestation passes for its integrity, repository, workflow and ref", () => {
   const bundle = slsaBundle(FIXTURE);
   assertEquals(provenanceProblems(bundle, SIGSTORE_INTEGRITY, SIGSTORE), []);
 });
 
-Deno.test("a real npm attestation fails for another integrity, repository, workflow or ref", () => {
+test("a real npm attestation fails for another integrity, repository, workflow or ref", () => {
   const bundle = slsaBundle(FIXTURE);
   const wrong = (
     over: Partial<Omit<ExpectedProvenance, "commit">>,
@@ -72,7 +73,7 @@ Deno.test("a real npm attestation fails for another integrity, repository, workf
   );
 });
 
-Deno.test("a bundle without a readable SLSA statement is refused", () => {
+test("a bundle without a readable SLSA statement is refused", () => {
   assertEquals(
     slsaBundle({ attestations: [{ predicateType: "other" }] }),
     undefined,
@@ -94,7 +95,7 @@ Deno.test("a bundle without a readable SLSA statement is refused", () => {
   );
 });
 
-Deno.test("the Sigstore policy pins issuer, an anchored identity, and the repository, ref and commit OIDs", () => {
+test("the Sigstore policy pins issuer, an anchored identity, and the repository, ref and commit OIDs", () => {
   const policy = sigstorePolicy(OURS);
   assertEquals(
     policy.certificateIssuer,
@@ -125,7 +126,7 @@ Deno.test("the Sigstore policy pins issuer, an anchored identity, and the reposi
 const problemOf = (r: ReturnType<typeof provenanceCommit>) =>
   "problem" in r ? r.problem : "";
 
-Deno.test("provenanceCommit reads the statement's commit and refuses a malformed one", () => {
+test("provenanceCommit reads the statement's commit and refuses a malformed one", () => {
   assertEquals(provenanceCommit(slsaBundle(FIXTURE)), {
     commit: SIGSTORE.commit,
   });

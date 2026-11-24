@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -70,7 +71,7 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("a commit is a tree and a commit, then the ref moves", async () => {
+test("a commit is a tree and a commit, then the ref moves", async () => {
   const { fetch, calls } = fakeFetch({
     "GET /git/ref/heads/topic": { object: { sha: "head" } },
     "GET /git/commits/head": { tree: { sha: "head-tree" } },
@@ -109,7 +110,7 @@ Deno.test("a commit is a tree and a commit, then the ref moves", async () => {
   assertEquals(calls.find((c) => c.method === "PATCH")?.body.force, undefined);
 });
 
-Deno.test("`.from(...)` creates the branch rather than moving it", async () => {
+test("`.from(...)` creates the branch rather than moving it", async () => {
   const { fetch, calls } = fakeFetch({
     "GET /git/ref/heads/master": { object: { sha: "base" } },
     "GET /git/commits/base": { tree: { sha: "base-tree" } },
@@ -134,7 +135,7 @@ Deno.test("`.from(...)` creates the branch rather than moving it", async () => {
   assertEquals(calls.some((c) => c.method === "PATCH"), false);
 });
 
-Deno.test("the token travels as a header and nothing else", async () => {
+test("the token travels as a header and nothing else", async () => {
   // The whole point: no credential is written anywhere. Reaching a URL or a
   // body would put it in logs and process listings.
   const { fetch, calls } = fakeFetch({
@@ -154,7 +155,7 @@ Deno.test("the token travels as a header and nothing else", async () => {
   }
 });
 
-Deno.test("a failure carries GitHub's own message, not just a status", async () => {
+test("a failure carries GitHub's own message, not just a status", async () => {
   // A status alone rarely says which field or which permission was the
   // problem, and this runs unattended — the log is all anyone will have.
   const { fetch } = fakeFetch({}, new Set(["GET /git/ref/heads/topic"]));
@@ -170,7 +171,7 @@ Deno.test("a failure carries GitHub's own message, not just a status", async () 
   assertStringIncludes(message, "Reference does not exist");
 });
 
-Deno.test("a ref name that would redirect the request is refused", async () => {
+test("a ref name that would redirect the request is refused", async () => {
   // URL normalisation resolves `..` before the request is sent, so this branch
   // name turns `/repos/acme/app/git/ref/heads/<branch>` into
   // `/repos/acme/app/user/repos` — a different endpoint entirely, with the
@@ -217,7 +218,7 @@ Deno.test("a ref name that would redirect the request is refused", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("the other names git rejects are rejected too", async () => {
+test("the other names git rejects are rejected too", async () => {
   const { fetch } = fakeFetch({});
   for (
     const name of [
@@ -248,7 +249,7 @@ Deno.test("the other names git rejects are rejected too", async () => {
   }
 });
 
-Deno.test("a tag is annotated, and `.move()` forces the update", async () => {
+test("a tag is annotated, and `.move()` forces the update", async () => {
   const { fetch, calls } = fakeFetch({
     "POST /git/tags": { sha: "obj" },
     "POST /git/refs": {},
@@ -276,7 +277,7 @@ Deno.test("a tag is annotated, and `.move()` forces the update", async () => {
   assertEquals(moved.calls.find((c) => c.method === "PATCH")?.body.force, true);
 });
 
-Deno.test("moving a tag that does not exist yet creates it", async () => {
+test("moving a tag that does not exist yet creates it", async () => {
   // The first release of a major has no ref to patch, and that is not an error
   // — moving and creating are the same intent there.
   const { fetch, calls } = fakeFetch(
@@ -292,7 +293,7 @@ Deno.test("moving a tag that does not exist yet creates it", async () => {
   );
 });
 
-Deno.test("a permission failure while moving a tag is not retried as a create", async () => {
+test("a permission failure while moving a tag is not retried as a create", async () => {
   // The recovery below exists for one case: the ref does not exist yet. A bare
   // catch would also swallow an expired token or a missing permission and retry
   // it as a create — reporting a confusing error about the tag while hiding the
@@ -317,7 +318,7 @@ Deno.test("a permission failure while moving a tag is not retried as a create", 
   assertEquals(calls.some((c) => c.path === "/git/refs"), false);
 });
 
-Deno.test("a percent-encoded dot segment cannot redirect the request", async () => {
+test("a percent-encoded dot segment cannot redirect the request", async () => {
   // The hole the literal `..` test missed. `%` is legal in a git ref, so the
   // validator accepts `%2e%2e` — and the URL parser decodes it to a double-dot
   // segment and resolves it, which is the very redirection the validator exists
@@ -355,7 +356,7 @@ Deno.test("a percent-encoded dot segment cannot redirect the request", async () 
   }
 });
 
-Deno.test("a slash inside a branch name stays a path separator", async () => {
+test("a slash inside a branch name stays a path separator", async () => {
   // Encoding wholesale would turn `chore/action-v1.0.3` into one escaped blob
   // and break every real branch name this repository generates.
   const seen: string[] = [];
@@ -376,7 +377,7 @@ Deno.test("a slash inside a branch name stays a path separator", async () => {
   assertEquals(seen[0], "/repos/acme/app/git/ref/heads/chore/action-v1.0.3");
 });
 
-Deno.test("a percent-escaped slug is refused rather than relied on to encode", async () => {
+test("a percent-escaped slug is refused rather than relied on to encode", async () => {
   // This used to assert that `acme/%2e%2e` was encoded to `%252e%252e` and so
   // could not climb out of `/repos/`. Encoding does hold, and still runs — but
   // it was the *only* thing standing between a slug and a redirected
@@ -400,7 +401,7 @@ Deno.test("a percent-escaped slug is refused rather than relied on to encode", a
   assertEquals(message.includes('expected "owner/name"'), true, message);
 });
 
-Deno.test("a repository slug that is not owner/name is refused", async () => {
+test("a repository slug that is not owner/name is refused", async () => {
   // Two failures, both of which quietly redirect a token-bearing request.
   // A slug with the wrong number of segments names a different endpoint:
   // `a/b/c` builds `/repos/a/b/c/git/trees`. And a `..` segment climbs out of
@@ -441,7 +442,7 @@ Deno.test("a repository slug that is not owner/name is refused", async () => {
   }
 });
 
-Deno.test("a 2xx that is not JSON names the call rather than the parser", async () => {
+test("a 2xx that is not JSON names the call rather than the parser", async () => {
   // A proxy or gateway answering instead of GitHub. Bare, this surfaces as a
   // SyntaxError naming no call.
   const gateway = (() =>
@@ -462,7 +463,7 @@ Deno.test("a 2xx that is not JSON names the call rather than the parser", async 
   assertEquals(message.includes("gateway timeout"), true, message);
 });
 
-Deno.test("a non-JSON body is not mistaken for a missing tag ref", async () => {
+test("a non-JSON body is not mistaken for a missing tag ref", async () => {
   // `tagCommit` creates a tag when the ref is missing. That decision reads a
   // GhApiError's status, so a parse failure must not enter it: doing so would
   // retry an unrelated failure as a create.
@@ -488,7 +489,7 @@ Deno.test("a non-JSON body is not mistaken for a missing tag ref", async () => {
   );
 });
 
-Deno.test("`.replace()` resets a branch a previous attempt left behind", async () => {
+test("`.replace()` resets a branch a previous attempt left behind", async () => {
   // Without this a job that creates the branch and then fails before opening
   // its pull request can never retry: the second run is refused because the
   // ref it wants to create is already there.
@@ -513,7 +514,7 @@ Deno.test("`.replace()` resets a branch a previous attempt left behind", async (
   assertEquals(patch?.body.force, true);
 });
 
-Deno.test("without `.replace()` an existing branch is still refused", async () => {
+test("without `.replace()` an existing branch is still refused", async () => {
   // Discarding commits on a branch that already exists is exactly what should
   // not happen by default.
   const { fetch, calls } = fakeFetch(
@@ -539,7 +540,7 @@ Deno.test("without `.replace()` an existing branch is still refused", async () =
   assertEquals(calls.some((c) => c.method === "PATCH"), false);
 });
 
-Deno.test("`.replace()` does not turn a permission failure into a force push", async () => {
+test("`.replace()` does not turn a permission failure into a force push", async () => {
   // A bare catch here would retry a 403 as a force-update and report whichever
   // of the two failed second.
   const { fetch, calls } = fakeFetch(
@@ -565,7 +566,7 @@ Deno.test("`.replace()` does not turn a permission failure into a force push", a
   assertEquals(calls.some((c) => c.method === "PATCH"), false);
 });
 
-Deno.test("`.replace()` without `.from(...)` is refused rather than ignored", async () => {
+test("`.replace()` without `.from(...)` is refused rather than ignored", async () => {
   // Silently ignoring it would be the worst of both: the caller asked for a
   // reset, the safe path runs instead, and nothing says so.
   const { fetch, calls } = fakeFetch({});
@@ -582,7 +583,7 @@ Deno.test("`.replace()` without `.from(...)` is refused rather than ignored", as
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a commit falls back to GITHUB_REPOSITORY and GITHUB_TOKEN", async () => {
+test("a commit falls back to GITHUB_REPOSITORY and GITHUB_TOKEN", async () => {
   // A job that already has the Actions environment needs to name only what it
   // is committing.
   await withEnv({
@@ -607,7 +608,7 @@ Deno.test("a commit falls back to GITHUB_REPOSITORY and GITHUB_TOKEN", async () 
   });
 });
 
-Deno.test("a tag falls back to GITHUB_REPOSITORY, GITHUB_TOKEN, and GITHUB_SHA", async () => {
+test("a tag falls back to GITHUB_REPOSITORY, GITHUB_TOKEN, and GITHUB_SHA", async () => {
   await withEnv({
     GITHUB_REPOSITORY: "acme/app",
     GITHUB_TOKEN: "ghs_env",
@@ -625,7 +626,7 @@ Deno.test("a tag falls back to GITHUB_REPOSITORY, GITHUB_TOKEN, and GITHUB_SHA",
   });
 });
 
-Deno.test("a missing repo, token, or sha is named rather than guessed", async () => {
+test("a missing repo, token, or sha is named rather than guessed", async () => {
   // Without the Actions environment the settings must say which setting is
   // missing and which variable would have filled it — not fail downstream.
   await withEnv({
@@ -672,7 +673,7 @@ Deno.test("a missing repo, token, or sha is named rather than guessed", async ()
   });
 });
 
-Deno.test("an empty Actions variable counts as unset, not as a value", async () => {
+test("an empty Actions variable counts as unset, not as a value", async () => {
   // Actions defines these for every job, so a workflow whose `env:` entry is
   // fed by a secret that is not set leaves the variable defined and empty.
   // Taken literally that is `Bearer ` on the wire and a tag pointed at "" —
@@ -699,7 +700,7 @@ Deno.test("an empty Actions variable counts as unset, not as a value", async () 
   });
 });
 
-Deno.test("the required commit and tag settings are named when absent", async () => {
+test("the required commit and tag settings are named when absent", async () => {
   // A bare call is legal to write, so its first missing setting must be named
   // — and refused before the environment or the transport is consulted.
   await assertRejects(
@@ -715,7 +716,7 @@ Deno.test("the required commit and tag settings are named when absent", async ()
   await assertRejects(() => tagCommit(), Error, "tagging requires .name(...)");
 });
 
-Deno.test("baseUrl retargets commits and tags at a GHES host", async () => {
+test("baseUrl retargets commits and tags at a GHES host", async () => {
   const seen: string[] = [];
   const capture: typeof fetch = (input) => {
     seen.push(String(input));
@@ -747,7 +748,7 @@ Deno.test("baseUrl retargets commits and tags at a GHES host", async () => {
   );
 });
 
-Deno.test("a response missing the field a call needs names that call", async () => {
+test("a response missing the field a call needs names that call", async () => {
   // `readString` names the call whose response was malformed, rather than
   // letting `undefined` flow into the next request's path.
   const notRecord = fakeFetch({
@@ -780,7 +781,7 @@ Deno.test("a response missing the field a call needs names that call", async () 
   );
 });
 
-Deno.test("an empty 2xx body reads as an empty object, not a parse error", async () => {
+test("an empty 2xx body reads as an empty object, not a parse error", async () => {
   // GitHub answers some writes with an empty body; the transport must not die
   // parsing "" on a reply the caller never reads.
   const empty: typeof fetch = (input, init) => {

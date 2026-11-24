@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -39,7 +40,7 @@ class ZipToolBuild extends Build {
     });
 }
 
-Deno.test("a build installs a zip-packaged tool end-to-end via the CLI", async () => {
+test("a build installs a zip-packaged tool end-to-end via the CLI", async () => {
   zipBytes = await makeZip([
     { name: "bin/dprint", data: new TextEncoder().encode("ZIP-TOOL") },
   ]);

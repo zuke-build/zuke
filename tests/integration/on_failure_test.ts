@@ -8,6 +8,7 @@
  * earlier process and only its recorded state crosses over.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -32,7 +33,7 @@ async function onlyRun(dir: string): Promise<RunRecord> {
   return got.record;
 }
 
-Deno.test("a failing check with .onFailure cancel-run rolls the deploy back", async () => {
+test("a failing check with .onFailure cancel-run rolls the deploy back", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class Deploy extends Build {
@@ -66,7 +67,7 @@ Deno.test("a failing check with .onFailure cancel-run rolls the deploy back", as
   });
 });
 
-Deno.test("a failure after a resume rolls back work an earlier process did", async () => {
+test("a failure after a resume rolls back work an earlier process did", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class Canary extends Build {

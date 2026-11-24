@@ -9,6 +9,7 @@
  * `build/plugin_sync.ts`).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -39,7 +40,7 @@ function gateBuild(source: string, dest: string) {
   return Gate;
 }
 
-Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async () => {
+test("pluginSyncCheck fails loudly when the destination has drifted", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
@@ -53,7 +54,7 @@ Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async
   });
 });
 
-Deno.test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async () => {
+test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;

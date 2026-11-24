@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   checkPluginSkillsSync,
@@ -18,11 +19,11 @@ import {
 } from "../build/plugin_sync.ts";
 import { withTemp } from "../packages/core/tests/_temp.ts";
 
-Deno.test("the committed plugin skills copy matches skills/ exactly", async () => {
+test("the committed plugin skills copy matches skills/ exactly", async () => {
   assertEquals(await checkPluginSkillsSync(), []);
 });
 
-Deno.test("syncPluginSkills round-trips through generate then check", async () => {
+test("syncPluginSkills round-trips through generate then check", async () => {
   await withTemp(async (dir) => {
     // Never sync into the committed default destination: syncPluginSkills
     // removes the destination before copying it back, so a run interrupted
@@ -38,7 +39,7 @@ Deno.test("syncPluginSkills round-trips through generate then check", async () =
   });
 });
 
-Deno.test("a missing destination file is reported", async () => {
+test("a missing destination file is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
@@ -51,7 +52,7 @@ Deno.test("a missing destination file is reported", async () => {
   });
 });
 
-Deno.test("an extra destination file not in the source is reported", async () => {
+test("an extra destination file not in the source is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
@@ -64,7 +65,7 @@ Deno.test("an extra destination file not in the source is reported", async () =>
   });
 });
 
-Deno.test("a content mismatch is reported", async () => {
+test("a content mismatch is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
@@ -78,7 +79,7 @@ Deno.test("a content mismatch is reported", async () => {
   });
 });
 
-Deno.test("a missing destination directory reports every source file as missing", async () => {
+test("a missing destination directory reports every source file as missing", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest-does-not-exist`;
@@ -90,7 +91,7 @@ Deno.test("a missing destination directory reports every source file as missing"
   });
 });
 
-Deno.test("syncPluginSkills copies nested directories and reports them written", async () => {
+test("syncPluginSkills copies nested directories and reports them written", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;

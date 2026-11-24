@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { promptStar, realStarActions, ZUKE_REPO_URL } from "../src/star.ts";
 import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { GhApiSettings } from "@zuke/gh";
 
-Deno.test("promptStar respects a no, silently", async () => {
+test("promptStar respects a no, silently", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(true);
   await promptStar(host, new FakePrompter(true, "", true, false), actions);
@@ -16,7 +17,7 @@ Deno.test("promptStar respects a no, silently", async () => {
   assertEquals(actions.calls, ["auth"]);
 });
 
-Deno.test("promptStar's question says how a yes will star", async () => {
+test("promptStar's question says how a yes will star", async () => {
   const authed = new FakePrompter(true, "", false, false);
   await promptStar(new FakeHost(), authed, new FakeStarActions(true));
   assertEquals(authed.confirms.length, 1);
@@ -27,7 +28,7 @@ Deno.test("promptStar's question says how a yes will star", async () => {
   assertEquals(anonymous.confirms[0].includes("opens the repo page"), true);
 });
 
-Deno.test("promptStar treats a throwing auth probe as not logged in", async () => {
+test("promptStar treats a throwing auth probe as not logged in", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(true);
   actions.ghAuthenticated = () => Promise.reject(new Error("gh exploded"));
@@ -36,7 +37,7 @@ Deno.test("promptStar treats a throwing auth probe as not logged in", async () =
   assertEquals(host.logs[0].includes("Opened"), true);
 });
 
-Deno.test("promptStar survives a throwing browser opener", async () => {
+test("promptStar survives a throwing browser opener", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(false);
   actions.openBrowser = () => Promise.reject(new Error("opener exploded"));
@@ -44,7 +45,7 @@ Deno.test("promptStar survives a throwing browser opener", async () => {
   assertEquals(host.logs, [`Star Zuke at ${ZUKE_REPO_URL} — thank you!`]);
 });
 
-Deno.test("promptStar stars through an authenticated gh", async () => {
+test("promptStar stars through an authenticated gh", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(true);
   await promptStar(host, new FakePrompter(true, "", false, true), actions);
@@ -52,7 +53,7 @@ Deno.test("promptStar stars through an authenticated gh", async () => {
   assertEquals(host.logs, ["★ Starred zuke-build/zuke — thank you!"]);
 });
 
-Deno.test("promptStar opens the browser when gh is not authenticated", async () => {
+test("promptStar opens the browser when gh is not authenticated", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(false);
   await promptStar(host, new FakePrompter(true, "", false, true), actions);
@@ -61,7 +62,7 @@ Deno.test("promptStar opens the browser when gh is not authenticated", async () 
   assertEquals(host.logs[0].includes(ZUKE_REPO_URL), true);
 });
 
-Deno.test("promptStar falls back to the browser when gh api fails", async () => {
+test("promptStar falls back to the browser when gh api fails", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(true, false);
   await promptStar(host, new FakePrompter(true, "", false, true), actions);
@@ -69,7 +70,7 @@ Deno.test("promptStar falls back to the browser when gh api fails", async () => 
   assertEquals(host.logs[0].includes("Opened"), true);
 });
 
-Deno.test("promptStar prints the URL when the browser cannot launch", async () => {
+test("promptStar prints the URL when the browser cannot launch", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(false, true, false);
   await promptStar(host, new FakePrompter(true, "", false, true), actions);
@@ -81,7 +82,7 @@ function exit(code: number): CommandOutput {
   return new CommandOutput(code, "", "");
 }
 
-Deno.test("realStarActions.ghAuthenticated maps exit codes and throws", async () => {
+test("realStarActions.ghAuthenticated maps exit codes and throws", async () => {
   const ok = realStarActions(() => Promise.resolve(exit(0)));
   assertEquals(await ok.ghAuthenticated(), true);
   const loggedOut = realStarActions(() => Promise.resolve(exit(1)));
@@ -90,7 +91,7 @@ Deno.test("realStarActions.ghAuthenticated maps exit codes and throws", async ()
   assertEquals(await missing.ghAuthenticated(), false);
 });
 
-Deno.test("realStarActions.starWithGh PUTs the star endpoint", async () => {
+test("realStarActions.starWithGh PUTs the star endpoint", async () => {
   let seen: string[] = [];
   const actions = realStarActions(undefined, (endpoint, configure) => {
     // Recover the argv the settings lambda would produce, without running gh.
@@ -106,7 +107,7 @@ Deno.test("realStarActions.starWithGh PUTs the star endpoint", async () => {
   assertEquals(seen.includes("PUT"), true);
 });
 
-Deno.test("realStarActions.openBrowser maps launch outcomes", async () => {
+test("realStarActions.openBrowser maps launch outcomes", async () => {
   let opened = "";
   const ok = realStarActions(undefined, undefined, (url) => {
     opened = url;

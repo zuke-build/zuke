@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,15 +10,15 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { DpdmAnalyzeSettings, DpdmTasks } from "../src/dpdm.ts";
 
-Deno.test("the default binary is dpdm", () => {
+test("the default binary is dpdm", () => {
   assertEquals(new DpdmAnalyzeSettings().argv()[0], "dpdm");
 });
 
-Deno.test("analyze: bare is empty argv", () => {
+test("analyze: bare is empty argv", () => {
   assertEquals(new DpdmAnalyzeSettings().argv().slice(1), []);
 });
 
-Deno.test("analyze: entries are appended after the flags", () => {
+test("analyze: entries are appended after the flags", () => {
   assertEquals(
     new DpdmAnalyzeSettings()
       .noTree()
@@ -28,7 +29,7 @@ Deno.test("analyze: entries are appended after the flags", () => {
   );
 });
 
-Deno.test("analyze: all options render in order", () => {
+test("analyze: all options render in order", () => {
   assertEquals(
     new DpdmAnalyzeSettings()
       .transform()
@@ -80,11 +81,11 @@ Deno.test("analyze: all options render in order", () => {
   );
 });
 
-Deno.test("DpdmTasks.analyze reaches execution", async () => {
+test("DpdmTasks.analyze reaches execution", async () => {
   await assertRejects(() => DpdmTasks.analyze(missingTool), ToolNotFoundError);
 });
 
-Deno.test("dpdm: resolves its binary from node_modules by default", async () => {
+test("dpdm: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new DpdmAnalyzeSettings(), "dpdm", {
     resolution: "node_modules",
   });

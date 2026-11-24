@@ -9,6 +9,7 @@
  * is a fresh `main()` — a separate process as far as the run is concerned.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -40,7 +41,7 @@ class Hotfix extends Build {
     .executes(() => {});
 }
 
-Deno.test("a parked rollout keeps its lock until zuke resume finishes it", async () => {
+test("a parked rollout keeps its lock until zuke resume finishes it", async () => {
   await withStateDir(async (dir) => {
     const first = await runCli(Rollout, ["promote"]);
     assertEquals(first.code, 0);
@@ -66,7 +67,7 @@ Deno.test("a parked rollout keeps its lock until zuke resume finishes it", async
   });
 });
 
-Deno.test("zuke cancel gives a parked run's lock back", async () => {
+test("zuke cancel gives a parked run's lock back", async () => {
   await withStateDir(async (dir) => {
     await runCli(Rollout, ["promote"]);
     const store = new FileSystemStateStore(dir, defaultStateHost);

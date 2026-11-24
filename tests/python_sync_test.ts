@@ -6,6 +6,7 @@
  * which workflow is dispatched, where, and with which token.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { GhWorkflowRunSettings } from "@zuke/gh";
 import {
@@ -14,7 +15,7 @@ import {
   startPythonSync,
 } from "../build/python_sync.ts";
 
-Deno.test("startPythonSync dispatches the SDK's sync workflow on main, as the app token", async () => {
+test("startPythonSync dispatches the SDK's sync workflow on main, as the app token", async () => {
   const argvs: string[][] = [];
   const envs: Record<string, string>[] = [];
   await startPythonSync("ghs_app", (configure) => {

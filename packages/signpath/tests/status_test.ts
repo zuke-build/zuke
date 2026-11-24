@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -27,7 +28,7 @@ import {
   WEB_URL,
 } from "./_fetch.ts";
 
-Deno.test("status: reads the documented answer, with the token as a bearer", async () => {
+test("status: reads the documented answer, with the token as a bearer", async () => {
   const net = routes({ [`GET ${STATUS_URL}`]: [status("WaitingForApproval")] });
   const result = await SignPathTasks.status((s) =>
     connected<SignPathStatusSettings>(net)(s).signingRequestId(REQUEST)
@@ -45,7 +46,7 @@ Deno.test("status: reads the documented answer, with the token as a bearer", asy
   assertEquals(sent.redirect, "manual");
 });
 
-Deno.test("status: the organization and token default to the environment", async () => {
+test("status: the organization and token default to the environment", async () => {
   const net = routes({ [`GET ${STATUS_URL}`]: [status("Completed")] });
   const env = new Map([
     ["SIGNPATH_ORGANIZATION_ID", ORG],
@@ -59,7 +60,7 @@ Deno.test("status: the organization and token default to the environment", async
   assertEquals(net.sent[0].headers.get("authorization"), `Bearer ${TOKEN}`);
 });
 
-Deno.test("status: a missing isFinalStatus falls back to the documented final statuses", async () => {
+test("status: a missing isFinalStatus falls back to the documented final statuses", async () => {
   for (
     const [value, final] of [["Denied", true], ["InProgress", false]] as const
   ) {
@@ -79,7 +80,7 @@ Deno.test("status: a missing isFinalStatus falls back to the documented final st
   assertEquals(result.isFinalStatus, true);
 });
 
-Deno.test("status: server text is stripped of control characters and the token", async () => {
+test("status: server text is stripped of control characters and the token", async () => {
   const esc = String.fromCharCode(27);
   const net = fakeFetch(() =>
     Response.json({
@@ -96,7 +97,7 @@ Deno.test("status: server text is stripped of control characters and the token",
   assertEquals(result.workflowStatus?.includes(TOKEN), false);
 });
 
-Deno.test("status: a malformed answer is a request error naming the endpoint", async () => {
+test("status: a malformed answer is a request error naming the endpoint", async () => {
   for (
     const body of ["not json", "[1,2]", JSON.stringify({ status: 7 }), ""]
   ) {
@@ -113,7 +114,7 @@ Deno.test("status: a malformed answer is a request error naming the endpoint", a
   }
 });
 
-Deno.test("status: a refusal carries SignPath's message, scrubbed of the token", async () => {
+test("status: a refusal carries SignPath's message, scrubbed of the token", async () => {
   const net = fakeFetch(() =>
     Response.json({ error: `token ${TOKEN} is not valid` }, { status: 401 })
   );
@@ -130,7 +131,7 @@ Deno.test("status: a refusal carries SignPath's message, scrubbed of the token",
   assertEquals(error instanceof SignPathApiError && error.status, 401);
 });
 
-Deno.test("status: the request id must be a GUID, and is required", async () => {
+test("status: the request id must be a GUID, and is required", async () => {
   const net = fakeFetch(() => Response.json({}));
   await assertRejects(
     () =>
@@ -151,7 +152,7 @@ Deno.test("status: the request id must be a GUID, and is required", async () => 
   assertEquals(net.sent.length, 0);
 });
 
-Deno.test("connection: the organization and token are required and checked", async () => {
+test("connection: the organization and token are required and checked", async () => {
   const net = fakeFetch(() => Response.json({}));
   const base = seams<SignPathStatusSettings>(net);
   await assertRejects(
@@ -189,7 +190,7 @@ Deno.test("connection: the organization and token are required and checked", asy
   assertEquals(net.sent.length, 0);
 });
 
-Deno.test("connection: the API URL must be https, without userinfo", async () => {
+test("connection: the API URL must be https, without userinfo", async () => {
   const net = fakeFetch(() => Response.json({ status: "InProgress" }));
   const run = (url: string) =>
     SignPathTasks.status((s) =>
@@ -229,7 +230,7 @@ Deno.test("connection: the API URL must be https, without userinfo", async () =>
   assertEquals(plain.sent[0].url.protocol, "http:");
 });
 
-Deno.test("status: the default API base is app.signpath.io", async () => {
+test("status: the default API base is app.signpath.io", async () => {
   const net = routes({ [`GET ${STATUS_URL}`]: [status("InProgress")] });
   await SignPathTasks.status((s) =>
     connected<SignPathStatusSettings>(net)(s).signingRequestId(REQUEST)

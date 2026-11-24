@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { ProcessTasks } from "../src/process_tasks.ts";
 
-Deno.test("ProcessTasks.run collects a child's piped output", async () => {
+test("ProcessTasks.run collects a child's piped output", async () => {
   const output = await ProcessTasks.run(
     Deno.execPath(),
     (s) =>
@@ -18,7 +19,7 @@ Deno.test("ProcessTasks.run collects a child's piped output", async () => {
   assertEquals(new TextDecoder().decode(output.stderr).trim(), "err");
 });
 
-Deno.test("ProcessTasks.spawn starts a child that can be stopped", async () => {
+test("ProcessTasks.spawn starts a child that can be stopped", async () => {
   const child = ProcessTasks.spawn(
     Deno.execPath(),
     (s) =>
@@ -32,13 +33,13 @@ Deno.test("ProcessTasks.spawn starts a child that can be stopped", async () => {
   assertEquals(status.success, false);
 });
 
-Deno.test("ProcessTasks signal listeners are added and removed", () => {
+test("ProcessTasks signal listeners are added and removed", () => {
   const handler = () => {};
   ProcessTasks.addSignalListener("SIGINT", handler);
   ProcessTasks.removeSignalListener("SIGINT", handler);
 });
 
-Deno.test("ProcessTasks passes the working directory and environment it is given", async () => {
+test("ProcessTasks passes the working directory and environment it is given", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const output = await ProcessTasks.run(
@@ -62,7 +63,7 @@ Deno.test("ProcessTasks passes the working directory and environment it is given
   }
 });
 
-Deno.test("ProcessTasks stops a child when its signal aborts", async () => {
+test("ProcessTasks stops a child when its signal aborts", async () => {
   const abort = new AbortController();
   const child = ProcessTasks.spawn(
     Deno.execPath(),
@@ -72,7 +73,7 @@ Deno.test("ProcessTasks stops a child when its signal aborts", async () => {
   assertEquals((await child.status).success, false);
 });
 
-Deno.test("ProcessTasks fails to run a command that does not exist", async () => {
+test("ProcessTasks fails to run a command that does not exist", async () => {
   // No settings at all: a missing program is refused before anything runs.
   await assertRejects(() => ProcessTasks.run("zuke-no-such-program"));
 });

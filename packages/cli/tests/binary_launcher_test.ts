@@ -11,6 +11,7 @@
  * `zuke` on Windows (`tests/e2e/embedded_engine_e2e.ts`).
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -32,7 +33,7 @@ import { testPin } from "./_fakes.ts";
 const DOWNLOAD = { download: true };
 const PLAIN = { download: false };
 
-Deno.test("both binary launchers name no tool outside the project's own stack", () => {
+test("both binary launchers name no tool outside the project's own stack", () => {
   for (const options of [DOWNLOAD, PLAIN]) {
     for (
       const script of [
@@ -47,7 +48,7 @@ Deno.test("both binary launchers name no tool outside the project's own stack", 
   }
 });
 
-Deno.test("the download launchers pin the release and each platform's digest", () => {
+test("the download launchers pin the release and each platform's digest", () => {
   const pin = testPin("2.4.0");
   const bash = binaryLauncherBash(DOWNLOAD, pin);
   assertStringIncludes(bash, 'ZUKE_VERSION="2.4.0"');
@@ -70,7 +71,7 @@ Deno.test("the download launchers pin the release and each platform's digest", (
   }
 });
 
-Deno.test("the PowerShell launcher calls no script-module command", () => {
+test("the PowerShell launcher calls no script-module command", () => {
   // Windows PowerShell started from a PowerShell 7 session inherits its
   // module path, and cannot load these then: CI's Windows e2e did exactly that.
   const pwsh = binaryLauncherPwsh(DOWNLOAD, testPin());
@@ -84,7 +85,7 @@ Deno.test("the PowerShell launcher calls no script-module command", () => {
   );
 });
 
-Deno.test("both launchers hand zuke the forwarding switch and their own root", () => {
+test("both launchers hand zuke the forwarding switch and their own root", () => {
   for (const options of [DOWNLOAD, PLAIN]) {
     const bash = binaryLauncherBash(options, testPin());
     assertStringIncludes(
@@ -103,7 +104,7 @@ Deno.test("both launchers hand zuke the forwarding switch and their own root", (
   }
 });
 
-Deno.test("the plain launchers fail closed, naming where to get zuke", () => {
+test("the plain launchers fail closed, naming where to get zuke", () => {
   const bash = binaryLauncherBash(PLAIN, testPin());
   assertStringIncludes(bash, "if ! command -v zuke >/dev/null 2>&1; then");
   assertStringIncludes(bash, BINARY_INSTALL_DOCS);
@@ -181,7 +182,7 @@ async function runLauncher(
 
 const POSIX = Deno.build.os !== "windows";
 
-Deno.test({
+test({
   name:
     "the bash launcher downloads the pinned release once, verified, then runs it",
   ignore: !POSIX,
@@ -224,7 +225,7 @@ Deno.test({
     }, { prefix: "zuke-binary-launcher-" }),
 });
 
-Deno.test({
+test({
   name:
     "the bash launcher refuses an archive whose digest is not the pinned one, and keeps nothing",
   ignore: !POSIX,
@@ -259,7 +260,7 @@ Deno.test({
     }, { prefix: "zuke-binary-launcher-" }),
 });
 
-Deno.test({
+test({
   name: "the plain bash launcher runs the zuke on PATH, or exits 1 without one",
   ignore: !POSIX,
   fn: () =>
@@ -287,7 +288,7 @@ Deno.test({
     }, { prefix: "zuke-binary-launcher-" }),
 });
 
-Deno.test({
+test({
   name:
     "the plain bash launcher refuses to run itself, found through an empty PATH entry",
   ignore: !POSIX,

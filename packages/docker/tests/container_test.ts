@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   DockerCreateSettings,
@@ -16,7 +17,7 @@ import {
   DockerWaitSettings,
 } from "../mod.ts";
 
-Deno.test("the global options precede the subcommand, where docker needs them", () => {
+test("the global options precede the subcommand, where docker needs them", () => {
   // `docker ps --context x` is an error; `docker --context x ps` is not, so
   // the base renders them in front rather than appending like other CLIs.
   assertEquals(
@@ -39,7 +40,7 @@ Deno.test("the global options precede the subcommand, where docker needs them", 
   );
 });
 
-Deno.test("run and create share one container configuration", () => {
+test("run and create share one container configuration", () => {
   // `docker run` is `create` plus starting it, so the flags render the same
   // way for both — one implementation, not two that drift.
   const configure = <T extends DockerRunSettings | DockerCreateSettings>(
@@ -92,7 +93,7 @@ Deno.test("run and create share one container configuration", () => {
   ]);
 });
 
-Deno.test("run and create both require an image, naming their own task", () => {
+test("run and create both require an image, naming their own task", () => {
   assertThrows(
     () => new DockerRunSettings().argv(),
     Error,
@@ -105,7 +106,7 @@ Deno.test("run and create both require an image, naming their own task", () => {
   );
 });
 
-Deno.test("exec renders the process flags it shares with run", () => {
+test("exec renders the process flags it shares with run", () => {
   assertEquals(
     new DockerExecSettings().detach().interactive().tty().privileged()
       .envVar("CI", "1").envFile(".env").workdir("/src").user("root")
@@ -132,7 +133,7 @@ Deno.test("exec renders the process flags it shares with run", () => {
   );
 });
 
-Deno.test("the lifecycle commands share one container list and its refusal", () => {
+test("the lifecycle commands share one container list and its refusal", () => {
   assertEquals(
     new DockerRestartSettings().signal("SIGTERM").timeout(5)
       .containers("app", "db").argv().slice(1),
@@ -175,7 +176,7 @@ Deno.test("the lifecycle commands share one container list and its refusal", () 
   }
 });
 
-Deno.test("rename needs both names, and update renders its limits", () => {
+test("rename needs both names, and update renders its limits", () => {
   assertEquals(
     new DockerRenameSettings().container("old").newName("new").argv().slice(1),
     ["rename", "old", "new"],

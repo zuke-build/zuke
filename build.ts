@@ -90,6 +90,7 @@ import {
   embeddedReleases,
   releaseEntry,
 } from "./build/cli_binary.ts";
+import { VitestTasks } from "@zuke/vitest";
 import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
 import {
   staleManifests,
@@ -416,6 +417,17 @@ class ZukeBuild extends Build {
               .paths(...paths).env(HERMETIC_ENV).quiet().noThrow()
           ),
       );
+    });
+
+  // The suite on Node (#993): the npm workspace installed from its lock, then
+  // Vitest over every test file tests/node_pending.json does not list yet.
+  // Kept out of `ci` until the gate moves to Node; the integration workflow
+  // runs it so a file that passes on Node keeps passing.
+  nodeTest = target()
+    .description("Run the test suite on Node with Vitest (ported files)")
+    .executes(async () => {
+      await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
+      await VitestTasks.run((s) => s.reporter("dot"));
     });
 
   // The subprocess e2e suite (tests/e2e/), kept OUT of `test`/`ci` so the fast

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -51,7 +52,7 @@ function download(
   );
 }
 
-Deno.test("download: writes exactly the configured path, ignoring the server's file name", async () => {
+test("download: writes exactly the configured path, ignoring the server's file name", async () => {
   const { dir, output } = await target();
   await Deno.writeTextFile(output, "old");
   const net = routes({
@@ -69,7 +70,7 @@ Deno.test("download: writes exactly the configured path, ignoring the server's f
   assertEquals(net.sent[0].headers.get("authorization"), `Bearer ${TOKEN}`);
 });
 
-Deno.test("download: creates the output's directory, and accepts an empty body", async () => {
+test("download: creates the output's directory, and accepts an empty body", async () => {
   const { dir } = await target();
   const output = `${dir}/a/b/zuke.exe`;
   const net = routes({
@@ -79,7 +80,7 @@ Deno.test("download: creates the output's directory, and accepts an empty body",
   assertEquals(await Deno.readTextFile(output), "");
 });
 
-Deno.test("download: a relative bare file name is written in the working directory", async () => {
+test("download: a relative bare file name is written in the working directory", async () => {
   const { dir } = await target();
   const previous = Deno.cwd();
   Deno.chdir(dir);
@@ -94,7 +95,7 @@ Deno.test("download: a relative bare file name is written in the working directo
   }
 });
 
-Deno.test("download: a redirect to storage is followed without the token", async () => {
+test("download: a redirect to storage is followed without the token", async () => {
   const { output } = await target();
   const storage = "https://blob.example/signed/zuke.exe?sig=abc";
   const net = routes({
@@ -118,7 +119,7 @@ Deno.test("download: a redirect to storage is followed without the token", async
   assertEquals(net.sent.every((r) => r.redirect === "manual"), true);
 });
 
-Deno.test("download: a same-origin redirect keeps the token", async () => {
+test("download: a same-origin redirect keeps the token", async () => {
   const { output } = await target();
   const net = routes({
     [`GET ${ARTIFACT_URL}`]: [
@@ -131,7 +132,7 @@ Deno.test("download: a same-origin redirect keeps the token", async () => {
   assertEquals(net.sent[1].headers.get("authorization"), `Bearer ${TOKEN}`);
 });
 
-Deno.test("download: unsafe or endless redirects are refused", async () => {
+test("download: unsafe or endless redirects are refused", async () => {
   const { dir, output } = await target();
   const plain = routes({
     [`GET ${ARTIFACT_URL}`]: [() =>
@@ -164,7 +165,7 @@ Deno.test("download: unsafe or endless redirects are refused", async () => {
   assertEquals(await entries(dir), []);
 });
 
-Deno.test("download: a refusal is an API error and writes nothing", async () => {
+test("download: a refusal is an API error and writes nothing", async () => {
   const { dir, output } = await target();
   const net = fakeFetch(() =>
     Response.json({ error: "The signing request is not completed" }, {
@@ -179,7 +180,7 @@ Deno.test("download: a refusal is an API error and writes nothing", async () => 
   assertEquals(await entries(dir), []);
 });
 
-Deno.test("download: an oversized artifact is refused and leaves no partial file", async () => {
+test("download: an oversized artifact is refused and leaves no partial file", async () => {
   const { dir, output } = await target();
   await Deno.writeTextFile(output, "previous");
   const net = fakeFetch(() => new Response("0123456789"));
@@ -193,7 +194,7 @@ Deno.test("download: an oversized artifact is refused and leaves no partial file
   assertEquals(await Deno.readTextFile(output), "previous");
 });
 
-Deno.test("download: a stream that fails or stalls leaves no partial file", async () => {
+test("download: a stream that fails or stalls leaves no partial file", async () => {
   const { dir, output } = await target();
   const broken = fakeFetch(() =>
     new Response(
@@ -233,7 +234,7 @@ Deno.test("download: a stream that fails or stalls leaves no partial file", asyn
   assertEquals(await entries(dir), []);
 });
 
-Deno.test("download: the output and the request id are required", async () => {
+test("download: the output and the request id are required", async () => {
   const net = fakeFetch(() => new Response("x"));
   await assertRejects(
     () =>
@@ -254,7 +255,7 @@ Deno.test("download: the output and the request id are required", async () => {
   assertEquals(net.sent.length, 0);
 });
 
-Deno.test("download: a redirect to a location that is not a URL is a request error", async () => {
+test("download: a redirect to a location that is not a URL is a request error", async () => {
   // Regression (adversarial review): this used to escape as a raw TypeError.
   const { output } = await target();
   const net = fakeFetch(() =>
@@ -270,7 +271,7 @@ Deno.test("download: a redirect to a location that is not a URL is a request err
   );
 });
 
-Deno.test("download: a destination that cannot be created releases the connection", async () => {
+test("download: a destination that cannot be created releases the connection", async () => {
   // Regression (adversarial review): the response body used to be left unread.
   const { dir } = await target();
   await Deno.writeTextFile(`${dir}/file`, "x");
@@ -282,7 +283,7 @@ Deno.test("download: a destination that cannot be created releases the connectio
   assertEquals(cancelled, true);
 });
 
-Deno.test("download: an output that is a directory fails and leaves no partial file", async () => {
+test("download: an output that is a directory fails and leaves no partial file", async () => {
   const { dir } = await target();
   await Deno.mkdir(`${dir}/zuke.exe`);
   const net = fakeFetch(() => new Response("signed"));
@@ -293,7 +294,7 @@ Deno.test("download: an output that is a directory fails and leaves no partial f
   assertEquals(await entries(dir), ["zuke.exe"]);
 });
 
-Deno.test("download: a partial path someone else holds is left alone, and the body released", async () => {
+test("download: a partial path someone else holds is left alone, and the body released", async () => {
   // Regression (adversarial review): the partial file is opened once, with an
   // exclusive create, so a path already taken is refused rather than written
   // through, and is never removed as if it were this download's own.

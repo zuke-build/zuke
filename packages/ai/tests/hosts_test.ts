@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AiReviewError } from "../mod.ts";
 import { detectReviewHost, hostFor } from "../src/hosts.ts";
@@ -88,11 +89,11 @@ const CONTEXT: GithubContext = {
   pull: 100,
 };
 
-Deno.test("resolveGithubContext reads owner/repo and the PR number", () => {
+test("resolveGithubContext reads owner/repo and the PR number", () => {
   assertEquals(resolveGithubContext("tkn", env(VALID)), CONTEXT);
 });
 
-Deno.test("resolveGithubContext returns undefined when anything is missing", () => {
+test("resolveGithubContext returns undefined when anything is missing", () => {
   // No token.
   assertEquals(resolveGithubContext("", env(VALID)), undefined);
   // No GITHUB_REPOSITORY.
@@ -120,7 +121,7 @@ Deno.test("resolveGithubContext returns undefined when anything is missing", () 
   );
 });
 
-Deno.test("upsertPrComment creates a new comment when none exists", async () => {
+test("upsertPrComment creates a new comment when none exists", async () => {
   const { fetch, calls } = fakeGithub([]);
   await upsertPrComment(CONTEXT, "security review", "## body", fetch);
 
@@ -147,7 +148,7 @@ Deno.test("upsertPrComment creates a new comment when none exists", async () => 
   assertEquals(body.body.includes("## body"), true);
 });
 
-Deno.test("upsertPrComment follows Link pagination to find a marker on a later page", async () => {
+test("upsertPrComment follows Link pagination to find a marker on a later page", async () => {
   const calls: Call[] = [];
   const page2 =
     "https://api.github.com/repos/zuke-build/zuke/issues/100/comments?per_page=100&page=2";
@@ -193,7 +194,7 @@ Deno.test("upsertPrComment follows Link pagination to find a marker on a later p
   );
 });
 
-Deno.test("upsertPrComment patches the existing comment in place", async () => {
+test("upsertPrComment patches the existing comment in place", async () => {
   const existing = [
     { id: 1, body: "unrelated" },
     {
@@ -212,7 +213,7 @@ Deno.test("upsertPrComment patches the existing comment in place", async () => {
   );
 });
 
-Deno.test("upsertPrComment in append mode always POSTs a new comment", async () => {
+test("upsertPrComment in append mode always POSTs a new comment", async () => {
   // A prior bot comment with the marker exists — update mode would PATCH it;
   // append mode must leave it as history and create a new one, without even
   // listing the existing comments.
@@ -233,7 +234,7 @@ Deno.test("upsertPrComment in append mode always POSTs a new comment", async () 
   );
 });
 
-Deno.test("upsertPrComment ignores a bot comment that merely quotes the marker", async () => {
+test("upsertPrComment ignores a bot comment that merely quotes the marker", async () => {
   // A different bot (e.g. one that echoes comment content) reproduces the
   // marker mid-body. Bot-authored or not, a comment whose body does not OPEN
   // with the marker is never adopted — the reviewer's own comments always
@@ -252,7 +253,7 @@ Deno.test("upsertPrComment ignores a bot comment that merely quotes the marker",
   assertEquals(write?.method, "POST"); // not adopted, fresh comment
 });
 
-Deno.test("upsertPrComment never patches a human comment that forges the marker", async () => {
+test("upsertPrComment never patches a human comment that forges the marker", async () => {
   // An attacker pastes the hidden marker into their own comment. The workflow
   // token could PATCH it — the authorship check must refuse and POST instead.
   const forged = [
@@ -289,7 +290,7 @@ Deno.test("upsertPrComment never patches a human comment that forges the marker"
   );
 });
 
-Deno.test("upsertPrComment patches a marker comment authored by the token's own user (PAT run)", async () => {
+test("upsertPrComment patches a marker comment authored by the token's own user (PAT run)", async () => {
   const mine = [
     {
       id: 9,
@@ -324,7 +325,7 @@ Deno.test("upsertPrComment patches a marker comment authored by the token's own 
   );
 });
 
-Deno.test("listPrComments maps author metadata from the API, not the body", async () => {
+test("listPrComments maps author metadata from the API, not the body", async () => {
   const items = [
     {
       id: 1,
@@ -350,13 +351,13 @@ Deno.test("listPrComments maps author metadata from the API, not the body", asyn
   assertEquals(comments[2].bot, false);
 });
 
-Deno.test("upsertPrComment ignores a non-array comment listing", async () => {
+test("upsertPrComment ignores a non-array comment listing", async () => {
   const { fetch, calls } = fakeGithub({ message: "Not Found" });
   await upsertPrComment(CONTEXT, "security review", "## body", fetch);
   assertEquals(calls[1].method, "POST"); // falls back to creating
 });
 
-Deno.test("upsertPrComment surfaces a GitHub API error", async () => {
+test("upsertPrComment surfaces a GitHub API error", async () => {
   const { fetch } = fakeGithub([], 403);
   await assertRejects(
     () => upsertPrComment(CONTEXT, "security review", "## body", fetch),
@@ -367,7 +368,7 @@ Deno.test("upsertPrComment surfaces a GitHub API error", async () => {
 
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
-Deno.test("detectReviewHost picks the host matching the active CI env", () => {
+test("detectReviewHost picks the host matching the active CI env", () => {
   const cases: Array<[Record<string, string>, string | undefined]> = [
     [{ GITHUB_ACTIONS: "true" }, "GitHub"],
     [{ GITLAB_CI: "true" }, "GitLab"],
@@ -381,7 +382,7 @@ Deno.test("detectReviewHost picks the host matching the active CI env", () => {
   }
 });
 
-Deno.test("each host advertises a default token env var", () => {
+test("each host advertises a default token env var", () => {
   assertEquals(hostFor("github")?.defaultTokenEnv, "GITHUB_TOKEN");
   assertEquals(hostFor("gitlab")?.defaultTokenEnv, "GITLAB_TOKEN");
   assertEquals(hostFor("azure")?.defaultTokenEnv, "SYSTEM_ACCESSTOKEN");
@@ -454,7 +455,7 @@ function fakeGitlab(
   return { fetch: impl, calls };
 }
 
-Deno.test("resolveGitlabContext requires project id and MR iid", () => {
+test("resolveGitlabContext requires project id and MR iid", () => {
   assertEquals(resolveGitlabContext("glat", env(GITLAB_ENV)), GITLAB_CTX);
   assertEquals(resolveGitlabContext("", env(GITLAB_ENV)), undefined);
   // Without the MR iid → not in a merge-request pipeline.
@@ -472,7 +473,7 @@ Deno.test("resolveGitlabContext requires project id and MR iid", () => {
   );
 });
 
-Deno.test("upsertMergeRequestNote creates with POST when no prior note exists", async () => {
+test("upsertMergeRequestNote creates with POST when no prior note exists", async () => {
   const { fetch, calls } = fakeGitlab([]);
   await upsertMergeRequestNote(GITLAB_CTX, "security review", "## body", fetch);
   // No candidate note carries the marker, so the self-identity probe is skipped.
@@ -499,7 +500,7 @@ Deno.test("upsertMergeRequestNote creates with POST when no prior note exists", 
   );
 });
 
-Deno.test("upsertMergeRequestNote PUTs a bot-authored note in place", async () => {
+test("upsertMergeRequestNote PUTs a bot-authored note in place", async () => {
   const existing = [
     { id: 11, body: "unrelated", author: { username: "dev" } },
     {
@@ -519,7 +520,7 @@ Deno.test("upsertMergeRequestNote PUTs a bot-authored note in place", async () =
   );
 });
 
-Deno.test("upsertMergeRequestNote PUTs a note authored by the token's own user", async () => {
+test("upsertMergeRequestNote PUTs a note authored by the token's own user", async () => {
   // A project access token's notes are not flagged `bot` by the notes API, so
   // authorship falls back to the username `GET /user` reports.
   const existing = [{
@@ -537,7 +538,7 @@ Deno.test("upsertMergeRequestNote PUTs a note authored by the token's own user",
   );
 });
 
-Deno.test("upsertMergeRequestNote never overwrites a note that forges the marker", async () => {
+test("upsertMergeRequestNote never overwrites a note that forges the marker", async () => {
   // Anyone can paste the hidden marker into an MR note, and a token with `api`
   // scope can PUT any note — the authorship check must refuse and POST instead.
   const forged = [{
@@ -555,7 +556,7 @@ Deno.test("upsertMergeRequestNote never overwrites a note that forges the marker
   );
 });
 
-Deno.test("upsertMergeRequestNote ignores a bot note that merely quotes the marker", async () => {
+test("upsertMergeRequestNote ignores a bot note that merely quotes the marker", async () => {
   const quoting = [{
     id: 31,
     body: "Quoting:\n<!-- zuke-ai-review:security review -->\nechoed",
@@ -567,7 +568,7 @@ Deno.test("upsertMergeRequestNote ignores a bot note that merely quotes the mark
   assertEquals(write?.method, "POST"); // not adopted — the marker must open the body
 });
 
-Deno.test("upsertMergeRequestNote follows Link pagination to a marker on a later page", async () => {
+test("upsertMergeRequestNote follows Link pagination to a marker on a later page", async () => {
   const calls: Call[] = [];
   const page2 =
     "https://gitlab.example/api/v4/projects/42/merge_requests/7/notes?per_page=100&sort=asc&page=2";
@@ -613,7 +614,7 @@ Deno.test("upsertMergeRequestNote follows Link pagination to a marker on a later
   );
 });
 
-Deno.test("listMergeRequestNotes maps author, bot and membership metadata", async () => {
+test("listMergeRequestNotes maps author, bot and membership metadata", async () => {
   const notes = [
     {
       id: 1,
@@ -659,7 +660,7 @@ Deno.test("listMergeRequestNotes maps author, bot and membership metadata", asyn
   assertEquals(listed[6].bot, false);
 });
 
-Deno.test("listMergeRequestNotes leaves the association empty when membership can't be read", async () => {
+test("listMergeRequestNotes leaves the association empty when membership can't be read", async () => {
   // A token without access to the members endpoint must fail closed: no
   // association at all, so only `.trustAuthors(...)` can admit an author.
   const notes = [{ id: 1, body: "hi", author: { username: "maintainer" } }];
@@ -669,12 +670,12 @@ Deno.test("listMergeRequestNotes leaves the association empty when membership ca
   assertEquals(listed[0].bot, false);
 });
 
-Deno.test("listMergeRequestNotes ignores a non-array notes payload", async () => {
+test("listMergeRequestNotes ignores a non-array notes payload", async () => {
   const { fetch } = fakeGitlab({ message: "404 Not Found" }, { members: [] });
   assertEquals(await listMergeRequestNotes(GITLAB_CTX, fetch), []);
 });
 
-Deno.test("gitlabHost.listComments needs an MR context", () => {
+test("gitlabHost.listComments needs an MR context", () => {
   assertEquals(gitlabHost.listComments?.("glat", env({})), undefined);
   assertEquals(
     typeof gitlabHost.listComments?.("glat", env(GITLAB_ENV)),
@@ -682,7 +683,7 @@ Deno.test("gitlabHost.listComments needs an MR context", () => {
   );
 });
 
-Deno.test("upsertMergeRequestNote surfaces a non-2xx response as AiReviewError", async () => {
+test("upsertMergeRequestNote surfaces a non-2xx response as AiReviewError", async () => {
   const { fetch } = fakeGitlab([], { status: 401 });
   await assertRejects(
     () =>
@@ -747,7 +748,7 @@ function fakeAzure(
   return { fetch: impl, calls };
 }
 
-Deno.test("resolveAzureContext requires every Azure variable + a token", () => {
+test("resolveAzureContext requires every Azure variable + a token", () => {
   assertEquals(resolveAzureContext("azt", env(AZURE_ENV)), AZURE_CTX);
   assertEquals(resolveAzureContext("", env(AZURE_ENV)), undefined);
   // Collection alone isn't enough — every Azure variable must be present.
@@ -760,7 +761,7 @@ Deno.test("resolveAzureContext requires every Azure variable + a token", () => {
   );
 });
 
-Deno.test("upsertPullRequestThread POSTs a new thread when no prior one exists", async () => {
+test("upsertPullRequestThread POSTs a new thread when no prior one exists", async () => {
   const { fetch, calls } = fakeAzure([], { self: "build-service-id" });
   await upsertPullRequestThread(AZURE_CTX, "security review", "## body", fetch);
   assertEquals(calls.length, 3); // connectionData, threads, create
@@ -785,7 +786,7 @@ Deno.test("upsertPullRequestThread POSTs a new thread when no prior one exists",
   assertEquals(body.status, 4); // closed — informational thread
 });
 
-Deno.test("upsertPullRequestThread PATCHes the reviewer's own comment in an existing thread", async () => {
+test("upsertPullRequestThread PATCHes the reviewer's own comment in an existing thread", async () => {
   const threads = [{
     id: 7,
     comments: [
@@ -805,7 +806,7 @@ Deno.test("upsertPullRequestThread PATCHes the reviewer's own comment in an exis
   );
 });
 
-Deno.test("upsertPullRequestThread never overwrites a comment that forges the marker", async () => {
+test("upsertPullRequestThread never overwrites a comment that forges the marker", async () => {
   const threads = [{
     id: 7,
     comments: [
@@ -822,7 +823,7 @@ Deno.test("upsertPullRequestThread never overwrites a comment that forges the ma
   assertEquals(write?.method, "POST"); // a fresh thread, not the attacker's
 });
 
-Deno.test("upsertPullRequestThread cannot adopt a thread when the identity probe fails", async () => {
+test("upsertPullRequestThread cannot adopt a thread when the identity probe fails", async () => {
   // Without `connectionData`, nothing attributes the comment to the reviewer —
   // fail closed and post a new thread rather than PATCH a stranger's.
   const threads = [{
@@ -841,7 +842,7 @@ Deno.test("upsertPullRequestThread cannot adopt a thread when the identity probe
   assertEquals(write?.method, "POST");
 });
 
-Deno.test("listPullRequestComments maps identity from the API and leaves association empty", async () => {
+test("listPullRequestComments maps identity from the API and leaves association empty", async () => {
   const threads = [
     {
       id: 7,
@@ -893,7 +894,7 @@ Deno.test("listPullRequestComments maps identity from the API and leaves associa
   assertEquals(listed[3].author, "system-id");
 });
 
-Deno.test("listPullRequestComments tolerates a payload without a value array", async () => {
+test("listPullRequestComments tolerates a payload without a value array", async () => {
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request) => {
     const url = String(input);
@@ -906,7 +907,7 @@ Deno.test("listPullRequestComments tolerates a payload without a value array", a
   assertEquals(await listPullRequestComments(AZURE_CTX, doFetch), []);
 });
 
-Deno.test("azureHost.listComments needs a PR context", () => {
+test("azureHost.listComments needs a PR context", () => {
   assertEquals(azureHost.listComments?.("azt", env({})), undefined);
   assertEquals(
     typeof azureHost.listComments?.("azt", env(AZURE_ENV)),
@@ -914,7 +915,7 @@ Deno.test("azureHost.listComments needs a PR context", () => {
   );
 });
 
-Deno.test("upsertPullRequestThread surfaces a non-2xx Azure response", async () => {
+test("upsertPullRequestThread surfaces a non-2xx Azure response", async () => {
   const { fetch } = fakeAzure([], { status: 500, self: "build-service-id" });
   await assertRejects(
     () =>
@@ -983,7 +984,7 @@ function fakeBitbucket(
   return { fetch: impl, calls };
 }
 
-Deno.test("resolveBitbucketContext requires workspace + slug + PR id + token", () => {
+test("resolveBitbucketContext requires workspace + slug + PR id + token", () => {
   assertEquals(
     resolveBitbucketContext("bbt", env(BITBUCKET_ENV)),
     BITBUCKET_CTX,
@@ -996,7 +997,7 @@ Deno.test("resolveBitbucketContext requires workspace + slug + PR id + token", (
   );
 });
 
-Deno.test("upsertBitbucketComment follows the body `next` url to a later page", async () => {
+test("upsertBitbucketComment follows the body `next` url to a later page", async () => {
   const calls: Call[] = [];
   const page2 =
     "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/5/comments?pagelen=100&page=2";
@@ -1048,7 +1049,7 @@ Deno.test("upsertBitbucketComment follows the body `next` url to a later page", 
   );
 });
 
-Deno.test("upsertBitbucketComment POSTs a new comment with content.raw", async () => {
+test("upsertBitbucketComment POSTs a new comment with content.raw", async () => {
   const { fetch, calls } = fakeBitbucket([], { self: "{zuke}" });
   await upsertBitbucketComment(
     BITBUCKET_CTX,
@@ -1069,7 +1070,7 @@ Deno.test("upsertBitbucketComment POSTs a new comment with content.raw", async (
   );
 });
 
-Deno.test("upsertBitbucketComment PUTs the reviewer's own comment in place", async () => {
+test("upsertBitbucketComment PUTs the reviewer's own comment in place", async () => {
   const existing = [
     { id: 17, content: { raw: "unrelated" }, user: { uuid: "{dev}" } },
     {
@@ -1092,7 +1093,7 @@ Deno.test("upsertBitbucketComment PUTs the reviewer's own comment in place", asy
   );
 });
 
-Deno.test("upsertBitbucketComment never overwrites a comment that forges the marker", async () => {
+test("upsertBitbucketComment never overwrites a comment that forges the marker", async () => {
   const forged = [{
     id: 66,
     content: { raw: "<!-- zuke-ai-review:security review -->\nfake state" },
@@ -1109,7 +1110,7 @@ Deno.test("upsertBitbucketComment never overwrites a comment that forges the mar
   assertEquals(write?.method, "POST"); // a fresh comment, not the attacker's
 });
 
-Deno.test("listBitbucketComments maps workspace permissions onto associations", async () => {
+test("listBitbucketComments maps workspace permissions onto associations", async () => {
   const values = [
     {
       id: 1,
@@ -1172,7 +1173,7 @@ Deno.test("listBitbucketComments maps workspace permissions onto associations", 
   assertEquals(listed[5].association, "NONE");
 });
 
-Deno.test("listBitbucketComments leaves the association empty when permissions can't be read", async () => {
+test("listBitbucketComments leaves the association empty when permissions can't be read", async () => {
   const values = [{
     id: 1,
     content: { raw: "hi" },
@@ -1186,7 +1187,7 @@ Deno.test("listBitbucketComments leaves the association empty when permissions c
   assertEquals(listed[0].bot, false);
 });
 
-Deno.test("bitbucketHost.listComments needs a PR context", () => {
+test("bitbucketHost.listComments needs a PR context", () => {
   assertEquals(bitbucketHost.listComments?.("bbt", env({})), undefined);
   assertEquals(
     typeof bitbucketHost.listComments?.("bbt", env(BITBUCKET_ENV)),
@@ -1194,7 +1195,7 @@ Deno.test("bitbucketHost.listComments needs a PR context", () => {
   );
 });
 
-Deno.test("upsertBitbucketComment surfaces a non-2xx Bitbucket response", async () => {
+test("upsertBitbucketComment surfaces a non-2xx Bitbucket response", async () => {
   const { fetch } = fakeBitbucket([], { status: 403, self: "{zuke}" });
   await assertRejects(
     () =>
@@ -1211,7 +1212,7 @@ Deno.test("upsertBitbucketComment surfaces a non-2xx Bitbucket response", async 
 
 // ─── Shared authorship rule ─────────────────────────────────────────────────
 
-Deno.test("findOwn requires the marker to open the body and the author to be ours", async () => {
+test("findOwn requires the marker to open the body and the author to be ours", async () => {
   const marker = "<!-- zuke-ai-review:security review -->";
   const comments: HostComment[] = [
     {
@@ -1257,7 +1258,7 @@ Deno.test("findOwn requires the marker to open the body and the author to be our
   );
 });
 
-Deno.test("listBitbucketComments identifies an author by uuid, not by nickname", async () => {
+test("listBitbucketComments identifies an author by uuid, not by nickname", async () => {
   // A nickname is a mutable display alias anyone can set. An outsider who
   // renames themselves to a member's nickname must inherit nothing — neither
   // the association, nor the identity `.trustAuthors(...)` is matched on.
@@ -1287,7 +1288,7 @@ Deno.test("listBitbucketComments identifies an author by uuid, not by nickname",
   assertEquals(listed[0].displayName, "maintainer"); // display only
 });
 
-Deno.test("a renamed outsider is not admitted by a trustAuthors allowlist", async () => {
+test("a renamed outsider is not admitted by a trustAuthors allowlist", async () => {
   // The end-to-end version of the same rule, through the real trust gate: the
   // allowlist names an account, and a nickname collision must not satisfy it.
   const values = [
@@ -1311,7 +1312,7 @@ Deno.test("a renamed outsider is not admitted by a trustAuthors allowlist", asyn
   assertEquals(trusted.map((c) => c.id), [2]);
 });
 
-Deno.test("listPullRequestComments identifies an Azure author by uniqueName, not displayName", async () => {
+test("listPullRequestComments identifies an Azure author by uniqueName, not displayName", async () => {
   // displayName is self-assigned; it must never be the identity trust is keyed
   // on, and it must not stand in when uniqueName is absent.
   const threads = [{
@@ -1344,7 +1345,7 @@ Deno.test("listPullRequestComments identifies an Azure author by uniqueName, not
   assertEquals(trusted.map((c) => c.id), [2]);
 });
 
-Deno.test("listPullRequestComments treats a numeric system commentType as a bot", async () => {
+test("listPullRequestComments treats a numeric system commentType as a bot", async () => {
   // Azure serialises the enum by name on the REST API and by ordinal elsewhere;
   // a system comment must not be mistaken for a maintainer speaking either way.
   const threads = [{
@@ -1363,7 +1364,7 @@ Deno.test("listPullRequestComments treats a numeric system commentType as a bot"
   assertEquals(listed[0].bot, true);
 });
 
-Deno.test("resolveAzureContext refuses when any variable is absent or empty", () => {
+test("resolveAzureContext refuses when any variable is absent or empty", () => {
   // Each variable individually missing — and individually empty — is fatal.
   for (const name of Object.keys(AZURE_ENV)) {
     const without: Record<string, string> = { ...AZURE_ENV };
@@ -1376,7 +1377,7 @@ Deno.test("resolveAzureContext refuses when any variable is absent or empty", ()
   }
 });
 
-Deno.test("an Azure identity probe returning a non-string id fails closed", async () => {
+test("an Azure identity probe returning a non-string id fails closed", async () => {
   // connectionData answers, but with a malformed identity — the reviewer can
   // attribute nothing to itself, so it must POST fresh, never PATCH.
   const threads = [{
@@ -1414,7 +1415,7 @@ Deno.test("an Azure identity probe returning a non-string id fails closed", asyn
   assertEquals(write?.method, "POST");
 });
 
-Deno.test("a thrown Azure identity probe fails closed to a fresh thread", async () => {
+test("a thrown Azure identity probe fails closed to a fresh thread", async () => {
   const threads = [{
     id: 7,
     comments: [{
@@ -1448,7 +1449,7 @@ Deno.test("a thrown Azure identity probe fails closed to a fresh thread", async 
   assertEquals(write?.method, "POST");
 });
 
-Deno.test("an Azure author with a non-string id and no uniqueName is empty, not trusted", async () => {
+test("an Azure author with a non-string id and no uniqueName is empty, not trusted", async () => {
   const threads = [{
     id: 7,
     comments: [{
@@ -1465,7 +1466,7 @@ Deno.test("an Azure author with a non-string id and no uniqueName is empty, not 
   assertEquals(listed[0].displayName, "Impostor");
 });
 
-Deno.test("upsertPullRequestThread in append mode POSTs without listing", async () => {
+test("upsertPullRequestThread in append mode POSTs without listing", async () => {
   const { fetch, calls } = fakeAzure([], { self: "build-service-id" });
   await upsertPullRequestThread(
     AZURE_CTX,
@@ -1480,12 +1481,12 @@ Deno.test("upsertPullRequestThread in append mode POSTs without listing", async 
   assertEquals(calls[0].url.endsWith("/threads?api-version=7.1"), true);
 });
 
-Deno.test("azureHost.prepare needs a PR context", () => {
+test("azureHost.prepare needs a PR context", () => {
   assertEquals(azureHost.prepare("azt", env({})), undefined);
   assertEquals(typeof azureHost.prepare("azt", env(AZURE_ENV)), "function");
 });
 
-Deno.test("resolveBitbucketContext refuses when any variable is absent or empty", () => {
+test("resolveBitbucketContext refuses when any variable is absent or empty", () => {
   for (const name of Object.keys(BITBUCKET_ENV)) {
     const without: Record<string, string> = { ...BITBUCKET_ENV };
     delete without[name];
@@ -1497,7 +1498,7 @@ Deno.test("resolveBitbucketContext refuses when any variable is absent or empty"
   }
 });
 
-Deno.test("a refused or malformed Bitbucket /user probe fails closed", async () => {
+test("a refused or malformed Bitbucket /user probe fails closed", async () => {
   const marked = [{
     id: 18,
     content: { raw: "<!-- zuke-ai-review:security review -->\nold" },
@@ -1533,7 +1534,7 @@ Deno.test("a refused or malformed Bitbucket /user probe fails closed", async () 
   assertEquals(write?.method, "POST");
 });
 
-Deno.test("a thrown Bitbucket /user probe fails closed to a fresh comment", async () => {
+test("a thrown Bitbucket /user probe fails closed to a fresh comment", async () => {
   const marked = [{
     id: 18,
     content: { raw: "<!-- zuke-ai-review:security review -->\nold" },
@@ -1556,7 +1557,7 @@ Deno.test("a thrown Bitbucket /user probe fails closed to a fresh comment", asyn
   assertEquals(write?.method, "POST");
 });
 
-Deno.test("listBitbucketComments drops malformed and deleted comments", async () => {
+test("listBitbucketComments drops malformed and deleted comments", async () => {
   const values = [
     { id: "not-a-number", content: { raw: "x" } }, // id wrong type — dropped
     { id: 2, content: { raw: 42 } }, // body wrong type — dropped
@@ -1569,7 +1570,7 @@ Deno.test("listBitbucketComments drops malformed and deleted comments", async ()
   assertEquals(listed[0].body, "kept");
 });
 
-Deno.test("upsertBitbucketComment in append mode POSTs without listing", async () => {
+test("upsertBitbucketComment in append mode POSTs without listing", async () => {
   const { fetch, calls } = fakeBitbucket([], { self: "{zuke}" });
   await upsertBitbucketComment(
     BITBUCKET_CTX,
@@ -1584,7 +1585,7 @@ Deno.test("upsertBitbucketComment in append mode POSTs without listing", async (
   assertEquals(calls[0].url.endsWith("/pullrequests/5/comments"), true);
 });
 
-Deno.test("bitbucketHost.prepare needs a PR context", () => {
+test("bitbucketHost.prepare needs a PR context", () => {
   assertEquals(bitbucketHost.prepare("bbt", env({})), undefined);
   assertEquals(
     typeof bitbucketHost.prepare("bbt", env(BITBUCKET_ENV)),
@@ -1592,7 +1593,7 @@ Deno.test("bitbucketHost.prepare needs a PR context", () => {
   );
 });
 
-Deno.test("resolveGithubContext takes the pull number from ZUKE_REVIEW_PR first", () => {
+test("resolveGithubContext takes the pull number from ZUKE_REVIEW_PR first", () => {
   // A comment-started run: the ref is the default branch, the pull request is
   // named by the env var the command job sets.
   assertEquals(
@@ -1625,7 +1626,7 @@ Deno.test("resolveGithubContext takes the pull number from ZUKE_REVIEW_PR first"
   );
 });
 
-Deno.test("githubHost.listComments restores the standing author_association hides", async () => {
+test("githubHost.listComments restores the standing author_association hides", async () => {
   // The Actions token sees a private organisation member as CONTRIBUTOR. The
   // collaborators API says who can push, so a hidden maintainer is trusted,
   // a read-only account is not promoted, an author already listed as the
@@ -1696,7 +1697,7 @@ Deno.test("githubHost.listComments restores the standing author_association hide
   assertEquals(lookups.some((url) => url.includes("github-actions")), false);
 });
 
-Deno.test("a failed push-access lookup leaves the association as reported", async () => {
+test("a failed push-access lookup leaves the association as reported", async () => {
   const items = [{
     id: 1,
     body: "hello",
@@ -1718,7 +1719,7 @@ Deno.test("a failed push-access lookup leaves the association as reported", asyn
   assertEquals(comments[0].association, "CONTRIBUTOR");
 });
 
-Deno.test("parseCommentMarker reads the reviewer name only from an opening marker", () => {
+test("parseCommentMarker reads the reviewer name only from an opening marker", () => {
   assertEquals(
     parseCommentMarker(`${commentMarker("security review")}\nreport`),
     "security review",
@@ -1739,7 +1740,7 @@ Deno.test("parseCommentMarker reads the reviewer name only from an opening marke
   );
 });
 
-Deno.test("acknowledgeGithubCommand reacts 👍 or 😕 only on a comment-started run, and never throws", async () => {
+test("acknowledgeGithubCommand reacts 👍 or 😕 only on a comment-started run, and never throws", async () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   // Not comment-started: nothing to acknowledge, and no token is asked for.

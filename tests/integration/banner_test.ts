@@ -16,6 +16,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import {
@@ -51,7 +52,7 @@ async function withNoBanner(
   }
 }
 
-Deno.test("integration: a run opens with the banner, above the first target", async () => {
+test("integration: a run opens with the banner, above the first target", async () => {
   const { code, out } = await runCli(Quiet, ["work"]);
   assertEquals(code, 0);
 
@@ -63,7 +64,7 @@ Deno.test("integration: a run opens with the banner, above the first target", as
   assertEquals(banner < out.indexOf("work"), true, out);
 });
 
-Deno.test("integration: --no-banner suppresses it, leaving the run intact", async () => {
+test("integration: --no-banner suppresses it, leaving the run intact", async () => {
   const { code, out } = await runCli(Quiet, ["work", "--no-banner"]);
   assertEquals(code, 0);
   assertEquals(out.includes(IDENTITY), false, out);
@@ -72,7 +73,7 @@ Deno.test("integration: --no-banner suppresses it, leaving the run intact", asyn
   assertEquals(out.includes("work"), true, out);
 });
 
-Deno.test("integration: ZUKE_NO_BANNER suppresses it from the environment", async () => {
+test("integration: ZUKE_NO_BANNER suppresses it from the environment", async () => {
   await withNoBanner("1", async () => {
     const { code, out } = await runCli(Quiet, ["work"]);
     assertEquals(code, 0);
@@ -80,7 +81,7 @@ Deno.test("integration: ZUKE_NO_BANNER suppresses it from the environment", asyn
   });
 });
 
-Deno.test("integration: ZUKE_NO_BANNER=false means what it says", async () => {
+test("integration: ZUKE_NO_BANNER=false means what it says", async () => {
   // The conventional "not set" values must not read as "suppress", or a shell
   // exporting ZUKE_NO_BANNER=false would silently turn the banner off.
   for (const value of ["false", "0", ""]) {
@@ -91,7 +92,7 @@ Deno.test("integration: ZUKE_NO_BANNER=false means what it says", async () => {
   }
 });
 
-Deno.test("integration: --no-banner beats ZUKE_NO_BANNER=false", async () => {
+test("integration: --no-banner beats ZUKE_NO_BANNER=false", async () => {
   // The explicit flag is the caller's decision for this run; the variable is
   // the shell's standing preference.
   await withNoBanner("false", async () => {
@@ -100,7 +101,7 @@ Deno.test("integration: --no-banner beats ZUKE_NO_BANNER=false", async () => {
   });
 });
 
-Deno.test("integration: an embedded execute() gets no banner in its own sink", async () => {
+test("integration: an embedded execute() gets no banner in its own sink", async () => {
   // A caller that supplies a reporter is embedding the executor. Painting the
   // wordmark into somebody else's sink is not core's decision to make — the
   // same reasoning that gates the job-summary write on writing to the console.
@@ -123,7 +124,7 @@ Deno.test("integration: an embedded execute() gets no banner in its own sink", a
   assertEquals(lines.some((l) => l.includes("work")), true);
 });
 
-Deno.test("integration: a hostile cwd cannot inject a workflow command", async () => {
+test("integration: a hostile cwd cannot inject a workflow command", async () => {
   // The banner prints the working directory, which this process did not
   // author. Two shapes reach a runner as a live command if the line skips the
   // escaping sink: the legacy `##[` marker, which counts anywhere in a line,
@@ -157,7 +158,7 @@ Deno.test("integration: a hostile cwd cannot inject a workflow command", async (
   }
 });
 
-Deno.test("integration: --no-banner is honoured on resume too", async () => {
+test("integration: --no-banner is honoured on resume too", async () => {
   // `resume` builds its own options object, so a flag the run path respects
   // can be silently dropped on the resume path -- parsed, accepted, ignored.
   class Gated extends Build {
@@ -203,7 +204,7 @@ async function withPlainEnv(
   }
 }
 
-Deno.test("integration: --plain is one level above --no-banner, and the run still reports", async () => {
+test("integration: --plain is one level above --no-banner, and the run still reports", async () => {
   const { code, out } = await runCli(Quiet, ["work", "--plain"]);
   assertEquals(code, 0);
   assertEquals(out.includes(IDENTITY), false, out);
@@ -211,7 +212,7 @@ Deno.test("integration: --plain is one level above --no-banner, and the run stil
   assertEquals(out.includes("work"), true, out);
 });
 
-Deno.test("integration: ZUKE_PLAIN suppresses the banner from the environment", async () => {
+test("integration: ZUKE_PLAIN suppresses the banner from the environment", async () => {
   await withPlainEnv({ ZUKE_PLAIN: "1", ZUKE_NO_BANNER: "false" }, async () => {
     const { code, out } = await runCli(Quiet, ["work"]);
     assertEquals(code, 0);
@@ -227,7 +228,7 @@ Deno.test("integration: ZUKE_PLAIN suppresses the banner from the environment", 
   );
 });
 
-Deno.test("integration: --plain is honoured on resume too", async () => {
+test("integration: --plain is honoured on resume too", async () => {
   class Gated extends Build {
     gate = target().waitsFor((s) => s.on(externalSignal("approved")));
   }
@@ -249,7 +250,7 @@ Deno.test("integration: --plain is honoured on resume too", async () => {
   });
 });
 
-Deno.test("integration: informational commands through a pipe stay plain", async () => {
+test("integration: informational commands through a pipe stay plain", async () => {
   // The harness captures output, which is what a pipe is: no terminal, so no
   // rich form, and --version is the bare number a script reads.
   const version = await runCli(Quiet, ["--version"]);

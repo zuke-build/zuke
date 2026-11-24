@@ -3,6 +3,7 @@
 
 /** Unit tests for the inline bake and the durable bake trigger. */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import type { JsonValue, TargetStateHandle, WaitContext } from "@zuke/core";
 import { bakeElapsed, bakeFor } from "../src/bake.ts";
@@ -23,13 +24,13 @@ function memoryState(): TargetStateHandle {
   };
 }
 
-Deno.test("an inline bake waits its time", async () => {
+test("an inline bake waits its time", async () => {
   const started = Date.now();
   await bakeFor(30, new AbortController().signal);
   assertEquals(Date.now() - started >= 25, true);
 });
 
-Deno.test("an inline bake ends at once when the run is cancelled", async () => {
+test("an inline bake ends at once when the run is cancelled", async () => {
   const stop = new AbortController();
   const started = Date.now();
   setTimeout(() => stop.abort(new Error("cancelled")), 10);
@@ -40,7 +41,7 @@ Deno.test("an inline bake ends at once when the run is cancelled", async () => {
   await assertRejects(() => bakeFor(5_000, already.signal), Error, "gone");
 });
 
-Deno.test("a durable bake starts its clock on the first check and opens when it is up", async () => {
+test("a durable bake starts its clock on the first check and opens when it is up", async () => {
   let now = 1_000;
   const trigger = bakeElapsed(60_000, () => now);
   const context: WaitContext = {

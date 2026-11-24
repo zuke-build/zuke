@@ -9,6 +9,7 @@
  * that a settings class's own validation surfaces as a failed target.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -112,7 +113,7 @@ const FAILS_ON_MISSING_GH: Array<[string, string]> = [
 ];
 
 for (const [name, marker] of FAILS_ON_MISSING_GH) {
-  Deno.test(`the ${name} target fails with the tool-not-found error`, async () => {
+  test(`the ${name} target fails with the tool-not-found error`, async () => {
     const { code, out, err } = await runCli(ReleaseBuild, [name]);
     assertEquals(code, 1);
     assertStringIncludes(err, "zuke-no-such-tool-xyz");
@@ -120,7 +121,7 @@ for (const [name, marker] of FAILS_ON_MISSING_GH) {
   });
 }
 
-Deno.test("a settings validation failure fails the target, naming the fix", async () => {
+test("a settings validation failure fails the target, naming the fix", async () => {
   const { code, out, err } = await runCli(ReleaseBuild, ["mistake"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "add .yes() to mean it");

@@ -15,6 +15,7 @@
  * coverage unnoticed.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { runFixture } from "./_harness.ts";
 
@@ -39,7 +40,7 @@ const HAS_GIT = await gitAvailable();
 /** On CI a missing git is an environment regression, not a reason to skip. */
 const MUST_HAVE_GIT = Deno.env.get("CI") === "true";
 
-Deno.test({
+test({
   name: "CI runs the git worktree tests rather than skipping them",
   ignore: !MUST_HAVE_GIT,
   fn: () => {
@@ -52,7 +53,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "a build adds, lists, and removes a real worktree",
   ignore: !HAS_GIT,
   fn: async () => {
@@ -95,7 +96,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "a start point decides where the new branch forks, not the parent's HEAD",
   ignore: !HAS_GIT,

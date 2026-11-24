@@ -8,6 +8,7 @@
  * promotion or rollback — runs here as a reader would run it, on a free port.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -18,7 +19,7 @@ import { runCli, withStateDir } from "./_harness.ts";
 /** A free port, so the test never collides with whatever holds 8080. */
 const QUICK = ["--port", "0"];
 
-Deno.test("canary example: a healthy candidate steps through and is promoted", async () => {
+test("canary example: a healthy candidate steps through and is promoted", async () => {
   await withStateDir(async () => {
     const { code, out, err } = await runCli(Release, ["ship", ...QUICK]);
     assertEquals(code, 0, err);
@@ -27,7 +28,7 @@ Deno.test("canary example: a healthy candidate steps through and is promoted", a
   });
 });
 
-Deno.test("canary example: a broken candidate fails the probe and is rolled back", async () => {
+test("canary example: a broken candidate fails the probe and is rolled back", async () => {
   await withStateDir(async () => {
     const { code, out, err } = await runCli(Release, [
       "ship",
@@ -44,7 +45,7 @@ Deno.test("canary example: a broken candidate fails the probe and is rolled back
   });
 });
 
-Deno.test("canary example: a port already in use is named, with the way out", async () => {
+test("canary example: a port already in use is named, with the way out", async () => {
   const taken = Deno.listen({ hostname: "127.0.0.1", port: 0 });
   try {
     await withStateDir(async () => {

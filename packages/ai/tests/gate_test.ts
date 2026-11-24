@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { describeGate, GateSettings, gateTrips } from "../src/gate.ts";
 import type { Assessment } from "../src/types.ts";
@@ -17,7 +18,7 @@ function assessed(score: number, severity: Assessment["severity"]): Assessment {
   return { score, severity, summary: "", findings: [] };
 }
 
-Deno.test("GateSettings collects rules in order", () => {
+test("GateSettings collects rules in order", () => {
   const rules = new GateSettings().scoreAbove(8).severityAtLeast("high")
     .rules_();
   assertEquals(rules, [
@@ -26,7 +27,7 @@ Deno.test("GateSettings collects rules in order", () => {
   ]);
 });
 
-Deno.test("describeGate names every rule, and no rules as none", () => {
+test("describeGate names every rule, and no rules as none", () => {
   assertEquals(describeGate([]), "none");
   assertEquals(describeGate([{ kind: "score", value: 8 }]), "score>8");
   assertEquals(
@@ -38,7 +39,7 @@ Deno.test("describeGate names every rule, and no rules as none", () => {
   );
 });
 
-Deno.test("gateTrips fires on score strictly above and severity at least", () => {
+test("gateTrips fires on score strictly above and severity at least", () => {
   const rules = new GateSettings().scoreAbove(8).severityAtLeast("high")
     .rules_();
   // Score at the threshold does not trip — strictly above does.

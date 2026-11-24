@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("pnpm: the settled progress line yields Added, Downloaded and Reused", () => {
+test("pnpm: the settled progress line yields Added, Downloaded and Reused", () => {
   const text =
     "Progress: resolved 120, reused 100, downloaded 20, added 120, done\n\ndependencies:\n+ left-pad 1.3.0\n\nDone in 883ms using pnpm v11.25.0\n";
   assertEquals(parsePnpmSummary(out(0, text)), {
@@ -34,7 +35,7 @@ Deno.test("pnpm: the settled progress line yields Added, Downloaded and Reused",
   );
 });
 
-Deno.test("pnpm: a run without either line reports nothing", () => {
+test("pnpm: a run without either line reports nothing", () => {
   assertEquals(parsePnpmSummary(out(0)), undefined);
   assertEquals(
     parsePnpmSummary(out(0, "> app@1.0.0 build\n> tsc\n")),
@@ -59,7 +60,7 @@ class RunProbe extends PnpmRunSettings {
   }
 }
 
-Deno.test("pnpm: the hook reports onto the running target, and a script run stays silent", async () => {
+test("pnpm: the hook reports onto the running target, and a script run stays silent", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(

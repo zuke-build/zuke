@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   NpmDeprecateSettings,
@@ -13,7 +14,7 @@ import {
   NpmVersionSettings,
 } from "../mod.ts";
 
-Deno.test("publish renders provenance alongside the existing options", () => {
+test("publish renders provenance alongside the existing options", () => {
   assertEquals(
     new NpmPublishSettings().access("public").provenance().tag("next")
       .argv().slice(1),
@@ -21,7 +22,7 @@ Deno.test("publish renders provenance alongside the existing options", () => {
   );
 });
 
-Deno.test("pack renders its destination and specs", () => {
+test("pack renders its destination and specs", () => {
   assertEquals(
     new NpmPackSettings().dryRun().packDestination("dist")
       .packages("app").argv().slice(1),
@@ -29,7 +30,7 @@ Deno.test("pack renders its destination and specs", () => {
   );
 });
 
-Deno.test("version renders the prerelease identifier and same-version escape", () => {
+test("version renders the prerelease identifier and same-version escape", () => {
   assertEquals(
     new NpmVersionSettings().bump("preminor").preid("rc").allowSameVersion()
       .argv().slice(1),
@@ -37,7 +38,7 @@ Deno.test("version renders the prerelease identifier and same-version escape", (
   );
 });
 
-Deno.test("unpublish renders force and dry-run before the spec", () => {
+test("unpublish renders force and dry-run before the spec", () => {
   assertEquals(
     new NpmUnpublishSettings().force().dryRun().spec("app@1.2.3")
       .argv().slice(1),
@@ -45,7 +46,7 @@ Deno.test("unpublish renders force and dry-run before the spec", () => {
   );
 });
 
-Deno.test("deprecate needs both the spec and the message", () => {
+test("deprecate needs both the spec and the message", () => {
   assertEquals(
     new NpmDeprecateSettings().spec("app@<2").message("upgrade to 2.x")
       .otp("123456").argv().slice(1),
@@ -64,7 +65,7 @@ Deno.test("deprecate needs both the spec and the message", () => {
   );
 });
 
-Deno.test("dist-tag renders each subcommand, listing by default", () => {
+test("dist-tag renders each subcommand, listing by default", () => {
   assertEquals(new NpmDistTagSettings().argv().slice(1), ["dist-tag", "ls"]);
   assertEquals(
     new NpmDistTagSettings().add("app@1.2.3", "next").argv().slice(1),
@@ -80,7 +81,7 @@ Deno.test("dist-tag renders each subcommand, listing by default", () => {
   );
 });
 
-Deno.test("test forwards its arguments after a -- separator", () => {
+test("test forwards its arguments after a -- separator", () => {
   assertEquals(new NpmTestSettings().argv().slice(1), ["test"]);
   assertEquals(
     new NpmTestSettings().workspace("app").testArgs("--coverage")
@@ -89,7 +90,7 @@ Deno.test("test forwards its arguments after a -- separator", () => {
   );
 });
 
-Deno.test("the publish-family commands render their workspace selection", () => {
+test("the publish-family commands render their workspace selection", () => {
   assertEquals(
     new NpmPublishSettings().workspaces().argv().slice(1),
     ["publish", "--workspaces"],
@@ -108,14 +109,14 @@ Deno.test("the publish-family commands render their workspace selection", () => 
   );
 });
 
-Deno.test("dist-tag.ls with no spec lists the current package's tags", () => {
+test("dist-tag.ls with no spec lists the current package's tags", () => {
   assertEquals(new NpmDistTagSettings().ls().argv().slice(1), [
     "dist-tag",
     "ls",
   ]);
 });
 
-Deno.test("exec can refuse to install what is missing", () => {
+test("exec can refuse to install what is missing", () => {
   assertEquals(
     new NpmExecSettings().no().command("tsc").argv().slice(1),
     ["exec", "--no", "tsc"],

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -14,11 +15,11 @@ import {
   ViteTasks,
 } from "../src/vite.ts";
 
-Deno.test("the default binary is vite", () => {
+test("the default binary is vite", () => {
   assertEquals(new ViteDevSettings().argv()[0], "vite");
 });
 
-Deno.test("dev: bare and all options (shared config/mode + host/port/strictPort/open)", () => {
+test("dev: bare and all options (shared config/mode + host/port/strictPort/open)", () => {
   assertEquals(new ViteDevSettings().argv().slice(1), ["dev"]);
   assertEquals(
     new ViteDevSettings()
@@ -46,7 +47,7 @@ Deno.test("dev: bare and all options (shared config/mode + host/port/strictPort/
   );
 });
 
-Deno.test("build: bare and all options", () => {
+test("build: bare and all options", () => {
   assertEquals(new ViteBuildSettings().argv().slice(1), ["build"]);
   assertEquals(
     new ViteBuildSettings()
@@ -73,7 +74,7 @@ Deno.test("build: bare and all options", () => {
   );
 });
 
-Deno.test("preview: bare and all options", () => {
+test("preview: bare and all options", () => {
   assertEquals(new VitePreviewSettings().argv().slice(1), ["preview"]);
   assertEquals(
     new VitePreviewSettings().host("localhost").port(4173).strictPort().open()
@@ -90,13 +91,13 @@ Deno.test("preview: bare and all options", () => {
   );
 });
 
-Deno.test("vite: resolves its binary from node_modules by default", async () => {
+test("vite: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new ViteDevSettings(), "vite", {
     resolution: "node_modules",
   });
 });
 
-Deno.test("every ViteTasks function reaches execution", async () => {
+test("every ViteTasks function reaches execution", async () => {
   await assertRejects(() => ViteTasks.dev(missingTool), ToolNotFoundError);
   await assertRejects(() => ViteTasks.build(missingTool), ToolNotFoundError);
   await assertRejects(() => ViteTasks.preview(missingTool), ToolNotFoundError);

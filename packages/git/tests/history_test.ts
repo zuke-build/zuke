@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -23,7 +24,7 @@ import { parseLogEntries } from "../src/log.ts";
 import { parseStatusEntries } from "../src/status.ts";
 import { splitNul } from "../src/nul_records.ts";
 
-Deno.test("log renders its filters, then revisions, then pathspecs", () => {
+test("log renders its filters, then revisions, then pathspecs", () => {
   assertEquals(
     new GitLogSettings()
       .maxCount(20)
@@ -58,7 +59,7 @@ Deno.test("log renders its filters, then revisions, then pathspecs", () => {
   );
 });
 
-Deno.test("log: --format is rendered last so it wins over --oneline", () => {
+test("log: --format is rendered last so it wins over --oneline", () => {
   // git applies the final formatting option it is given, which is what lets
   // `logEntries` pin its own format over whatever the lambda asked for.
   assertEquals(
@@ -67,7 +68,7 @@ Deno.test("log: --format is rendered last so it wins over --oneline", () => {
   );
 });
 
-Deno.test("log: --follow tracks exactly one path", () => {
+test("log: --follow tracks exactly one path", () => {
   assertEquals(
     new GitLogSettings().follow().paths("mod.ts").argv(),
     ["git", "log", "--follow", "--", "mod.ts"],
@@ -84,7 +85,7 @@ Deno.test("log: --follow tracks exactly one path", () => {
   );
 });
 
-Deno.test("show renders its formats, objects, and pathspecs", () => {
+test("show renders its formats, objects, and pathspecs", () => {
   assertEquals(
     new GitShowSettings().noPatch().format("%s").object("HEAD").argv(),
     ["git", "show", "--no-patch", "--format=%s", "HEAD"],
@@ -106,7 +107,7 @@ Deno.test("show renders its formats, objects, and pathspecs", () => {
   );
 });
 
-Deno.test("diff renders its options in git's own order", () => {
+test("diff renders its options in git's own order", () => {
   assertEquals(
     new GitDiffSettings()
       .staged()
@@ -134,7 +135,7 @@ Deno.test("diff renders its options in git's own order", () => {
   );
 });
 
-Deno.test("diff: --name-only is rendered after the other formats", () => {
+test("diff: --name-only is rendered after the other formats", () => {
   // `diffNames` pins `--name-only`; rendering it last means a lambda that also
   // asked for `--stat` still yields paths rather than a summary git would
   // otherwise apply instead.
@@ -144,7 +145,7 @@ Deno.test("diff: --name-only is rendered after the other formats", () => {
   );
 });
 
-Deno.test("diff: a three-dot range diffs against the merge base", () => {
+test("diff: a three-dot range diffs against the merge base", () => {
   assertEquals(
     new GitDiffSettings().mergeBase("origin/main").argv(),
     ["git", "diff", "origin/main...HEAD"],
@@ -155,7 +156,7 @@ Deno.test("diff: a three-dot range diffs against the merge base", () => {
   );
 });
 
-Deno.test("ls-files renders its selectors", () => {
+test("ls-files renders its selectors", () => {
   assertEquals(
     new GitLsFilesSettings().others().excludeStandard().directory()
       .nulTerminated().paths("src").argv(),
@@ -182,7 +183,7 @@ Deno.test("ls-files renders its selectors", () => {
   );
 });
 
-Deno.test("ls-files --error-unmatch asserts a path is tracked", () => {
+test("ls-files --error-unmatch asserts a path is tracked", () => {
   assertEquals(
     new GitLsFilesSettings().cached().errorUnmatch().paths("openapi.json")
       .argv(),
@@ -205,7 +206,7 @@ Deno.test("ls-files --error-unmatch asserts a path is tracked", () => {
   );
 });
 
-Deno.test("rev-parse renders its resolution flags", () => {
+test("rev-parse renders its resolution flags", () => {
   assertEquals(
     new GitRevParseSettings().verify().short().rev("HEAD").argv(),
     ["git", "rev-parse", "--verify", "--short", "HEAD"],
@@ -228,7 +229,7 @@ Deno.test("rev-parse renders its resolution flags", () => {
   );
 });
 
-Deno.test("describe renders its tag selection", () => {
+test("describe renders its tag selection", () => {
   assertEquals(
     new GitDescribeSettings().tags().abbrev(0).match("v*").commitish("HEAD~2")
       .argv(),
@@ -250,14 +251,14 @@ Deno.test("describe renders its tag selection", () => {
   );
 });
 
-Deno.test("splitNul drops the terminator git leaves behind", () => {
+test("splitNul drops the terminator git leaves behind", () => {
   assertEquals(splitNul("a.ts\0b.ts\0"), ["a.ts", "b.ts"]);
   assertEquals(splitNul(""), []);
   // A path may contain anything but a NUL — a newline included.
   assertEquals(splitNul("we ird\nname.ts\0"), ["we ird\nname.ts"]);
 });
 
-Deno.test("parseLogEntries reads the pinned record format", () => {
+test("parseLogEntries reads the pinned record format", () => {
   const record = (fields: string[]) => fields.join("\x1f") + "\x1e";
   const stdout = record([
     "1111111111111111111111111111111111111111",
@@ -298,21 +299,21 @@ Deno.test("parseLogEntries reads the pinned record format", () => {
   assertEquals(entries[1]?.body, "");
 });
 
-Deno.test("parseLogEntries skips what it cannot read", () => {
+test("parseLogEntries skips what it cannot read", () => {
   assertEquals(parseLogEntries(""), []);
   assertEquals(parseLogEntries("\n"), []);
   // A truncated record is dropped rather than reported half-filled.
   assertEquals(parseLogEntries("abc\x1fdef\x1e"), []);
 });
 
-Deno.test("LOG_ENTRY_FORMAT separates fields and records, not lines", () => {
+test("LOG_ENTRY_FORMAT separates fields and records, not lines", () => {
   // A commit message contains newlines; these two separators cannot appear in
   // one, which is the whole reason the format is pinned.
   assertEquals(LOG_ENTRY_FORMAT.includes("%x1f"), true);
   assertEquals(LOG_ENTRY_FORMAT.endsWith("%x1e"), true);
 });
 
-Deno.test("parseStatusEntries reads the porcelain -z records", () => {
+test("parseStatusEntries reads the porcelain -z records", () => {
   const stdout = " M packages/git/mod.ts\0" +
     "?? new file.ts\0" +
     "A  added.ts\0";
@@ -324,7 +325,7 @@ Deno.test("parseStatusEntries reads the porcelain -z records", () => {
   assertEquals(parseStatusEntries(""), []);
 });
 
-Deno.test("parseStatusEntries pairs a rename with the path it came from", () => {
+test("parseStatusEntries pairs a rename with the path it came from", () => {
   // A rename spends two records: the new path, then the old one.
   const stdout = "R  new.ts\0old.ts\0 M other.ts\0";
   assertEquals(parseStatusEntries(stdout), [
@@ -339,7 +340,7 @@ Deno.test("parseStatusEntries pairs a rename with the path it came from", () => 
   assertEquals(parseStatusEntries("M\0"), []);
 });
 
-Deno.test("statusEntries refuses the --branch header it cannot parse", async () => {
+test("statusEntries refuses the --branch header it cannot parse", async () => {
   await assertRejects(
     () => GitTasks.statusEntries((s) => s.branch()),
     Error,
@@ -347,7 +348,7 @@ Deno.test("statusEntries refuses the --branch header it cannot parse", async () 
   );
 });
 
-Deno.test("lsFileNames refuses the --stage listing it cannot parse", async () => {
+test("lsFileNames refuses the --stage listing it cannot parse", async () => {
   await assertRejects(
     () => GitTasks.lsFileNames((s) => s.stage()),
     Error,
@@ -355,7 +356,7 @@ Deno.test("lsFileNames refuses the --stage listing it cannot parse", async () =>
   );
 });
 
-Deno.test("the reading tasks fail on a missing git rather than parsing nothing", async () => {
+test("the reading tasks fail on a missing git rather than parsing nothing", async () => {
   await assertRejects(
     () => GitTasks.statusEntries((s) => missingTool(s)),
     ToolNotFoundError,
@@ -378,7 +379,7 @@ Deno.test("the reading tasks fail on a missing git rather than parsing nothing",
   );
 });
 
-Deno.test("statusEntries and its settings share the porcelain form", () => {
+test("statusEntries and its settings share the porcelain form", () => {
   // The parse depends on `--porcelain -z`, so the settings must be able to
   // render exactly that shape.
   assertEquals(

@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -41,7 +42,7 @@ function quietHost(lines: string[]): SetupHost {
   return { ...defaultHost, log: (message: string) => void lines.push(message) };
 }
 
-Deno.test("zuke setup --sdk python scaffolds a project the zuke command runs on the pinned engine", async () => {
+test("zuke setup --sdk python scaffolds a project the zuke command runs on the pinned engine", async () => {
   await inTempDir(async (dir) => {
     const lines: string[] = [];
     const code = await main(
@@ -145,7 +146,7 @@ Deno.test("zuke setup --sdk python scaffolds a project the zuke command runs on 
   });
 });
 
-Deno.test("zuke upgrade --engine moves a real scaffold to the latest zuke, keeping its worker command", async () => {
+test("zuke upgrade --engine moves a real scaffold to the latest zuke, keeping its worker command", async () => {
   await inTempDir(async (dir) => {
     const lines: string[] = [];
     const registry = pinRegistry([

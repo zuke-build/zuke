@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore Здравей
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -66,7 +67,7 @@ function assertionOf(call: PlayCall): { parts: string[]; claims: unknown } {
   return { parts, claims: JSON.parse(decode(parts[1])) };
 }
 
-Deno.test("upload signs in, uploads, releases and commits in one edit", async () => {
+test("upload signs in, uploads, releases and commits in one edit", async () => {
   const fake = google();
   const log: string[] = [];
   const result = await GooglePlayTasks.upload((s) =>
@@ -152,7 +153,7 @@ Deno.test("upload signs in, uploads, releases and commits in one edit", async ()
   ]);
 });
 
-Deno.test("a draft on a custom track without notes, committed without review", async () => {
+test("a draft on a custom track without notes, committed without review", async () => {
   const fake = google();
   const result = await GooglePlayTasks.upload((s) =>
     against(fake)(s).track("qa team").status("draft").changesNotSentForReview()
@@ -171,7 +172,7 @@ Deno.test("a draft on a custom track without notes, committed without review", a
   );
 });
 
-Deno.test("the required settings are checked before anything is sent", async () => {
+test("the required settings are checked before anything is sent", async () => {
   const fake = google();
   await assertRejects(
     () =>
@@ -182,7 +183,7 @@ Deno.test("the required settings are checked before anything is sent", async () 
   assertEquals(fake.calls.length, 0);
 });
 
-Deno.test("a missing bundle fails before signing in", async () => {
+test("a missing bundle fails before signing in", async () => {
   const fake = google();
   const error = await assertRejects(() =>
     GooglePlayTasks.upload((s) => against(fake)(s).bundle("/nowhere/app.aab"))
@@ -192,7 +193,7 @@ Deno.test("a missing bundle fails before signing in", async () => {
   assertEquals(fake.calls.length, 0);
 });
 
-Deno.test("a key that is not JSON, or not a service-account key, is refused without being quoted", async () => {
+test("a key that is not JSON, or not a service-account key, is refused without being quoted", async () => {
   const fake = google();
   for (
     const [json, message] of [
@@ -218,7 +219,7 @@ Deno.test("a key that is not JSON, or not a service-account key, is refused with
   assertEquals(fake.calls.length, 0);
 });
 
-Deno.test("a refused sign-in reports Google's reason and the status", async () => {
+test("a refused sign-in reports Google's reason and the status", async () => {
   const fake = google((call) =>
     call.url.endsWith("/token")
       ? {
@@ -242,7 +243,7 @@ Deno.test("a refused sign-in reports Google's reason and the status", async () =
   assertEquals(fake.calls.length, 1);
 });
 
-Deno.test("a sign-in answer without a token is an error", async () => {
+test("a sign-in answer without a token is an error", async () => {
   const fake = google((call) =>
     call.url.endsWith("/token")
       ? { body: { error: "server_error" } }
@@ -255,7 +256,7 @@ Deno.test("a sign-in answer without a token is an error", async () => {
   );
 });
 
-Deno.test("an edit the API opens without an id is an error", async () => {
+test("an edit the API opens without an id is an error", async () => {
   const fake = google((call) =>
     call.method === "POST" && call.url === EDITS ? { body: {} } : undefined
   );
@@ -266,7 +267,7 @@ Deno.test("an edit the API opens without an id is an error", async () => {
   );
 });
 
-Deno.test("a refused step deletes the edit and reports Google's message, flattened", async () => {
+test("a refused step deletes the edit and reports Google's message, flattened", async () => {
   const fake = google((call) =>
     call.method === "PUT"
       ? {
@@ -296,7 +297,7 @@ Deno.test("a refused step deletes the edit and reports Google's message, flatten
   assertEquals([last.method, last.url], ["DELETE", `${EDITS}/edit-1`]);
 });
 
-Deno.test("a bundle answer without a versionCode fails and deletes the edit", async () => {
+test("a bundle answer without a versionCode fails and deletes the edit", async () => {
   const fake = google((call) =>
     call.url.includes("/bundles?") ? { body: { sha256: "abc" } } : undefined
   );
@@ -308,7 +309,7 @@ Deno.test("a bundle answer without a versionCode fails and deletes the edit", as
   assertEquals(fake.calls[fake.calls.length - 1].method, "DELETE");
 });
 
-Deno.test("a failed cleanup does not hide the step's error", async () => {
+test("a failed cleanup does not hide the step's error", async () => {
   const fake = google((call) =>
     call.method === "DELETE"
       ? { status: 500, body: "not json" }
@@ -323,7 +324,7 @@ Deno.test("a failed cleanup does not hide the step's error", async () => {
   );
 });
 
-Deno.test("an error body that is not JSON still names the status", async () => {
+test("an error body that is not JSON still names the status", async () => {
   const fake = google((call) =>
     call.url.endsWith(":commit") ? { status: 502, body: "<html>" } : undefined
   );
@@ -362,7 +363,7 @@ function hangingBundles(
   };
 }
 
-Deno.test("an upload that outlives .timeout() is aborted, and the edit deleted", async () => {
+test("an upload that outlives .timeout() is aborted, and the edit deleted", async () => {
   const seen: string[] = [];
   const fake = google((call) => {
     seen.push(call.method);
@@ -379,7 +380,7 @@ Deno.test("an upload that outlives .timeout() is aborted, and the edit deleted",
   assertEquals(seen, ["POST", "POST", "DELETE"]);
 });
 
-Deno.test("a timer that fires before the bundle request still aborts the upload and deletes the edit", async () => {
+test("a timer that fires before the bundle request still aborts the upload and deletes the edit", async () => {
   const seen: string[] = [];
   const fake = google((call) => {
     seen.push(call.method);
@@ -398,7 +399,7 @@ Deno.test("a timer that fires before the bundle request still aborts the upload 
   assertEquals(seen, ["POST", "POST", "DELETE"]);
 });
 
-Deno.test(".timeout() refuses less than a millisecond", () => {
+test(".timeout() refuses less than a millisecond", () => {
   assertThrows(
     () => GooglePlayTasks.upload((s) => s.timeout(0)),
     Error,
@@ -406,7 +407,7 @@ Deno.test(".timeout() refuses less than a millisecond", () => {
   );
 });
 
-Deno.test("a plaintext apiUrl or token_uri is refused before anything is sent", async () => {
+test("a plaintext apiUrl or token_uri is refused before anything is sent", async () => {
   const fake = google();
   await assertRejects(
     () =>
@@ -430,7 +431,7 @@ Deno.test("a plaintext apiUrl or token_uri is refused before anything is sent", 
   assertEquals(fake.calls.length, 0);
 });
 
-Deno.test("a loopback apiUrl is allowed, and a trailing slash dropped; the default token_uri fills in", async () => {
+test("a loopback apiUrl is allowed, and a trailing slash dropped; the default token_uri fills in", async () => {
   const fake = google((call) =>
     call.url.startsWith("http://127.0.0.1:8080/")
       ? { body: { id: "edit-1", versionCode: 7 } }

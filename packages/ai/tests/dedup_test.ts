@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   adoptCanonicalIds,
@@ -71,7 +72,7 @@ function verdicts(...entries: Array<[string, string]>): Map<string, Verdict> {
   );
 }
 
-Deno.test("planDedup offers a model-earned identity only to a same-file candidate", () => {
+test("planDedup offers a model-earned identity only to a same-file candidate", () => {
   const plan = planDedup(
     [candidate("c1"), candidate("c2", { file: "src/other.ts" })],
     [prior("p1"), prior("p2", { file: "src/other.ts" })],
@@ -83,7 +84,7 @@ Deno.test("planDedup offers a model-earned identity only to a same-file candidat
   }
 });
 
-Deno.test("planDedup skips a model-earned pair when either side has no file", () => {
+test("planDedup skips a model-earned pair when either side has no file", () => {
   // Without a file there is no "same place", so there is nothing to match on.
   assertEquals(
     planDedup([candidate("c1", { file: undefined })], [prior("p1")]).pairs,
@@ -95,7 +96,7 @@ Deno.test("planDedup skips a model-earned pair when either side has no file", ()
   );
 });
 
-Deno.test("planDedup refuses to let a lower-severity refutation cover a higher one", () => {
+test("planDedup refuses to let a lower-severity refutation cover a higher one", () => {
   // A refuted `low` nit must not launder a `critical` finding into silence.
   assertEquals(
     planDedup(
@@ -114,7 +115,7 @@ Deno.test("planDedup refuses to let a lower-severity refutation cover a higher o
   );
 });
 
-Deno.test("planDedup ignores a candidate with no identity of its own", () => {
+test("planDedup ignores a candidate with no identity of its own", () => {
   for (const id of [undefined, ""]) {
     assertEquals(
       planDedup([candidate("c1", { id })], [prior("p1")]).pairs,
@@ -123,7 +124,7 @@ Deno.test("planDedup ignores a candidate with no identity of its own", () => {
   }
 });
 
-Deno.test("planDedup drops the deepest comparisons first and counts them", () => {
+test("planDedup drops the deepest comparisons first and counts them", () => {
   const candidates = [candidate("c1"), candidate("c2"), candidate("c3")];
   const priors = ["p1", "p2", "p3", "p4", "p5"].map((id) => prior(id));
   const plan = planDedup(candidates, priors, new Set(), 4);
@@ -136,7 +137,7 @@ Deno.test("planDedup drops the deepest comparisons first and counts them", () =>
   );
 });
 
-Deno.test("planDedup caps the priors any one candidate is compared against", () => {
+test("planDedup caps the priors any one candidate is compared against", () => {
   const priors = ["p1", "p2", "p3", "p4", "p5"].map((id) => prior(id));
   const plan = planDedup(
     [candidate("c1")],
@@ -149,7 +150,7 @@ Deno.test("planDedup caps the priors any one candidate is compared against", () 
   assertEquals(plan.dropped, 3); // the per-candidate cap's drops are counted too
 });
 
-Deno.test("planDedup labels are opaque ordinals carrying no finding text", () => {
+test("planDedup labels are opaque ordinals carrying no finding text", () => {
   const plan = planDedup(
     [candidate("c1", { title: "secret title" })],
     [prior("p1"), prior("p2")],
@@ -161,7 +162,7 @@ Deno.test("planDedup labels are opaque ordinals carrying no finding text", () =>
   }
 });
 
-Deno.test("planDedup is deterministic for the same inputs", () => {
+test("planDedup is deterministic for the same inputs", () => {
   const build = () =>
     planDedup(
       [candidate("c1"), candidate("c2")],
@@ -173,7 +174,7 @@ Deno.test("planDedup is deterministic for the same inputs", () => {
   );
 });
 
-Deno.test("dedupCapNote stays silent only when everything was compared", () => {
+test("dedupCapNote stays silent only when everything was compared", () => {
   const plan = planDedup([candidate("c1")], [prior("p1")]);
   assertEquals(dedupCapNote(plan), undefined);
   const capped = planDedup(
@@ -187,7 +188,7 @@ Deno.test("dedupCapNote stays silent only when everything was compared", () => {
   assertEquals(note?.includes("keeps its own identity"), true);
 });
 
-Deno.test("sameAs ignores a label the pass never offered", () => {
+test("sameAs ignores a label the pass never offered", () => {
   const plan = planDedup([candidate("c1")], [prior("p1")]);
   // A fabricated ordinal, a composite of the two real ids, and an empty key:
   // the pair is recovered by lookup, so none of them names anything.
@@ -199,20 +200,20 @@ Deno.test("sameAs ignores a label the pass never offered", () => {
   assertEquals(sameAs(plan, forged).matches.size, 0);
 });
 
-Deno.test("sameAs leaves the candidate alone on anything but an explicit match", () => {
+test("sameAs leaves the candidate alone on anything but an explicit match", () => {
   const plan = planDedup([candidate("c1")], [prior("p1")]);
   assertEquals(sameAs(plan, verdicts(["p1", "different"])).matches.size, 0);
   assertEquals(sameAs(plan, new Map()).matches.size, 0); // no verdict at all
 });
 
-Deno.test("sameAs keeps the first match and reports the ambiguity", () => {
+test("sameAs keeps the first match and reports the ambiguity", () => {
   const plan = planDedup([candidate("c1")], [prior("p1"), prior("p2")]);
   const resolved = sameAs(plan, verdicts(["p1", "same"], ["p2", "same"]));
   assertEquals(resolved.matches.get("c1")?.id, "p1");
   assertEquals(resolved.ambiguous, ["c1"]);
 });
 
-Deno.test("sameAs never collapses two findings onto one identity", () => {
+test("sameAs never collapses two findings onto one identity", () => {
   // Both candidates are matched to the same earlier finding; only one may take
   // it, or a single rebuttal would dismiss two distinct concerns at once.
   const plan = planDedup([candidate("c1"), candidate("c2")], [prior("p1")]);
@@ -221,7 +222,7 @@ Deno.test("sameAs never collapses two findings onto one identity", () => {
   assertEquals(resolved.matches.get("c1")?.id, "p1");
 });
 
-Deno.test("adoptCanonicalIds renames the finding and reports the alias", () => {
+test("adoptCanonicalIds renames the finding and reports the alias", () => {
   const findings = [candidate("c1")];
   const adoptions = adoptCanonicalIds(
     findings,
@@ -233,7 +234,7 @@ Deno.test("adoptCanonicalIds renames the finding and reports the alias", () => {
   assertEquals(adoptions[0].prior.id, "p1");
 });
 
-Deno.test("adoptCanonicalIds refuses an id another finding already holds", () => {
+test("adoptCanonicalIds refuses an id another finding already holds", () => {
   // The model reported both the original wording and a rewording of it. Taking
   // the identity would leave two findings on one id: one state entry, one
   // report row, and one rebuttal dismissing both.
@@ -246,13 +247,13 @@ Deno.test("adoptCanonicalIds refuses an id another finding already holds", () =>
   assertEquals(findings.map((f) => f.id), ["p1", "c2"]); // both keep their own
 });
 
-Deno.test("adoptCanonicalIds is a no-op without matches", () => {
+test("adoptCanonicalIds is a no-op without matches", () => {
   const findings = [candidate("c1")];
   assertEquals(adoptCanonicalIds(findings, new Map()), []);
   assertEquals(findings[0].id, "c1");
 });
 
-Deno.test("dedupNotes carries text and file but never status or ids", () => {
+test("dedupNotes carries text and file but never status or ids", () => {
   const plan = planDedup(
     [candidate("c1", { title: "new wording", detail: "the detail" })],
     [prior("p1", { title: "old wording" })],
@@ -272,7 +273,7 @@ Deno.test("dedupNotes carries text and file but never status or ids", () => {
   assertEquals(serialised.includes("high"), false);
 });
 
-Deno.test("dedupNotes bounds the text it carries", () => {
+test("dedupNotes bounds the text it carries", () => {
   const plan = planDedup(
     [candidate("c1", { title: "t".repeat(9000), detail: "d".repeat(9000) })],
     [prior("p1", { title: "p".repeat(9000) })],
@@ -283,7 +284,7 @@ Deno.test("dedupNotes bounds the text it carries", () => {
   assertEquals(notes[0].priorTitle.length <= 241, true);
 });
 
-Deno.test("a candidate is decided by its first match, never demoted to a second", () => {
+test("a candidate is decided by its first match, never demoted to a second", () => {
   // Pairs are offered fixed-entry first so a candidate matching both reopens
   // rather than inheriting the model's refutation. If a candidate could fall
   // through to its next match when the first prior is already taken, that
@@ -307,7 +308,7 @@ Deno.test("a candidate is decided by its first match, never demoted to a second"
   assertEquals(resolved.ambiguous.includes("c2"), true); // and it is surfaced
 });
 
-Deno.test("eligible is the one gate both resolution paths share", () => {
+test("eligible is the one gate both resolution paths share", () => {
   // The free path resolves by fingerprint, which encodes kind, title and file
   // but NOT severity — so the same wording can return more severe than the
   // decision its alias points at. Both paths must consult this. These are the
@@ -332,7 +333,7 @@ Deno.test("eligible is the one gate both resolution paths share", () => {
   );
 });
 
-Deno.test("dedupNotes carries an empty file for a hand-built file-less pair", () => {
+test("dedupNotes carries an empty file for a hand-built file-less pair", () => {
   // planDedup never offers a file-less pair, but the serializer is its own
   // contract: a missing file travels as "", never as the string "undefined".
   const notes = dedupNotes({
@@ -353,7 +354,7 @@ Deno.test("dedupNotes carries an empty file for a hand-built file-less pair", ()
   }]);
 });
 
-Deno.test("planDedup round-robins past a candidate with fewer matches", () => {
+test("planDedup round-robins past a candidate with fewer matches", () => {
   // c1 has two eligible priors, c2 (in another file) has one. At depth two the
   // round-robin must skip c2's exhausted list and still offer c1's second pair.
   const plan = planDedup(
@@ -367,7 +368,7 @@ Deno.test("planDedup round-robins past a candidate with fewer matches", () => {
   assertEquals(plan.dropped, 0);
 });
 
-Deno.test("sameAs ignores a hand-built pair whose candidate has no identity", () => {
+test("sameAs ignores a hand-built pair whose candidate has no identity", () => {
   // A pair can only enter a plan through planDedup today, but sameAs guards its
   // own input: without a candidate id there is nothing to rename, so a "same"
   // verdict on such a pair must resolve nothing.
@@ -386,7 +387,7 @@ Deno.test("sameAs ignores a hand-built pair whose candidate has no identity", ()
   }
 });
 
-Deno.test("adoptCanonicalIds skips a finding that has no id at all", () => {
+test("adoptCanonicalIds skips a finding that has no id at all", () => {
   const bare = candidate("c1", { id: undefined });
   const matched = candidate("c2");
   const target = prior("p1");
@@ -400,7 +401,7 @@ Deno.test("adoptCanonicalIds skips a finding that has no id at all", () => {
   assertEquals(bare.id, undefined);
 });
 
-Deno.test("a dismissal is inherited across the files of the diff", () => {
+test("a dismissal is inherited across the files of the diff", () => {
   // The escape on #634: one concern about a change, dismissed on one file,
   // came back on each other file the change touched — a fresh id each time.
   // A maintainer decided the concern, not the file it was pinned to.
@@ -423,7 +424,7 @@ Deno.test("a dismissal is inherited across the files of the diff", () => {
   );
 });
 
-Deno.test("a dismissal is inherited at any severity", () => {
+test("a dismissal is inherited at any severity", () => {
   // The other escape on #634: low, then medium, then high — each one step
   // above the ceiling of the dismissal it restated. The label the model puts
   // on a decided concern does not reopen it.
@@ -441,7 +442,7 @@ Deno.test("a dismissal is inherited at any severity", () => {
   );
 });
 
-Deno.test("an accepted finding is a maintainer's decision like a dismissal", () => {
+test("an accepted finding is a maintainer's decision like a dismissal", () => {
   const accepted = prior("a1", { status: "accepted", author: "maintainer" });
   assertEquals(decidedByMaintainer(accepted, new Set()), true);
   assertEquals(
@@ -453,7 +454,7 @@ Deno.test("an accepted finding is a maintainer's decision like a dismissal", () 
   );
 });
 
-Deno.test("a still-open finding a maintainer contested is lenient for this round", () => {
+test("a still-open finding a maintainer contested is lenient for this round", () => {
   // The run that adjudicates a rebuttal is the run the model restates the
   // finding in — one severity up, on the same line — so the restatement must
   // land on the identity the rebuttal names, or the rebuttal answers nothing.
@@ -466,7 +467,7 @@ Deno.test("a still-open finding a maintainer contested is lenient for this round
   assertEquals(planDedup([escalated], [open], contested).pairs.length, 1);
 });
 
-Deno.test("refuted and fixed identities keep the same-file rule and the ceiling", () => {
+test("refuted and fixed identities keep the same-file rule and the ceiling", () => {
   for (const status of ["refuted", "fixed", "open", "upheld"] as const) {
     const earned = prior("e1", { status, severity: "low" });
     assertEquals(decidedByMaintainer(earned, new Set()), false);
@@ -486,7 +487,7 @@ Deno.test("refuted and fixed identities keep the same-file rule and the ceiling"
   }
 });
 
-Deno.test("maintainer-decided priors are offered first and outside the per-candidate cap", () => {
+test("maintainer-decided priors are offered first and outside the per-candidate cap", () => {
   // Six dismissals on record, as #634 had: with a cap of three the one
   // comparison that ends the loop must never be the one dropped for budget.
   const decided = ["d1", "d2", "d3", "d4", "d5", "d6"].map((id) =>
@@ -505,7 +506,7 @@ Deno.test("maintainer-decided priors are offered first and outside the per-candi
   assertEquals(capped.dropped, 4);
 });
 
-Deno.test("dedupNotes carries the earlier file only when it differs", () => {
+test("dedupNotes carries the earlier file only when it differs", () => {
   const same = dedupNotes(planDedup([candidate("c1")], [dismissed("d1")]));
   assertEquals(same[0].priorFile, undefined);
   const across = dedupNotes(

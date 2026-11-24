@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -45,21 +46,21 @@ class SessionsBuild extends Build {
     });
 }
 
-Deno.test("a target creating a worktree fails with the tool-not-found error", async () => {
+test("a target creating a worktree fails with the tool-not-found error", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["create"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("created"), false);
 });
 
-Deno.test("a start-point worktree reaches git like any other", async () => {
+test("a start-point worktree reaches git like any other", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["ticket"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("created"), false);
 });
 
-Deno.test("a missing git fails the listing rather than reporting no worktrees", async () => {
+test("a missing git fails the listing rather than reporting no worktrees", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["report"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");

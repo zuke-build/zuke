@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   BINARY_POSIX_TARGETS,
@@ -34,7 +35,7 @@ const SUMS = `${BINARY_RELEASES_URL}/cli-v2.4.0/SHA256SUMS`;
 const ENGINE =
   "https://raw.githubusercontent.com/zuke-build/zuke/cli-v2.4.0/packages/engine/deno.json";
 
-Deno.test("resolveBinaryPin reads every target's digest and the engine at the tag", async () => {
+test("resolveBinaryPin reads every target's digest and the engine at the tag", async () => {
   const pin = await resolveBinaryPin(
     "2.4.0",
     routes({
@@ -50,7 +51,7 @@ Deno.test("resolveBinaryPin reads every target's digest and the engine at the ta
   );
 });
 
-Deno.test("resolveBinaryPin refuses a release it cannot fully pin", async () => {
+test("resolveBinaryPin refuses a release it cannot fully pin", async () => {
   await assertRejects(
     () => resolveBinaryPin("latest", routes({})),
     Error,

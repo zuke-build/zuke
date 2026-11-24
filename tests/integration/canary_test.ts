@@ -8,6 +8,7 @@
  * approval signal, in a later `main()` that reads what the first one staged.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -69,7 +70,7 @@ function fresh(): void {
   healthy = true;
 }
 
-Deno.test("--list shows the rollout's targets under its field", async () => {
+test("--list shows the rollout's targets under its field", async () => {
   fresh();
   const { code, out } = await runCli(Deploy, ["--list"]);
   assertEquals(code, 0);
@@ -87,7 +88,7 @@ Deno.test("--list shows the rollout's targets under its field", async () => {
   }
 });
 
-Deno.test("a rollout parks at approval, and the signal promotes it in a later process", async () => {
+test("a rollout parks at approval, and the signal promotes it in a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -109,7 +110,7 @@ Deno.test("a rollout parks at approval, and the signal promotes it in a later pr
   });
 });
 
-Deno.test("a failed analysis rolls the rollout back and fails the run", async () => {
+test("a failed analysis rolls the rollout back and fails the run", async () => {
   fresh();
   healthy = false;
   await withStateDir(async (dir) => {
@@ -125,7 +126,7 @@ Deno.test("a failed analysis rolls the rollout back and fails the run", async ()
   });
 });
 
-Deno.test("zuke cancel on a parked rollout runs the same rollback", async () => {
+test("zuke cancel on a parked rollout runs the same rollback", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -139,7 +140,7 @@ Deno.test("zuke cancel on a parked rollout runs the same rollback", async () => 
   });
 });
 
-Deno.test("a rollback run by hand has no recorded state to read", async () => {
+test("a rollback run by hand has no recorded state to read", async () => {
   fresh();
   await withStateDir(async () => {
     const { code } = await runCli(Deploy, ["rollout.abort"]);
@@ -149,7 +150,7 @@ Deno.test("a rollback run by hand has no recorded state to read", async () => {
   });
 });
 
-Deno.test("a stage that fails is rolled back as a rollback, not a hand run", async () => {
+test("a stage that fails is rolled back as a rollback, not a hand run", async () => {
   fresh();
   platform.failOn = "stage";
   await withStateDir(async () => {
@@ -160,7 +161,7 @@ Deno.test("a stage that fails is rolled back as a rollback, not a hand run", asy
   });
 });
 
-Deno.test("zuke cancel on a degraded record that lost the stage's row still rolls back as a rollback", async () => {
+test("zuke cancel on a degraded record that lost the stage's row still rolls back as a rollback", async () => {
   // The record lost a write for good, taking the stage's own row with it: the
   // cancellation compensates the stage anyway, with no recorded state. That
   // is a rollback of this run — never the hand-run fallback a platform keeps

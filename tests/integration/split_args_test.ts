@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -24,7 +25,7 @@ class SplitBuild extends Build {
     });
 }
 
-Deno.test("splitShellArgs feeds a real process discrete argv through the CLI", async () => {
+test("splitShellArgs feeds a real process discrete argv through the CLI", async () => {
   const { code, out } = await runCli(SplitBuild, ["run"]);
   assertEquals(code, 0);
   // 6 argv entries: eval, the code, --, -t, the regex, and the spaced argument.

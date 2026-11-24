@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -18,7 +19,7 @@ import { printable } from "../src/text.ts";
 import { operand } from "../src/operand.ts";
 import { rejection } from "./_fake_tool.ts";
 
-Deno.test("a notarization error without a log says how to read it", () => {
+test("a notarization error without a log says how to read it", () => {
   const error = new NotarizationError({ id: "abc" }, undefined);
   assertEquals(
     error.message,
@@ -29,7 +30,7 @@ Deno.test("a notarization error without a log says how to read it", () => {
   assertEquals(error.name, "NotarizationError");
 });
 
-Deno.test("a notarization error lists at most twenty issues, defaulting missing fields", () => {
+test("a notarization error lists at most twenty issues, defaulting missing fields", () => {
   const issues: NotarytoolIssue[] = Array.from({ length: 22 }, () => ({}));
   const error = new NotarizationError(
     { id: "abc", status: "Invalid", message: "Processing complete" },
@@ -46,7 +47,7 @@ Deno.test("a notarization error lists at most twenty issues, defaulting missing 
   assertEquals(lines[21], "  … and 2 more issue(s) in the log.");
 });
 
-Deno.test("a hostile log cannot inject lines or escapes into the message", () => {
+test("a hostile log cannot inject lines or escapes into the message", () => {
   const error = new NotarizationError(
     { id: "abc\n[ok] forged", status: "Invalid\u001b[2J" },
     {
@@ -71,7 +72,7 @@ Deno.test("a hostile log cannot inject lines or escapes into the message", () =>
   );
 });
 
-Deno.test("printable collapses control characters and trims", () => {
+test("printable collapses control characters and trims", () => {
   assertEquals(printable("  a\u0000\u0001b\u009bc  "), "a b c");
   assertEquals(printable("x".repeat(500)), "x".repeat(500));
   // Regression: bidi overrides could reorder what the terminal shows.
@@ -81,13 +82,13 @@ Deno.test("printable collapses control characters and trims", () => {
   assertEquals(printable("a\u2028b\u2029c\u061cd"), "a b c d");
 });
 
-Deno.test("operand only rewrites what getopt would read as an option", () => {
+test("operand only rewrites what getopt would read as an option", () => {
   assertEquals(operand("-x"), "./-x");
   assertEquals(operand("a-x"), "a-x");
   assertEquals(operand("/abs/-x"), "/abs/-x");
 });
 
-Deno.test("a keychain cleanup error lists each failed step", () => {
+test("a keychain cleanup error lists each failed step", () => {
   const error = new KeychainCleanupError([
     { step: "delete the keychain", message: "busy" },
   ]);
@@ -99,14 +100,14 @@ Deno.test("a keychain cleanup error lists each failed step", () => {
   assertEquals("cause" in error, false);
 });
 
-Deno.test("maskSecrets replaces every secret, ignoring empty ones", () => {
+test("maskSecrets replaces every secret, ignoring empty ones", () => {
   assertEquals(
     maskSecrets("a pw b pw", ["pw", ""]),
     "a [redacted] b [redacted]",
   );
 });
 
-Deno.test("runMasked masks a CommandError and a timeout, and passes others through", async () => {
+test("runMasked masks a CommandError and a timeout, and passes others through", async () => {
   const failed = await rejection(
     () =>
       runMasked(

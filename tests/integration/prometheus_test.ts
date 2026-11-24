@@ -9,6 +9,7 @@
  * unhealthy one.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -43,7 +44,7 @@ class Gate extends Build {
     });
 }
 
-Deno.test("a build gates on a metric read through PrometheusTasks", async () => {
+test("a build gates on a metric read through PrometheusTasks", async () => {
   prom = fakeFetch(() => answer());
   answer = () => vector([{}, "0.001"]);
   const passed = await runCli(Gate, ["gate", "--token", TOKEN]);
@@ -57,7 +58,7 @@ Deno.test("a build gates on a metric read through PrometheusTasks", async () => 
   assertStringIncludes(failed.out + failed.err, "error ratio 0.3 above 0.01");
 });
 
-Deno.test("a Prometheus refusal echoing the token never prints it", async () => {
+test("a Prometheus refusal echoing the token never prints it", async () => {
   prom = fakeFetch(() => answer());
   answer = () =>
     Response.json({
@@ -95,7 +96,7 @@ class Deploy extends Build {
   );
 }
 
-Deno.test("canary's prometheus analysis promotes a healthy candidate", async () => {
+test("canary's prometheus analysis promotes a healthy candidate", async () => {
   platform = new FakePlatform();
   prom = fakeFetch(() => answer());
   answer = () => vector([{ rev: "canary" }, "0.001"]);
@@ -130,7 +131,7 @@ class InCluster extends Build {
   );
 }
 
-Deno.test("canary queries an unauthenticated in-cluster http Prometheus", async () => {
+test("canary queries an unauthenticated in-cluster http Prometheus", async () => {
   platform = new FakePlatform();
   prom = fakeFetch(() => answer());
   answer = () => vector([{}, "0"]);
@@ -144,7 +145,7 @@ Deno.test("canary queries an unauthenticated in-cluster http Prometheus", async 
   });
 });
 
-Deno.test("canary's prometheus analysis rolls an unhealthy candidate back", async () => {
+test("canary's prometheus analysis rolls an unhealthy candidate back", async () => {
   platform = new FakePlatform();
   prom = fakeFetch(() => answer());
   answer = () => vector([{ rev: "canary" }, "0.3"]);

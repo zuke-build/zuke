@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("oxlint: the terminal closing line yields Errors and Warnings, with Files when timed", () => {
+test("oxlint: the terminal closing line yields Errors and Warnings, with Files when timed", () => {
   const text =
     "Found 3 warnings and 1 error.\nFinished in 12ms on 40 files with 90 rules using 8 threads.\n";
   assertEquals(parseOxlintSummary(out(1, text)), {
@@ -29,7 +30,7 @@ Deno.test("oxlint: the terminal closing line yields Errors and Warnings, with Fi
   );
 });
 
-Deno.test("oxlint: piped output has no closing line, so the diagnostics are counted", () => {
+test("oxlint: piped output has no closing line, so the diagnostics are counted", () => {
   const text = [
     "bad.js:1:7: warning eslint(no-unused-vars): Variable a is declared but never used.",
     "bad.js:2:5: warning eslint(no-unused-vars): Variable b is declared but never used.",
@@ -39,7 +40,7 @@ Deno.test("oxlint: piped output has no closing line, so the diagnostics are coun
   assertEquals(parseOxlintSummary(out(1, text)), { Errors: 1, Warnings: 2 });
 });
 
-Deno.test("oxlint: a silent clean run is zero, a silent failure reports nothing", () => {
+test("oxlint: a silent clean run is zero, a silent failure reports nothing", () => {
   assertEquals(parseOxlintSummary(out(0)), { Errors: 0, Warnings: 0 });
   assertEquals(
     parseOxlintSummary(out(1, "", "error: unknown option")),
@@ -54,7 +55,7 @@ class Probe extends OxlintSettings {
   }
 }
 
-Deno.test("oxlint: the hook reports the counts onto the running target", async () => {
+test("oxlint: the hook reports the counts onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "Found 2 warnings and 0 errors.\n"));

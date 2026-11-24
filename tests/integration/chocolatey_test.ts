@@ -15,6 +15,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
@@ -43,7 +44,7 @@ function render(): ChocolateyPackage {
   );
 }
 
-Deno.test({
+test({
   name:
     "chocolatey: a build renders, verifies and publishes with choco from PATH",
   ignore: FAKE_CHOCO_UNSUPPORTED,
@@ -123,7 +124,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "chocolatey: a failing verification fails the build and still cleans up",
   ignore: FAKE_CHOCO_UNSUPPORTED,

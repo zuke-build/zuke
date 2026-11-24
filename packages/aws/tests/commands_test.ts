@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -53,14 +54,14 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("sts get-caller-identity", () => {
+test("sts get-caller-identity", () => {
   assertEquals(args(new AwsStsGetCallerIdentitySettings()), [
     "sts",
     "get-caller-identity",
   ]);
 });
 
-Deno.test("sts assume-role with every option", () => {
+test("sts assume-role with every option", () => {
   assertEquals(
     args(
       new AwsStsAssumeRoleSettings()
@@ -89,7 +90,7 @@ Deno.test("sts assume-role with every option", () => {
   );
 });
 
-Deno.test("configure get and set", () => {
+test("configure get and set", () => {
   assertEquals(
     args(new AwsConfigureGetSettings().varname("region").profile("p")),
     ["configure", "get", "region", "--profile", "p"],
@@ -114,7 +115,7 @@ class RecordingConfigureSet extends AwsConfigureSetSettings {
   }
 }
 
-Deno.test("configure set registers a credential value as a secret", () => {
+test("configure set registers a credential value as a secret", () => {
   const secret = new RecordingConfigureSet()
     .value("example-secret-key").varname("AWS_SECRET_ACCESS_KEY");
   assertEquals(secret.marked, ["example-secret-key"]);
@@ -127,7 +128,7 @@ Deno.test("configure set registers a credential value as a secret", () => {
   assertEquals(plain.marked, []);
 });
 
-Deno.test("s3 cp keeps filters in call order", () => {
+test("s3 cp keeps filters in call order", () => {
   assertEquals(
     args(
       new AwsS3CpSettings().source("dist").destination("s3://b/app")
@@ -164,7 +165,7 @@ Deno.test("s3 cp keeps filters in call order", () => {
   assertThrows(() => new AwsS3CpSettings().source("a").argv(), Error, "both");
 });
 
-Deno.test("s3 sync with every option", () => {
+test("s3 sync with every option", () => {
   assertEquals(
     args(
       new AwsS3SyncSettings().source("dist").destination("s3://b").delete()
@@ -201,7 +202,7 @@ Deno.test("s3 sync with every option", () => {
   assertThrows(() => new AwsS3SyncSettings().argv(), Error, "both");
 });
 
-Deno.test("s3 ls, rm, mb and presign", () => {
+test("s3 ls, rm, mb and presign", () => {
   assertEquals(args(new AwsS3LsSettings()), ["s3", "ls"]);
   assertEquals(
     args(
@@ -256,7 +257,7 @@ Deno.test("s3 ls, rm, mb and presign", () => {
   assertThrows(() => new AwsS3PresignSettings().argv(), Error, "object");
 });
 
-Deno.test("ecr commands send image ids as JSON", () => {
+test("ecr commands send image ids as JSON", () => {
   assertEquals(args(new AwsEcrGetLoginPasswordSettings().region("eu-west-1")), [
     "ecr",
     "get-login-password",
@@ -333,7 +334,7 @@ Deno.test("ecr commands send image ids as JSON", () => {
   );
 });
 
-Deno.test("ecs update-service, describe-services and wait", () => {
+test("ecs update-service, describe-services and wait", () => {
   assertEquals(
     args(
       new AwsEcsUpdateServiceSettings().cluster("prod").service("api")
@@ -385,7 +386,7 @@ Deno.test("ecs update-service, describe-services and wait", () => {
   );
 });
 
-Deno.test("ecs register-task-definition and run-task", () => {
+test("ecs register-task-definition and run-task", () => {
   assertEquals(
     args(
       new AwsEcsRegisterTaskDefinitionSettings()
@@ -454,7 +455,7 @@ Deno.test("ecs register-task-definition and run-task", () => {
   );
 });
 
-Deno.test("lambda update-function-code takes exactly one source", () => {
+test("lambda update-function-code takes exactly one source", () => {
   assertEquals(
     args(
       new AwsLambdaUpdateFunctionCodeSettings().functionName("api")
@@ -508,7 +509,7 @@ Deno.test("lambda update-function-code takes exactly one source", () => {
   );
 });
 
-Deno.test("lambda update-function-configuration sends the environment as JSON", () => {
+test("lambda update-function-configuration sends the environment as JSON", () => {
   assertEquals(
     args(
       new AwsLambdaUpdateFunctionConfigurationSettings().functionName("api")
@@ -540,7 +541,7 @@ Deno.test("lambda update-function-configuration sends the environment as JSON", 
   );
 });
 
-Deno.test("lambda publish-version, get-function and update-alias", () => {
+test("lambda publish-version, get-function and update-alias", () => {
   assertEquals(
     args(
       new AwsLambdaPublishVersionSettings().functionName("api")
@@ -606,7 +607,7 @@ Deno.test("lambda publish-version, get-function and update-alias", () => {
   );
 });
 
-Deno.test("lambda wait names the waiter, the function and the version", () => {
+test("lambda wait names the waiter, the function and the version", () => {
   assertEquals(
     args(
       new AwsLambdaWaitSettings().waiter("published-version-active")
@@ -639,7 +640,7 @@ Deno.test("lambda wait names the waiter, the function and the version", () => {
   );
 });
 
-Deno.test("lambda get-alias names the function and the alias", () => {
+test("lambda get-alias names the function and the alias", () => {
   assertEquals(
     args(new AwsLambdaGetAliasSettings().functionName("api").name("live")),
     ["lambda", "get-alias", "--function-name=api", "--name=live"],
@@ -656,7 +657,7 @@ Deno.test("lambda get-alias names the function and the alias", () => {
   );
 });
 
-Deno.test("lambda invoke sends a raw JSON payload and ends with the outfile", () => {
+test("lambda invoke sends a raw JSON payload and ends with the outfile", () => {
   assertEquals(
     args(
       new AwsLambdaInvokeSettings().functionName("api").payload('{"a":1}')
@@ -688,7 +689,7 @@ Deno.test("lambda invoke sends a raw JSON payload and ends with the outfile", ()
   );
 });
 
-Deno.test("cloudformation deploy with every option", () => {
+test("cloudformation deploy with every option", () => {
   assertEquals(
     args(
       new AwsCloudformationDeploySettings().templateFile("stack.yaml")
@@ -744,7 +745,7 @@ Deno.test("cloudformation deploy with every option", () => {
   );
 });
 
-Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
+test("cloudformation describe-stacks, delete-stack and wait", () => {
   assertEquals(args(new AwsCloudformationDescribeStacksSettings()), [
     "cloudformation",
     "describe-stacks",
@@ -791,7 +792,7 @@ Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
   );
 });
 
-Deno.test("secretsmanager get-secret-value", () => {
+test("secretsmanager get-secret-value", () => {
   assertEquals(
     args(
       new AwsSecretsmanagerGetSecretValueSettings().secretId("prod/db")
@@ -818,7 +819,7 @@ Deno.test("secretsmanager get-secret-value", () => {
   );
 });
 
-Deno.test("ssm get-parameter and put-parameter", () => {
+test("ssm get-parameter and put-parameter", () => {
   assertEquals(
     args(new AwsSsmGetParameterSettings().name("/a").withDecryption()),
     [
@@ -875,7 +876,7 @@ Deno.test("ssm get-parameter and put-parameter", () => {
   );
 });
 
-Deno.test("ssm put-parameter refuses a literal value the CLI would read as a file", () => {
+test("ssm put-parameter refuses a literal value the CLI would read as a file", () => {
   for (const value of ["file:///etc/passwd", "fileb://key.bin"]) {
     assertThrows(
       () => new AwsSsmPutParameterSettings().value(value),
@@ -893,7 +894,7 @@ class RecordingPut extends AwsSsmPutParameterSettings {
   }
 }
 
-Deno.test("ssm put-parameter registers a literal SecureString value", () => {
+test("ssm put-parameter registers a literal SecureString value", () => {
   assertEquals(
     new RecordingPut().value("s3cr3t-value").type("SecureString").marked,
     ["s3cr3t-value"],
@@ -910,7 +911,7 @@ Deno.test("ssm put-parameter registers a literal SecureString value", () => {
   );
 });
 
-Deno.test("eks update-kubeconfig and describe-cluster", () => {
+test("eks update-kubeconfig and describe-cluster", () => {
   assertEquals(
     args(
       new AwsEksUpdateKubeconfigSettings().name("prod").kubeconfig("kc")
@@ -1200,12 +1201,12 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
 ];
 
 for (const [task, reach] of REACH) {
-  Deno.test(`AwsTasks.${task} reaches execution`, async () => {
+  test(`AwsTasks.${task} reaches execution`, async () => {
     await assertRejects(reach, ToolNotFoundError);
   });
 }
 
-Deno.test("every AwsTasks method is reached above", () => {
+test("every AwsTasks method is reached above", () => {
   const reached = new Set(REACH.map(([task]) => task));
   const missing = Object.keys(AwsTasks).filter((task) =>
     task !== "run" && !reached.has(task)

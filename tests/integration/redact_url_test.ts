@@ -7,6 +7,7 @@
  * credentials its URL carried — and run through the real CLI.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -29,7 +30,7 @@ class Notify extends Build {
   });
 }
 
-Deno.test("a failure reported through redactUrl never shows the URL's credentials", async () => {
+test("a failure reported through redactUrl never shows the URL's credentials", async () => {
   const { code, out, err } = await runCli(Notify, ["notify"]);
   assertEquals(code, 1);
   const shown = out + err;
@@ -50,7 +51,7 @@ class Fetcher extends Build {
   });
 }
 
-Deno.test("redactUrls cleans every URL a wrapped error quotes", async () => {
+test("redactUrls cleans every URL a wrapped error quotes", async () => {
   const { code, out, err } = await runCli(Fetcher, ["fetchIt"]);
   assertEquals(code, 1);
   const shown = out + err;

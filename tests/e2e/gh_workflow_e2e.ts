@@ -13,6 +13,7 @@
  * Excluded from the fast unit gate (`*_e2e.ts`); run by the `integration` target.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -31,7 +32,7 @@ async function dispatchCount(file: string): Promise<number> {
   return text.split("\n").filter((l) => l !== "").length;
 }
 
-Deno.test("a githubWorkflow wait dispatches once and resumes across processes", async () => {
+test("a githubWorkflow wait dispatches once and resumes across processes", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-gh-workflow-e2e-" });
   const dispatchFile = `${dir}/dispatches.txt`;
   await Deno.writeTextFile(dispatchFile, "");

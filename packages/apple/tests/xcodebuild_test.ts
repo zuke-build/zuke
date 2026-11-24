@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -25,7 +26,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("xcodebuild resolves its binary from PATH", async () => {
+test("xcodebuild resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new XcodebuildActionSettings("build"),
     "xcodebuild",
@@ -33,7 +34,7 @@ Deno.test("xcodebuild resolves its binary from PATH", async () => {
   );
 });
 
-Deno.test("build: project flags, the action, build settings, shared flags", () => {
+test("build: project flags, the action, build settings, shared flags", () => {
   assertEquals(args(new XcodebuildActionSettings("build")), ["build"]);
   assertEquals(
     args(
@@ -92,7 +93,7 @@ Deno.test("build: project flags, the action, build settings, shared flags", () =
   );
 });
 
-Deno.test("build: scheme, configuration and sdk are single-valued", () => {
+test("build: scheme, configuration and sdk are single-valued", () => {
   assertEquals(
     args(
       new XcodebuildActionSettings("build").scheme("A").scheme("B")
@@ -103,7 +104,7 @@ Deno.test("build: scheme, configuration and sdk are single-valued", () => {
   );
 });
 
-Deno.test("build: one container, and only build setting names", () => {
+test("build: one container, and only build setting names", () => {
   assertThrows(
     () => new XcodebuildActionSettings("build").workspace("a").project("b"),
     Error,
@@ -121,7 +122,7 @@ Deno.test("build: one container, and only build setting names", () => {
   );
 });
 
-Deno.test("test: every test flag after the action", () => {
+test("test: every test flag after the action", () => {
   assertEquals(
     args(
       new XcodebuildTestSettings("test").scheme("App")
@@ -164,7 +165,7 @@ Deno.test("test: every test flag after the action", () => {
   );
 });
 
-Deno.test("archive: the archive path is required", () => {
+test("archive: the archive path is required", () => {
   assertEquals(
     args(
       new XcodebuildArchiveSettings().scheme("App")
@@ -179,7 +180,7 @@ Deno.test("archive: the archive path is required", () => {
   );
 });
 
-Deno.test("exportArchive: three paths, all required", () => {
+test("exportArchive: three paths, all required", () => {
   assertEquals(
     args(
       new XcodebuildExportArchiveSettings().archivePath("App.xcarchive")
@@ -223,7 +224,7 @@ Deno.test("exportArchive: three paths, all required", () => {
   );
 });
 
-Deno.test("showBuildSettings: with and without -json", () => {
+test("showBuildSettings: with and without -json", () => {
   assertEquals(args(new XcodebuildShowBuildSettings().scheme("App")), [
     "-scheme",
     "App",
@@ -235,7 +236,7 @@ Deno.test("showBuildSettings: with and without -json", () => {
   ]);
 });
 
-Deno.test("XcodebuildTasks: every task reaches execution with its action", async () => {
+test("XcodebuildTasks: every task reaches execution with its action", async () => {
   const seen: string[][] = [];
   const probe = <S extends { argv(): string[] }>(s: S): S => {
     seen.push(args(s));

@@ -9,6 +9,7 @@
  * run acknowledges its command with 👍.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { genericReviewer, securityReviewer } from "../../packages/ai/mod.ts";
@@ -56,7 +57,7 @@ function fakeGithub(responses: string[]) {
   return { fetch: impl, reactions };
 }
 
-Deno.test("two reviewers in one build show one verdict — the worst — and 👀 only while they run", async () => {
+test("two reviewers in one build show one verdict — the worst — and 👀 only while they run", async () => {
   const github = fakeGithub([
     // The security review: one low finding, under the gate.
     claude({
@@ -125,7 +126,7 @@ Deno.test("two reviewers in one build show one verdict — the worst — and �
   ]);
 });
 
-Deno.test("a reviewer that fails the build leaves 👎", async () => {
+test("a reviewer that fails the build leaves 👎", async () => {
   const github = fakeGithub([
     claude({
       score: 9,
@@ -172,7 +173,7 @@ Deno.test("a reviewer that fails the build leaves 👎", async () => {
   );
 });
 
-Deno.test("a commanded run where one reviewer reviewed and the next was skipped does not answer 😕", async () => {
+test("a commanded run where one reviewer reviewed and the next was skipped does not answer 😕", async () => {
   const github = fakeGithub([
     claude({ score: 0, severity: "none", findings: [] }),
     // The second reviewer's model answers nothing usable; under
@@ -217,7 +218,7 @@ Deno.test("a commanded run where one reviewer reviewed and the next was skipped 
   assertEquals(github.reactions.on(`${ISSUES}/803/reactions`), ["+1"]);
 });
 
-Deno.test("a command from someone who may not start a review runs nothing: the target's body never runs", async () => {
+test("a command from someone who may not start a review runs nothing: the target's body never runs", async () => {
   const github = fakeGithub([claude({ score: 0, findings: [] })]);
   const executed: string[] = [];
   let modelCalls = 0;

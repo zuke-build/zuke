@@ -12,6 +12,7 @@
  * and the canary's `.spec.replicas` (0).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -117,7 +118,7 @@ function fresh(): void {
   stableName = "api";
 }
 
-Deno.test("Kubernetes: staged, stepped, parked, and promoted by a later process", async () => {
+test("Kubernetes: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -151,7 +152,7 @@ Deno.test("Kubernetes: staged, stepped, parked, and promoted by a later process"
   });
 });
 
-Deno.test("Kubernetes: a failed analysis restores stable and empties the canary", async () => {
+test("Kubernetes: a failed analysis restores stable and empties the canary", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -170,7 +171,7 @@ Deno.test("Kubernetes: a failed analysis restores stable and empties the canary"
   });
 });
 
-Deno.test("Kubernetes: a rollback run by hand restores the configured stable image", async () => {
+test("Kubernetes: a rollback run by hand restores the configured stable image", async () => {
   fresh();
   handRunImage = "reg/api:1";
   await withStateDir(async () => {
@@ -185,7 +186,7 @@ Deno.test("Kubernetes: a rollback run by hand restores the configured stable ima
   });
 });
 
-Deno.test("Kubernetes: a stage refused by its settings rolls back nothing", async () => {
+test("Kubernetes: a stage refused by its settings rolls back nothing", async () => {
   // The image parameter resolved empty, and the build names a hand-run
   // stable image. The stage changed nothing, so the engine's inline rollback
   // must not roll production back to that image.
@@ -200,7 +201,7 @@ Deno.test("Kubernetes: a stage refused by its settings rolls back nothing", asyn
   });
 });
 
-Deno.test("Kubernetes: a rollback run by hand with no stable image refuses", async () => {
+test("Kubernetes: a rollback run by hand with no stable image refuses", async () => {
   // After a promote the stable Deployment runs the candidate, so moving
   // replicas back to it would change nothing while the summary said
   // "Rolled back".
@@ -213,7 +214,7 @@ Deno.test("Kubernetes: a rollback run by hand with no stable image refuses", asy
   });
 });
 
-Deno.test("Kubernetes: a rollout resumed with other Deployments configured refuses", async () => {
+test("Kubernetes: a rollout resumed with other Deployments configured refuses", async () => {
   // The rollout was staged on deployment/api; the build now names another.
   // Neither the resume nor the rollback it triggers may set the recorded
   // image on, or scale, a Deployment the rollout never touched.
@@ -256,7 +257,7 @@ Deno.test("Kubernetes: a rollout resumed with other Deployments configured refus
   });
 });
 
-Deno.test("Kubernetes: a cancel evaluated with other Deployments configured refuses", async () => {
+test("Kubernetes: a cancel evaluated with other Deployments configured refuses", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);

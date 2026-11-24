@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -112,7 +113,7 @@ const ID = findingFingerprint("security", {
   file: "src/app.ts",
 });
 
-Deno.test("a finding dismissed in an earlier round stays dismissed (no loop)", async () => {
+test("a finding dismissed in an earlier round stays dismissed (no loop)", async () => {
   // The reviewer's own prior comment (bot-authored) carries the state block
   // recording the dismissal from the last discussion round.
   const priorBody = `${MARKER}\nold report\n${
@@ -176,7 +177,7 @@ Deno.test("a finding dismissed in an earlier round stays dismissed (no loop)", a
   assertEquals(state?.findings[0].author, "maintainer");
 });
 
-Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never reaches the model", async () => {
+test("a trusted rebuttal dismisses via adjudication; untrusted text never reaches the model", async () => {
   const comments = [
     {
       id: 1,
@@ -270,7 +271,7 @@ Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never r
   assertEquals(byId.get(otherId)?.status, "open");
 });
 
-Deno.test("an adjudication that answers nothing is announced, not silent", async () => {
+test("an adjudication that answers nothing is announced, not silent", async () => {
   // The model returns an empty verdicts array — schema-valid, but it swallows
   // the maintainer's rebuttal. The finding must stay open (and gate), and the
   // console must say the discussion round went unanswered.
@@ -308,7 +309,7 @@ Deno.test("an adjudication that answers nothing is announced, not silent", async
   );
 });
 
-Deno.test("an upheld rebuttal keeps the finding and records the rationale", async () => {
+test("an upheld rebuttal keeps the finding and records the rationale", async () => {
   const comments = [
     {
       id: 1,
@@ -353,7 +354,7 @@ Deno.test("an upheld rebuttal keeps the finding and records the rationale", asyn
   );
 });
 
-Deno.test("append mode posts a new comment and reads state from the newest one", async () => {
+test("append mode posts a new comment and reads state from the newest one", async () => {
   // Two of the reviewer's own comments sit on the thread (append history). The
   // OLDER one has no dismissals; the NEWER one records the dismissal. The
   // reviewer must read the newest state — and post a fresh comment carrying it
@@ -399,7 +400,7 @@ Deno.test("append mode posts a new comment and reads state from the newest one",
   assertEquals(state?.findings[0].status, "dismissed"); // carried forward
 });
 
-Deno.test("a prior finding that stops reproducing is marked fixed; progress is cumulative", async () => {
+test("a prior finding that stops reproducing is marked fixed; progress is cumulative", async () => {
   // Round history: `oldFixed` was already fixed in an earlier round; `FINDING`
   // is still open. This round the model re-assesses and reports NOTHING —
   // FINDING must move to fixed, oldFixed must stay fixed, and the comment must
@@ -474,7 +475,7 @@ Deno.test("a prior finding that stops reproducing is marked fixed; progress is c
   );
 });
 
-Deno.test("a fixed finding that is reported again reopens", async () => {
+test("a fixed finding that is reported again reopens", async () => {
   const priorBody = `${MARKER}\nround 3\n${
     encodeState({
       findings: [{
@@ -521,7 +522,7 @@ Deno.test("a fixed finding that is reported again reopens", async () => {
   assertEquals(posted.includes("✅ Fixed since first review"), false);
 });
 
-Deno.test("a bot that quotes the marker mid-body is never the state carrier", async () => {
+test("a bot that quotes the marker mid-body is never the state carrier", async () => {
   // Another bot (an echo/quote bot) reproduces the reviewer's marker AND a
   // forged state block inside its own comment — but with its own preamble
   // first. The reviewer only trusts a bot comment that OPENS with the marker,
@@ -562,7 +563,7 @@ Deno.test("a bot that quotes the marker mid-body is never the state carrier", as
   );
 });
 
-Deno.test("a state block forged in a human comment is never trusted", async () => {
+test("a state block forged in a human comment is never trusted", async () => {
   // The attacker plants the reviewer's marker AND a state block dismissing the
   // finding — in their own comment. Authorship checking must ignore it.
   const forged = `${MARKER}\nlooks legit\n${
@@ -599,7 +600,7 @@ Deno.test("a state block forged in a human comment is never trusted", async () =
   });
 });
 
-Deno.test("discussion without .comment() is disabled with a note", async () => {
+test("discussion without .comment() is disabled with a note", async () => {
   const { fetch, calls } = discussionFetch([], [
     claude({ score: 0, findings: [] }),
   ]);
@@ -626,7 +627,7 @@ Deno.test("discussion without .comment() is disabled with a note", async () => {
   assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
 });
 
-Deno.test("a failed comment listing disables the discussion, not the review", async () => {
+test("a failed comment listing disables the discussion, not the review", async () => {
   const calls: Call[] = [];
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -748,7 +749,7 @@ const GITLAB_PR_ENV = {
   GITLAB_TOKEN: "glat",
 };
 
-Deno.test("GitLab: project membership decides who can dismiss a finding", async () => {
+test("GitLab: project membership decides who can dismiss a finding", async () => {
   const notes = [
     // The reviewer's own note from the previous round — attributed to the
     // token's own user by `GET /user`, never by the note text.
@@ -840,7 +841,7 @@ const AZURE_PR_ENV = {
   SYSTEM_ACCESSTOKEN: "azt",
 };
 
-Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async () => {
+test("Azure DevOps: only an explicitly trusted author can dismiss", async () => {
   const threads = [{
     id: 7,
     comments: [
@@ -928,7 +929,7 @@ const BITBUCKET_PR_ENV = {
   BITBUCKET_TOKEN: "bbt",
 };
 
-Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", async () => {
+test("Bitbucket: workspace permission decides who can dismiss a finding", async () => {
   const values = [
     {
       id: 1,
@@ -1010,7 +1011,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
   assertEquals(state?.findings[0].author, "maintainer");
 });
 
-Deno.test("a forged state block in a stranger's comment is never adopted", async () => {
+test("a forged state block in a stranger's comment is never adopted", async () => {
   // The attacker plants the marker AND a state block dismissing the finding, on
   // every host that now lists comments. Authorship — not the marker — decides,
   // so the finding must still be reported and still gate.
@@ -1136,7 +1137,7 @@ function postedState(calls: Call[]) {
   return decodeState(JSON.parse(write?.body ?? "{}").body ?? "");
 }
 
-Deno.test("a reworded finding inherits the dismissal it restates", async () => {
+test("a reworded finding inherits the dismissal it restates", async () => {
   // The model returns the same false positive under a new title, so it carries
   // a fresh fingerprint that the sticky-dismissal path would miss entirely.
   const { fetch, calls } = discussionFetch(
@@ -1176,7 +1177,7 @@ Deno.test("a reworded finding inherits the dismissal it restates", async () => {
   assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
 });
 
-Deno.test("a recorded alias costs no model call on the next round", async () => {
+test("a recorded alias costs no model call on the next round", async () => {
   const { fetch, calls } = discussionFetch(
     priorComment(stateWith("dismissed", { aliases: [REWORDED_ID] })),
     [claude({ score: 9, severity: "high", findings: [REWORDED] })],
@@ -1203,7 +1204,7 @@ Deno.test("a recorded alias costs no model call on the next round", async () => 
   assertEquals(postedState(calls)?.findings[0].aliases, [REWORDED_ID]);
 });
 
-Deno.test("a reworded finding that was fixed reopens under the old identity", async () => {
+test("a reworded finding that was fixed reopens under the old identity", async () => {
   const { fetch, calls } = discussionFetch(priorComment(stateWith("fixed")), [
     claude({ score: 9, severity: "high", findings: [REWORDED] }),
     claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }] }),
@@ -1233,7 +1234,7 @@ Deno.test("a reworded finding that was fixed reopens under the old identity", as
   assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
 });
 
-Deno.test("a fabricated pair label matches nothing", async () => {
+test("a fabricated pair label matches nothing", async () => {
   const { fetch, calls } = discussionFetch(
     priorComment(stateWith("dismissed")),
     [
@@ -1267,7 +1268,7 @@ Deno.test("a fabricated pair label matches nothing", async () => {
   assertEquals(state?.findings.find((f) => f.id === ID)?.aliases, undefined);
 });
 
-Deno.test("a different verdict leaves the finding reported under its own id", async () => {
+test("a different verdict leaves the finding reported under its own id", async () => {
   const { fetch, calls } = discussionFetch(
     priorComment(stateWith("dismissed")),
     [
@@ -1294,7 +1295,7 @@ Deno.test("a different verdict leaves the finding reported under its own id", as
   assertEquals(state?.findings.find((f) => f.id === ID)?.aliases, undefined);
 });
 
-Deno.test("a failed dedup call leaves the finding reported, and says so", async () => {
+test("a failed dedup call leaves the finding reported, and says so", async () => {
   const calls: Call[] = [];
   let served = 0;
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
@@ -1357,7 +1358,7 @@ Deno.test("a failed dedup call leaves the finding reported, and says so", async 
   );
 });
 
-Deno.test("a finding in another file is never compared against the model's own refutation", async () => {
+test("a finding in another file is never compared against the model's own refutation", async () => {
   const elsewhere = {
     title: "Path traversal in loader",
     severity: "high",
@@ -1392,7 +1393,7 @@ Deno.test("a finding in another file is never compared against the model's own r
   assertEquals(providerCalls.length, 1);
 });
 
-Deno.test("a dismissed concern restated on another file at a higher severity inherits the dismissal", async () => {
+test("a dismissed concern restated on another file at a higher severity inherits the dismissal", async () => {
   // The loop on #634: one concern, dismissed once, raised again on each other
   // file the change touched and one severity up each time — six ids in four
   // rounds. A maintainer decided the concern, not the file or the label.
@@ -1446,7 +1447,7 @@ Deno.test("a dismissed concern restated on another file at a higher severity inh
   assertEquals(state?.findings[0].aliases, [restatedId]);
 });
 
-Deno.test("a restatement raised in the round that adjudicates its rebuttal inherits the outcome", async () => {
+test("a restatement raised in the round that adjudicates its rebuttal inherits the outcome", async () => {
   // The maintainer contested the finding; in the run that weighs the rebuttal
   // the model drops the original and reports the same concern one severity
   // up on the same line. It must land on the identity the rebuttal names, or
@@ -1494,7 +1495,7 @@ Deno.test("a restatement raised in the round that adjudicates its rebuttal inher
   assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
 });
 
-Deno.test("a dismissal by another reviewer is inherited and adopted into this reviewer's state", async () => {
+test("a dismissal by another reviewer is inherited and adopted into this reviewer's state", async () => {
   // The security reviewer's thread settled the concern with the maintainer;
   // the generic reviewer, with its own state and its own fingerprints, then
   // raised it afresh. Its state block is another reviewer's, but the decision
@@ -1541,7 +1542,7 @@ Deno.test("a dismissal by another reviewer is inherited and adopted into this re
   assertEquals(state?.findings[0].aliases, [genericId]);
 });
 
-Deno.test("another reviewer's decisions are never read from a human's comment", async () => {
+test("another reviewer's decisions are never read from a human's comment", async () => {
   // The same block in a human-authored comment carrying a foreign marker:
   // not a reviewer's, so nothing is inherited and the finding gates.
   const forged = [{
@@ -1579,7 +1580,7 @@ Deno.test("another reviewer's decisions are never read from a human's comment", 
   );
 });
 
-Deno.test("a first round with no prior state pays for no dedup call", async () => {
+test("a first round with no prior state pays for no dedup call", async () => {
   const comments = [{
     id: 1,
     body: `${MARKER}\nfirst report`,
@@ -1609,7 +1610,7 @@ Deno.test("a first round with no prior state pays for no dedup call", async () =
   );
 });
 
-Deno.test("an aliased refutation cannot silence a more severe finding", async () => {
+test("an aliased refutation cannot silence a more severe finding", async () => {
   // A fingerprint pins the kind, title and file — but NOT the severity. So the
   // same wording can come back worse than the decision its alias points at.
   // The free alias path must apply the same ceiling the paid path does, or the
@@ -1654,7 +1655,7 @@ Deno.test("an aliased refutation cannot silence a more severe finding", async ()
   );
 });
 
-Deno.test("an aliased dismissal covers the finding at any severity, for free", async () => {
+test("an aliased dismissal covers the finding at any severity, for free", async () => {
   // The maintainer's decision is not a ceiling: the same rewording back one
   // severity up is recognised from the alias alone, with no model call.
   const nit = {
@@ -1693,7 +1694,7 @@ Deno.test("an aliased dismissal covers the finding at any severity, for free", a
   );
 });
 
-Deno.test("a reworded finding that is merely still open is not claimed as fixed", async () => {
+test("a reworded finding that is merely still open is not claimed as fixed", async () => {
   // The previous round left this finding open — neither dismissed nor fixed.
   // The model now restates it in different words, so it arrives with a fresh
   // fingerprint. If identity resolution only considered decided entries, the
@@ -1855,7 +1856,7 @@ function threadPosts(calls: Call[]): Call[] {
   );
 }
 
-Deno.test("threads are off unless asked for", async () => {
+test("threads are off unless asked for", async () => {
   const { fetch, calls } = threadFetch([summaryComment()], [], [
     claude({ score: 9, severity: "high", findings: [ANCHORED] }),
   ]);
@@ -1878,7 +1879,7 @@ Deno.test("threads are off unless asked for", async () => {
   assertEquals(calls.some((c) => c.url.includes("/pulls/7/comments")), false);
 });
 
-Deno.test("a finding is posted as a thread anchored to its line", async () => {
+test("a finding is posted as a thread anchored to its line", async () => {
   const { fetch, calls } = threadFetch([summaryComment()], [], [
     claude({ score: 9, severity: "high", findings: [ANCHORED] }),
   ]);
@@ -1908,7 +1909,7 @@ Deno.test("a finding is posted as a thread anchored to its line", async () => {
   );
 });
 
-Deno.test("an existing thread is never posted twice", async () => {
+test("an existing thread is never posted twice", async () => {
   const { fetch, calls } = threadFetch(
     [summaryComment({
       findings: [{
@@ -1940,7 +1941,7 @@ Deno.test("an existing thread is never posted twice", async () => {
   assertEquals(threadPosts(calls).length, 0);
 });
 
-Deno.test("a reply in a thread contests the finding without quoting any id", async () => {
+test("a reply in a thread contests the finding without quoting any id", async () => {
   // The whole point of threads: the maintainer replies where the finding lives.
   const reply = {
     id: 502,
@@ -2012,7 +2013,7 @@ Deno.test("a reply in a thread contests the finding without quoting any id", asy
   assertEquals(mutation !== undefined, true);
 });
 
-Deno.test("an untrusted reply in a thread is never heard", async () => {
+test("an untrusted reply in a thread is never heard", async () => {
   const reply = {
     id: 502,
     body:
@@ -2058,7 +2059,7 @@ Deno.test("an untrusted reply in a thread is never heard", async () => {
   }
 });
 
-Deno.test("a forged thread root is never adopted", async () => {
+test("a forged thread root is never adopted", async () => {
   // A human pastes a perfectly-formed marker and an ally replies in it.
   const forged = {
     id: 501,
@@ -2114,7 +2115,7 @@ Deno.test("a forged thread root is never adopted", async () => {
   );
 });
 
-Deno.test("an unanchorable finding says so in the posted comment", async () => {
+test("an unanchorable finding says so in the posted comment", async () => {
   const floating = { ...ANCHORED, line: 9999 };
   const { fetch, calls } = threadFetch([summaryComment()], [], [
     claude({ score: 9, severity: "high", findings: [floating] }),
@@ -2144,7 +2145,7 @@ Deno.test("an unanchorable finding says so in the posted comment", async () => {
   );
 });
 
-Deno.test("a thread listing failure leaves the review untouched", async () => {
+test("a thread listing failure leaves the review untouched", async () => {
   const calls: Call[] = [];
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -2193,7 +2194,7 @@ Deno.test("a thread listing failure leaves the review untouched", async () => {
   assertEquals(threadPosts(calls).length, 0);
 });
 
-Deno.test("threads are declined on a host that cannot do them", async () => {
+test("threads are declined on a host that cannot do them", async () => {
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -2244,7 +2245,7 @@ Deno.test("threads are declined on a host that cannot do them", async () => {
   );
 });
 
-Deno.test("a rejected anchor keeps the finding in the table and says so", async () => {
+test("a rejected anchor keeps the finding in the table and says so", async () => {
   // GitHub validates against its own merge-base diff, so a line that looks
   // anchorable here can still be refused. The finding must not vanish.
   const calls: Call[] = [];
@@ -2305,7 +2306,7 @@ Deno.test("a rejected anchor keeps the finding in the table and says so", async 
   );
 });
 
-Deno.test("a rate limit halts the thread phase without failing the build", async () => {
+test("a rate limit halts the thread phase without failing the build", async () => {
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -2370,7 +2371,7 @@ Deno.test("a rate limit halts the thread phase without failing the build", async
   );
 });
 
-Deno.test("a failed resolve keeps the outcome reply and reports the gap", async () => {
+test("a failed resolve keeps the outcome reply and reports the gap", async () => {
   const reply = {
     id: 502,
     body: "Sandboxed; not reachable.",
@@ -2467,7 +2468,7 @@ Deno.test("a failed resolve keeps the outcome reply and reports the gap", async 
   );
 });
 
-Deno.test("a finding that regresses is reopened, and a failed reopen is shouted about", async () => {
+test("a finding that regresses is reopened, and a failed reopen is shouted about", async () => {
   // The one forbidden outcome is a live finding hidden behind a collapsed
   // thread, so a failed unresolve names the thread in the report.
   const calls: Call[] = [];
@@ -2550,7 +2551,7 @@ Deno.test("a finding that regresses is reopened, and a failed reopen is shouted 
   );
 });
 
-Deno.test("no head commit means no new threads, and the run continues", async () => {
+test("no head commit means no new threads, and the run continues", async () => {
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -2605,7 +2606,7 @@ Deno.test("no head commit means no new threads, and the run continues", async ()
   );
 });
 
-Deno.test("a thread whose outcome reply was refused is not resolved", async () => {
+test("a thread whose outcome reply was refused is not resolved", async () => {
   // Resolving a thread whose explanation never landed collapses it with
   // nothing to read — worse than leaving it open.
   const reply = {
@@ -2698,7 +2699,7 @@ Deno.test("a thread whose outcome reply was refused is not resolved", async () =
   );
 });
 
-Deno.test("a quiet reviewer posts no threads either", async () => {
+test("a quiet reviewer posts no threads either", async () => {
   // Quiet withholds the summary comment, which is where an unanchorable finding
   // is reported — so posting threads anyway would leave some findings visible
   // inline and others nowhere at all.
@@ -2724,7 +2725,7 @@ Deno.test("a quiet reviewer posts no threads either", async () => {
 
 // ─── Degraded paths: no host, exhausted budgets, failing passes ──────────────
 
-Deno.test("comment and discussion degrade to warnings outside any CI host", async () => {
+test("comment and discussion degrade to warnings outside any CI host", async () => {
   // An env reader that sees nothing: no CI host markers at all (a local run).
   const { fetch, calls } = discussionFetch([], [
     claude({ score: 0, severity: "none", findings: [] }),
@@ -2769,7 +2770,7 @@ function claudeWithUsage(
   });
 }
 
-Deno.test("an exhausted budget skips the reworded-finding check, and says so", async () => {
+test("an exhausted budget skips the reworded-finding check, and says so", async () => {
   // The review call's own usage blows the cap, so the dedup pass that would
   // resolve the rewording must be skipped — with a note, never silently — and
   // the finding keeps its fresh identity and gates.
@@ -2813,7 +2814,7 @@ Deno.test("an exhausted budget skips the reworded-finding check, and says so", a
   );
 });
 
-Deno.test("an ambiguous rewording keeps the first match and reports the rest, with the cap named", async () => {
+test("an ambiguous rewording keeps the first match and reports the rest, with the cap named", async () => {
   // Four earlier open findings in the same file are all eligible comparisons
   // for one candidate; the per-candidate cap (3) drops the fourth, and the
   // model then claims the candidate matches two of the three offered.
@@ -2877,7 +2878,7 @@ Deno.test("an ambiguous rewording keeps the first match and reports the rest, wi
   );
 });
 
-Deno.test("the finding's detail reaches the adjudicator, and a reason-less dismissal sticks", async () => {
+test("the finding's detail reaches the adjudicator, and a reason-less dismissal sticks", async () => {
   const detailed = {
     ...FINDING,
     detail: "input flows straight into eval with no sanitisation",
@@ -2928,7 +2929,7 @@ Deno.test("the finding's detail reaches the adjudicator, and a reason-less dismi
   assertEquals(entry?.rationale, undefined);
 });
 
-Deno.test("a failed adjudication keeps contested findings open with a warning", async () => {
+test("a failed adjudication keeps contested findings open with a warning", async () => {
   const calls: Call[] = [];
   let served = 0;
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
@@ -2988,7 +2989,7 @@ Deno.test("a failed adjudication keeps contested findings open with a warning", 
   );
 });
 
-Deno.test("findings beyond the thread cap stay in the table, and the gap is announced", async () => {
+test("findings beyond the thread cap stay in the table, and the gap is announced", async () => {
   // One more anchorable finding than the per-run thread cap.
   const count = MAX_NEW_THREADS + 1;
   const bigDiff = [
@@ -3034,7 +3035,7 @@ Deno.test("findings beyond the thread cap stay in the table, and the gap is anno
   );
 });
 
-Deno.test("a thread phase that throws degrades to a note, never a failure", async () => {
+test("a thread phase that throws degrades to a note, never a failure", async () => {
   // The head-commit lookup explodes (HTTP 500) after the thread listing
   // succeeded — the whole phase must collapse into a report note.
   const calls: Call[] = [];
@@ -3093,7 +3094,7 @@ Deno.test("a thread phase that throws degrades to a note, never a failure", asyn
   );
 });
 
-Deno.test("discussion on GitHub without a PR context is skipped silently", async () => {
+test("discussion on GitHub without a PR context is skipped silently", async () => {
   // A push build on GitHub Actions: the host can list comments, but there is
   // no pull request to list them from — the discussion just does not run.
   const { fetch, calls } = discussionFetch([], [
@@ -3125,7 +3126,7 @@ Deno.test("discussion on GitHub without a PR context is skipped silently", async
   assertEquals(lines.some((l) => l.includes("no GitHub PR context")), true);
 });
 
-Deno.test("a candidate matching a dismissed and a fixed prior inherits the maintainer's dismissal", async () => {
+test("a candidate matching a dismissed and a fixed prior inherits the maintainer's dismissal", async () => {
   // A maintainer's decision is offered before everything else: a candidate
   // the model matches to both takes the dismissal, so the concern the
   // maintainer settled does not come back through a fixed entry's reopening.
@@ -3181,7 +3182,7 @@ Deno.test("a candidate matching a dismissed and a fixed prior inherits the maint
   );
 });
 
-Deno.test("a candidate matching a fixed and a refuted prior reopens rather than inheriting the refutation", async () => {
+test("a candidate matching a fixed and a refuted prior reopens rather than inheriting the refutation", async () => {
   // Among the identities the model earned, fixed is offered first, so a
   // candidate the model matches to both REOPENS (which reports) instead of
   // inheriting a refutation (which silences).
@@ -3252,7 +3253,7 @@ Deno.test("a candidate matching a fixed and a refuted prior reopens rather than 
   );
 });
 
-Deno.test("an upheld verdict without a reason records no rationale", async () => {
+test("an upheld verdict without a reason records no rationale", async () => {
   const bare = { title: "Global prototype pollution", severity: "high" };
   const bareId = findingFingerprint("security", {
     title: "Global prototype pollution",
@@ -3290,7 +3291,7 @@ Deno.test("an upheld verdict without a reason records no rationale", async () =>
   assertEquals(entry?.file, undefined); // and no invented location
 });
 
-Deno.test("an exhausted budget skips the adjudication; contested findings stay open", async () => {
+test("an exhausted budget skips the adjudication; contested findings stay open", async () => {
   const b = budget((x) => x.maxTokens(1));
   const comments = [
     {
@@ -3332,7 +3333,7 @@ Deno.test("an exhausted budget skips the adjudication; contested findings stay o
   );
 });
 
-Deno.test("a sticky dismissal with no recorded author or rationale still mutes, rendered bare", async () => {
+test("a sticky dismissal with no recorded author or rationale still mutes, rendered bare", async () => {
   const priorBody = `${MARKER}\nold report\n${
     encodeState({
       findings: [{
@@ -3375,7 +3376,7 @@ Deno.test("a sticky dismissal with no recorded author or rationale still mutes, 
   assertEquals(user.includes(`${ID} — ${FINDING.title}`), true);
 });
 
-Deno.test("a missing token env skips the comment with the PR-context warning", async () => {
+test("a missing token env skips the comment with the PR-context warning", async () => {
   // A PR on GitHub Actions, but GITHUB_TOKEN is absent and no .commentToken()
   // was configured: the comment is skipped, never posted unauthenticated.
   const { fetch, calls } = discussionFetch([], [
@@ -3412,7 +3413,7 @@ Deno.test("a missing token env skips the comment with the PR-context warning", a
   assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
 });
 
-Deno.test("a file-less open prior is re-assessed bare and marked fixed when gone", async () => {
+test("a file-less open prior is re-assessed bare and marked fixed when gone", async () => {
   const priorBody = `${MARKER}\nold report\n${
     encodeState({
       findings: [{
@@ -3458,7 +3459,7 @@ Deno.test("a file-less open prior is re-assessed bare and marked fixed when gone
   );
 });
 
-Deno.test("a dismissal of a file-less finding records no location", async () => {
+test("a dismissal of a file-less finding records no location", async () => {
   const bare = { title: "Global prototype pollution", severity: "high" };
   const bareId = findingFingerprint("security", {
     title: "Global prototype pollution",
@@ -3495,7 +3496,7 @@ Deno.test("a dismissal of a file-less finding records no location", async () => 
   assertEquals(entry?.file, undefined); // no invented location
 });
 
-Deno.test("a reason-less dismissal still closes its thread, without an invented reason", async () => {
+test("a reason-less dismissal still closes its thread, without an invented reason", async () => {
   const reply = {
     id: 502,
     body: "This runs in a sandboxed worker, so it cannot reach the host.",
@@ -3553,7 +3554,7 @@ const LEAKY = {
   line: 12,
 };
 
-Deno.test("the overview comment is masked before it reaches the host", async () => {
+test("the overview comment is masked before it reaches the host", async () => {
   const { fetch, calls } = threadFetch([summaryComment()], [], [
     claude({ score: 9, severity: "high", findings: [LEAKY] }),
   ]);
@@ -3584,7 +3585,7 @@ Deno.test("the overview comment is masked before it reaches the host", async () 
   assertEquals(posts.some((p) => p.body.includes("***")), true);
 });
 
-Deno.test("a review thread is masked before it reaches the host", async () => {
+test("a review thread is masked before it reaches the host", async () => {
   // The sharper of the two paths: a thread is where a finding's quoted code
   // lands, so it is the likeliest to carry a credential the model saw.
   const { fetch, calls } = threadFetch([summaryComment()], [], [
@@ -3654,7 +3655,7 @@ function refutedPriorState(
   };
 }
 
-Deno.test("a refutation stands without a verifier while the reviewed input is unchanged", async () => {
+test("a refutation stands without a verifier while the reviewed input is unchanged", async () => {
   // Round n refuted the finding against this exact diff section; round n+1's
   // model raises it again. No verifier is consulted: the evidence cannot have
   // changed, so the refutation is applied in code and the report says so.
@@ -3702,7 +3703,7 @@ Deno.test("a refutation stands without a verifier while the reviewed input is un
   assertEquals(state?.findings, refutedPriorState(ANCHORED_EVIDENCE).findings);
 });
 
-Deno.test("a refuted finding whose file changed is re-verified with the earlier evidence, and a confirmation reports it again", async () => {
+test("a refuted finding whose file changed is re-verified with the earlier evidence, and a confirmation reports it again", async () => {
   const { fetch, calls } = discussionFetch(
     [summaryComment(refutedPriorState(STALE_EVIDENCE))],
     [
@@ -3756,7 +3757,7 @@ Deno.test("a refuted finding whose file changed is re-verified with the earlier 
   assertEquals(decodeState(posted)?.findings[0].status, "open");
 });
 
-Deno.test("a re-refutation after the file changed refreshes the evidence and the fingerprint", async () => {
+test("a re-refutation after the file changed refreshes the evidence and the fingerprint", async () => {
   const { fetch, calls } = discussionFetch(
     [summaryComment(refutedPriorState(STALE_EVIDENCE, "old evidence"))],
     [
@@ -3789,7 +3790,7 @@ Deno.test("a re-refutation after the file changed refreshes the evidence and the
   assertEquals(posted.includes("(earlier round"), false);
 });
 
-Deno.test("a contested finding the model no longer reports is dismissed on an accepted rebuttal, not marked fixed", async () => {
+test("a contested finding the model no longer reports is dismissed on an accepted rebuttal, not marked fixed", async () => {
   // The #626 shape: the maintainer replies in the thread, the next round's
   // model does not re-report the finding. The rebuttal is adjudicated all the
   // same — and accepted, so the record says dismissed (sticky, and said so
@@ -3868,7 +3869,7 @@ Deno.test("a contested finding the model no longer reports is dismissed on an ac
   );
 });
 
-Deno.test("a rebuttal that does not hold on a finding no longer reported leaves it fixed, and says so", async () => {
+test("a rebuttal that does not hold on a finding no longer reported leaves it fixed, and says so", async () => {
   const reply = {
     id: 502,
     body: "This is fine because I say so.",
@@ -3927,7 +3928,7 @@ Deno.test("a rebuttal that does not hold on a finding no longer reported leaves 
   );
 });
 
-Deno.test("a prior open finding the verifier refutes is recorded refuted and its thread closed as such", async () => {
+test("a prior open finding the verifier refutes is recorded refuted and its thread closed as such", async () => {
   const { fetch, calls } = threadFetch(
     [summaryComment({
       findings: [{
@@ -3987,7 +3988,7 @@ Deno.test("a prior open finding the verifier refutes is recorded refuted and its
   );
 });
 
-Deno.test("an accepted rebuttal outranks the same round's refutation of the finding", async () => {
+test("an accepted rebuttal outranks the same round's refutation of the finding", async () => {
   // Both happen in one round: the verifier refutes the re-reported finding
   // AND the maintainer's reply is accepted. Two keys beat one — the record is
   // the dismissal, and the refuted table does not list it a second time.
@@ -4045,7 +4046,7 @@ Deno.test("an accepted rebuttal outranks the same round's refutation of the find
   assertEquals(posted.includes("Dismissed via discussion"), true);
 });
 
-Deno.test("a maintainer's reply in a refuted thread sends the finding back to the verifier", async () => {
+test("a maintainer's reply in a refuted thread sends the finding back to the verifier", async () => {
   // The refutation would stand (identical input), but a trusted human
   // contested it: the finding is re-verified with the earlier evidence, and
   // the verifier's fresh answer — not an adjudication — is the reply.
@@ -4111,7 +4112,7 @@ Deno.test("a maintainer's reply in a refuted thread sends the finding back to th
   assertEquals(stored?.rationale, "the guard is intact");
 });
 
-Deno.test("a refuted finding that cannot be re-verified is reported, and the note says so", async () => {
+test("a refuted finding that cannot be re-verified is reported, and the note says so", async () => {
   // Verify is off this run, and the input changed: the earlier decision is
   // not trusted blind. The finding reports (and gates), the state reopens
   // it, and the note distinguishes "not re-verified" from "stands".
@@ -4142,7 +4143,7 @@ Deno.test("a refuted finding that cannot be re-verified is reported, and the not
   assertEquals(decodeState(summaryPost(calls))?.findings[0].status, "open");
 });
 
-Deno.test("a fixed finding that comes back and is refuted is recorded refuted under its earlier wording", async () => {
+test("a fixed finding that comes back and is refuted is recorded refuted under its earlier wording", async () => {
   const { fetch, calls } = discussionFetch(
     [summaryComment({
       findings: [{
@@ -4177,7 +4178,7 @@ Deno.test("a fixed finding that comes back and is refuted is recorded refuted un
   assertEquals(state?.findings[0].evidence, ANCHORED_EVIDENCE);
 });
 
-Deno.test("a contested finding refuted this round whose rebuttal does not hold is recorded refuted, and the note says so", async () => {
+test("a contested finding refuted this round whose rebuttal does not hold is recorded refuted, and the note says so", async () => {
   const reply = {
     id: 502,
     body: "Not an issue, trust me.",
@@ -4237,7 +4238,7 @@ Deno.test("a contested finding refuted this round whose rebuttal does not hold i
   );
 });
 
-Deno.test("a contested finding no longer reported that the adjudicator does not answer stays on the progress record", async () => {
+test("a contested finding no longer reported that the adjudicator does not answer stays on the progress record", async () => {
   const reply = {
     id: 502,
     body: "The pattern has no g flag.",
@@ -4289,7 +4290,7 @@ function postedBody(calls: Call[]): string {
   return JSON.parse(write?.body ?? "{}").body ?? "";
 }
 
-Deno.test("a maintainer's accept command decides a finding without adjudication", async () => {
+test("a maintainer's accept command decides a finding without adjudication", async () => {
   const comments = [{
     id: 2,
     body: `@zuke-build accept ${ID}: by design — eval runs in a sandbox`,
@@ -4338,7 +4339,7 @@ Deno.test("a maintainer's accept command decides a finding without adjudication"
   assertStringIncludes(body, "`@zuke-build accept <id> <reason>`");
 });
 
-Deno.test("an accept from an untrusted author, or naming an unknown id, is ignored", async () => {
+test("an accept from an untrusted author, or naming an unknown id, is ignored", async () => {
   const comments = [
     {
       id: 2,
@@ -4373,7 +4374,7 @@ Deno.test("an accept from an untrusted author, or naming an unknown id, is ignor
   assertEquals(postedState(calls)?.findings[0].status, "open");
 });
 
-Deno.test("an accepted finding stays accepted next round, shown as such", async () => {
+test("an accepted finding stays accepted next round, shown as such", async () => {
   const { fetch, calls } = discussionFetch(
     priorComment(stateWith("accepted", { rationale: "by design" })),
     [claude({ score: 9, severity: "high", findings: [FINDING] })],
@@ -4395,7 +4396,7 @@ Deno.test("an accepted finding stays accepted next round, shown as such", async 
   assertEquals(postedState(calls)?.findings[0].status, "accepted");
 });
 
-Deno.test("an accept command for a contested finding the model dropped still decides it", async () => {
+test("an accept command for a contested finding the model dropped still decides it", async () => {
   // The maintainer both argued and accepted; the model did not re-report. The
   // acceptance wins without an adjudication call, and the finding is neither
   // "fixed" nor left for the adjudicator.
@@ -4436,7 +4437,7 @@ Deno.test("an accept command for a contested finding the model dropped still dec
   assertEquals(postedState(calls)?.findings[0].rationale, "intentional");
 });
 
-Deno.test("the Commands panel is absent unless commands are on", async () => {
+test("the Commands panel is absent unless commands are on", async () => {
   const { fetch, calls } = discussionFetch([], [
     claude({ score: 0, severity: "none", findings: [] }),
   ]);
@@ -4456,7 +4457,7 @@ Deno.test("the Commands panel is absent unless commands are on", async () => {
   );
 });
 
-Deno.test("an accept in a finding's thread needs no id; the thread is answered with ✅ and resolved", async () => {
+test("an accept in a finding's thread needs no id; the thread is answered with ✅ and resolved", async () => {
   const reply = {
     id: 502,
     body: "@zuke-build accept — intentional, the worker is sandboxed",
@@ -4512,7 +4513,7 @@ Deno.test("an accept in a finding's thread needs no id; the thread is answered w
   assertEquals(mutation !== undefined, true);
 });
 
-Deno.test("a new thread names the accept command when commands are on", async () => {
+test("a new thread names the accept command when commands are on", async () => {
   const { fetch, calls } = threadFetch(
     [summaryComment()],
     [],
@@ -4540,7 +4541,7 @@ Deno.test("a new thread names the accept command when commands are on", async ()
   );
 });
 
-Deno.test("a shared dismissal of a finding this reviewer holds open is answered once, never adjudicated", async () => {
+test("a shared dismissal of a finding this reviewer holds open is answered once, never adjudicated", async () => {
   // Two reviewers of one kind under different names share fingerprints. The
   // other one's thread settled the finding; this one still holds it open and
   // a maintainer quoted its id. The sticky drop decides it — the rebuttal must
@@ -4591,7 +4592,7 @@ Deno.test("a shared dismissal of a finding this reviewer holds open is answered 
   assertEquals(state?.findings[0].status, "dismissed");
 });
 
-Deno.test("an accept on a finding the verifier refuted is recorded and answered", async () => {
+test("an accept on a finding the verifier refuted is recorded and answered", async () => {
   // The model talked itself out of the finding in an earlier round, so it is
   // not re-reported; the maintainer accepts it anyway. The decision is theirs
   // to make and is acknowledged, not dropped on the floor.
@@ -4631,7 +4632,7 @@ Deno.test("an accept on a finding the verifier refuted is recorded and answered"
   assertEquals(state?.findings[0].rationale, "by design regardless");
 });
 
-Deno.test("a comment-started run acknowledges the command with 👍 before the review", async () => {
+test("a comment-started run acknowledges the command with 👍 before the review", async () => {
   const { fetch: inner } = discussionFetch([], [
     claude({ score: 0, severity: "none", findings: [] }),
   ]);

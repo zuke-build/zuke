@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { ConsoleTasks, type Sink } from "../src/console.ts";
 import { defaultTheme } from "../src/theme.ts";
 import { SGR, stripAnsi, visibleWidth } from "@zuke/core/render";
@@ -27,7 +28,7 @@ function capture(
   return { out, err };
 }
 
-Deno.test("info/success/debug/trace print an icon and message to stdout", () => {
+test("info/success/debug/trace print an icon and message to stdout", () => {
   const { out } = capture();
   ConsoleTasks.info("hello");
   ConsoleTasks.log("aliased");
@@ -38,7 +39,7 @@ Deno.test("info/success/debug/trace print an icon and message to stdout", () => 
   ConsoleTasks.reset();
 });
 
-Deno.test("warn and error go to stderr; error appends the cause", () => {
+test("warn and error go to stderr; error appends the cause", () => {
   const { out, err } = capture();
   ConsoleTasks.warn("careful");
   ConsoleTasks.error("boom", { error: new Error("root cause") });
@@ -47,14 +48,14 @@ Deno.test("warn and error go to stderr; error appends the cause", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("error stringifies a non-Error cause", () => {
+test("error stringifies a non-Error cause", () => {
   const { err } = capture();
   ConsoleTasks.error("nope", { error: "just a string" });
   assertEquals(err, ["✖ nope", "  just a string"]);
   ConsoleTasks.reset();
 });
 
-Deno.test("the level gates lower-severity messages", () => {
+test("the level gates lower-severity messages", () => {
   const { out, err } = capture({ level: "warn" });
   ConsoleTasks.info("hidden");
   ConsoleTasks.debug("hidden");
@@ -65,7 +66,7 @@ Deno.test("the level gates lower-severity messages", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("markup and theme tokens colour the message when colour is on", () => {
+test("markup and theme tokens colour the message when colour is on", () => {
   const { out } = capture({ color: true });
   ConsoleTasks.info("a [bold]b[/] [success]c[/]");
   assertStringIncludes(out[0], SGR.bold);
@@ -73,7 +74,7 @@ Deno.test("markup and theme tokens colour the message when colour is on", () => 
   ConsoleTasks.reset();
 });
 
-Deno.test("GitHub Actions mode emits workflow commands for warn/error", () => {
+test("GitHub Actions mode emits workflow commands for warn/error", () => {
   const { out, err } = capture({ github: true });
   ConsoleTasks.info("plain");
   ConsoleTasks.warn("heads up");
@@ -83,7 +84,7 @@ Deno.test("GitHub Actions mode emits workflow commands for warn/error", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("a workflow command's body cannot be forged from its own arguments", () => {
+test("a workflow command's body cannot be forged from its own arguments", () => {
   // The runner ends a command at the end of its line, so a newline in the body
   // lets what follows open a command of its own. `error`'s detail is
   // `messageOf(options.error)`, which for a failed command carries that
@@ -101,14 +102,14 @@ Deno.test("a workflow command's body cannot be forged from its own arguments", (
   ConsoleTasks.reset();
 });
 
-Deno.test("a group name cannot forge a workflow command", () => {
+test("a group name cannot forge a workflow command", () => {
   const { out } = capture({ github: true });
   ConsoleTasks.group("deploy\n::stop-commands::TOKEN");
   assertEquals(out, ["::group::deploy%0A::stop-commands::TOKEN"]);
   ConsoleTasks.reset();
 });
 
-Deno.test("line and rule draw across the configured width", () => {
+test("line and rule draw across the configured width", () => {
   const { out } = capture();
   ConsoleTasks.line();
   ConsoleTasks.rule();
@@ -119,28 +120,28 @@ Deno.test("line and rule draw across the configured width", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("a rule with too little room falls back to a plain line", () => {
+test("a rule with too little room falls back to a plain line", () => {
   const { out } = capture({ width: 6 });
   ConsoleTasks.rule("wide-title");
   assertEquals(out[0], "═".repeat(6));
   ConsoleTasks.reset();
 });
 
-Deno.test("box frames markup-rendered content", () => {
+test("box frames markup-rendered content", () => {
   const { out } = capture();
   ConsoleTasks.box("[red]hi[/]", { padding: 1 });
   assertEquals(out, ["┌────┐", "│ hi │", "└────┘"]);
   ConsoleTasks.reset();
 });
 
-Deno.test("box accepts an array of lines", () => {
+test("box accepts an array of lines", () => {
   const { out } = capture();
   ConsoleTasks.box(["a", "bb"], { padding: 0 });
   assertEquals(out, ["┌──┐", "│a │", "│bb│", "└──┘"]);
   ConsoleTasks.reset();
 });
 
-Deno.test("table renders headers and cells with markup stripped", () => {
+test("table renders headers and cells with markup stripped", () => {
   const { out } = capture();
   ConsoleTasks.table(
     [{ header: "Target" }, { header: "Time", align: "right" }],
@@ -151,7 +152,7 @@ Deno.test("table renders headers and cells with markup stripped", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("header and summary reuse Zuke's own build banners", () => {
+test("header and summary reuse Zuke's own build banners", () => {
   const { out } = capture();
   ConsoleTasks.header("build");
   assertEquals(out, ["═".repeat(20), "build", "═".repeat(20)]);
@@ -166,7 +167,7 @@ Deno.test("header and summary reuse Zuke's own build banners", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("group and endGroup adapt to GitHub Actions", () => {
+test("group and endGroup adapt to GitHub Actions", () => {
   const gh = capture({ github: true });
   ConsoleTasks.group("Build");
   ConsoleTasks.endGroup();
@@ -180,7 +181,7 @@ Deno.test("group and endGroup adapt to GitHub Actions", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("silent level suppresses logs and structural output alike", () => {
+test("silent level suppresses logs and structural output alike", () => {
   const { out, err } = capture({ level: "silent" });
   ConsoleTasks.error("hush");
   ConsoleTasks.line();
@@ -196,7 +197,7 @@ Deno.test("silent level suppresses logs and structural output alike", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("a custom theme recolours the palette", () => {
+test("a custom theme recolours the palette", () => {
   const { out } = capture({
     color: true,
     theme: { ...defaultTheme, info: ["magenta"] },
@@ -206,7 +207,7 @@ Deno.test("a custom theme recolours the palette", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("without overrides, the style is auto-detected", () => {
+test("without overrides, the style is auto-detected", () => {
   ConsoleTasks.reset(); // clears every override → auto colour/width/github
   const out: string[] = [];
   ConsoleTasks.configure({
@@ -221,7 +222,7 @@ Deno.test("without overrides, the style is auto-detected", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("the default sink writes to the console", () => {
+test("the default sink writes to the console", () => {
   ConsoleTasks.reset(); // restores the default stdout/stderr sink
   const logs: string[] = [];
   const errs: string[] = [];
@@ -247,14 +248,14 @@ Deno.test("the default sink writes to the console", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("escape lets untrusted text render literally", () => {
+test("escape lets untrusted text render literally", () => {
   const { out } = capture();
   ConsoleTasks.info(`opening ${ConsoleTasks.escape("[red] file")}`);
   assertEquals(out, ["ℹ opening [red] file"]);
   ConsoleTasks.reset();
 });
 
-Deno.test("reset restores the default level", () => {
+test("reset restores the default level", () => {
   capture({ level: "error" });
   assertEquals(ConsoleTasks.level(), "error");
   ConsoleTasks.reset();

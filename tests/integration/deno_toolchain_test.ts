@@ -16,6 +16,7 @@
  * this test read a not-found module on Windows.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -77,7 +78,7 @@ class RefusalBuild extends Build {
     });
 }
 
-Deno.test("the module-graph reader gives a build data it can gate on", async () => {
+test("the module-graph reader gives a build data it can gate on", async () => {
   const result = await runCli(GraphBuild, [
     "reportGraph",
     `--entry=${FIXTURE}`,
@@ -88,13 +89,13 @@ Deno.test("the module-graph reader gives a build data it can gate on", async () 
   assertStringIncludes(result.out, "media=TypeScript");
 });
 
-Deno.test("the cache reader runs without a module operand", async () => {
+test("the cache reader runs without a module operand", async () => {
   const result = await runCli(GraphBuild, ["caches", `--entry=${FIXTURE}`]);
   assertEquals(result.code, 0);
   assertStringIncludes(result.out, "hasDenoDir=true");
 });
 
-Deno.test("a settings refusal fails the target, and says how to fix it", async () => {
+test("a settings refusal fails the target, and says how to fix it", async () => {
   const minify = await runCli(RefusalBuild, ["minifyWithoutBundle"]);
   assertEquals(minify.code, 1);
   assertStringIncludes(minify.err, ".bundle()");

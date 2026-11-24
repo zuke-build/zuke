@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { parseToml } from "../src/toml.ts";
 
-Deno.test("parseToml reads tables, dotted and quoted keys, and comments", () => {
+test("parseToml reads tables, dotted and quoted keys, and comments", () => {
   const doc = parseToml([
     "# a comment",
     "top = 1 # trailing comment",
@@ -29,7 +30,7 @@ Deno.test("parseToml reads tables, dotted and quoted keys, and comments", () => 
   });
 });
 
-Deno.test("parseToml reads every scalar form it supports", () => {
+test("parseToml reads every scalar form it supports", () => {
   const doc = parseToml([
     "a = 42",
     "b = -1_000",
@@ -52,7 +53,7 @@ Deno.test("parseToml reads every scalar form it supports", () => {
   });
 });
 
-Deno.test("parseToml reads multi-line strings", () => {
+test("parseToml reads multi-line strings", () => {
   const doc = parseToml([
     'a = """',
     "one",
@@ -71,7 +72,7 @@ Deno.test("parseToml reads multi-line strings", () => {
   assertEquals(doc.e, "line");
 });
 
-Deno.test("parseToml reads multi-line arrays and inline tables", () => {
+test("parseToml reads multi-line arrays and inline tables", () => {
   const doc = parseToml([
     "a = [",
     "  1, # one",
@@ -90,7 +91,7 @@ Deno.test("parseToml reads multi-line arrays and inline tables", () => {
   });
 });
 
-Deno.test("parseToml validates and discards arrays of tables", () => {
+test("parseToml validates and discards arrays of tables", () => {
   const doc = parseToml([
     "[[tool.mypy.overrides]]",
     'module = "a"',
@@ -103,7 +104,7 @@ Deno.test("parseToml validates and discards arrays of tables", () => {
   assertThrows(() => parseToml("[[a]]\nb = \n"), SyntaxError, "line 2:");
 });
 
-Deno.test("parseToml reads a CRLF document", () => {
+test("parseToml reads a CRLF document", () => {
   // A pyproject.toml saved on Windows: a stray \r must not read as a
   // control character in a value, or as junk after a statement.
   const doc = parseToml(
@@ -114,7 +115,7 @@ Deno.test("parseToml reads a CRLF document", () => {
   });
 });
 
-Deno.test("parseToml stores a __proto__ key as data", () => {
+test("parseToml stores a __proto__ key as data", () => {
   const doc = parseToml('__proto__ = "x"\n[a."__proto__"]\nb = 1\n');
   assertEquals(Object.keys(doc), ["__proto__", "a"]);
   assertEquals(Object.getPrototypeOf(doc), Object.prototype);
@@ -122,7 +123,7 @@ Deno.test("parseToml stores a __proto__ key as data", () => {
   assertEquals("b" in {}, false); // Object.prototype untouched
 });
 
-Deno.test("parseToml names the line of what it cannot read", () => {
+test("parseToml names the line of what it cannot read", () => {
   const cases: [string, string][] = [
     ["a = 1\na = 2", 'line 2: duplicate key "a"'],
     ["[a]\n[a]", "line 2: table [a] is defined twice"],

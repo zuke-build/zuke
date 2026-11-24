@@ -9,6 +9,7 @@
  * file runs in its own process.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
@@ -55,7 +56,7 @@ function fakeService(): {
   return { fetch: fetchFn, blobs };
 }
 
-Deno.test("the GitHub Actions cache store restores outputs on a fresh checkout", async () => {
+test("the GitHub Actions cache store restores outputs on a fresh checkout", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const service = fakeService();

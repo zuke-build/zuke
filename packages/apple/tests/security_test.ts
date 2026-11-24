@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -35,7 +36,7 @@ import { rejection, writeFakeSecurity } from "./_fake_tool.ts";
 const PW = "secret-keychain-password";
 const HASH = "0123456789ABCDEF0123456789ABCDEF01234567";
 
-Deno.test("security create-keychain: password then keychain", () => {
+test("security create-keychain: password then keychain", () => {
   assertEquals(
     new SecurityCreateKeychainSettings().password(PW).keychain("ci.keychain-db")
       .argv(),
@@ -52,7 +53,7 @@ Deno.test("security create-keychain: password then keychain", () => {
   );
 });
 
-Deno.test("security delete-keychain: keychains, required", () => {
+test("security delete-keychain: keychains, required", () => {
   assertEquals(
     new SecurityDeleteKeychainSettings().keychain("a", "b").argv(),
     ["security", "delete-keychain", "a", "b"],
@@ -64,7 +65,7 @@ Deno.test("security delete-keychain: keychains, required", () => {
   );
 });
 
-Deno.test("security unlock-keychain: password and keychain are optional", () => {
+test("security unlock-keychain: password and keychain are optional", () => {
   assertEquals(
     new SecurityUnlockKeychainSettings().password(PW).keychain("k").argv(),
     ["security", "unlock-keychain", "-p", PW, "k"],
@@ -75,7 +76,7 @@ Deno.test("security unlock-keychain: password and keychain are optional", () => 
   ]);
 });
 
-Deno.test("security set-keychain-settings: no flags means never lock", () => {
+test("security set-keychain-settings: no flags means never lock", () => {
   assertEquals(new SecuritySetKeychainSettings().keychain("k").argv(), [
     "security",
     "set-keychain-settings",
@@ -88,7 +89,7 @@ Deno.test("security set-keychain-settings: no flags means never lock", () => {
   );
 });
 
-Deno.test("security import: file, keychain, passphrase, apps, format", () => {
+test("security import: file, keychain, passphrase, apps, format", () => {
   assertEquals(
     new SecurityImportSettings().file("cert.p12").keychain("k")
       .passphrase(PW).application("/usr/bin/codesign", "/usr/bin/security")
@@ -120,7 +121,7 @@ Deno.test("security import: file, keychain, passphrase, apps, format", () => {
   assertThrows(() => new SecurityImportSettings().argv(), Error, "no file");
 });
 
-Deno.test("security set-key-partition-list: the CI incantation", () => {
+test("security set-key-partition-list: the CI incantation", () => {
   assertEquals(
     new SecuritySetKeyPartitionListSettings().partitionList("apple-tool:")
       .partitionList("apple:").privateKeys().password(PW).keychain("k")
@@ -142,7 +143,7 @@ Deno.test("security set-key-partition-list: the CI incantation", () => {
   ]);
 });
 
-Deno.test("security list-keychains: read, set, and set to empty", () => {
+test("security list-keychains: read, set, and set to empty", () => {
   assertEquals(new SecurityListKeychainsSettings().domain("user").argv(), [
     "security",
     "list-keychains",
@@ -161,7 +162,7 @@ Deno.test("security list-keychains: read, set, and set to empty", () => {
   ]);
 });
 
-Deno.test("security find-identity: valid, policy, search, keychains", () => {
+test("security find-identity: valid, policy, search, keychains", () => {
   assertEquals(
     new SecurityFindIdentitySettings().valid().policy("codesigning")
       .search("Developer ID").keychain("k").argv(),
@@ -178,7 +179,7 @@ Deno.test("security find-identity: valid, policy, search, keychains", () => {
   );
 });
 
-Deno.test("parseKeychainList reads the quoted paths, in order", () => {
+test("parseKeychainList reads the quoted paths, in order", () => {
   assertEquals(
     parseKeychainList(
       '    "/Users/ci/Library/Keychains/login.keychain-db"\n' +
@@ -193,7 +194,7 @@ Deno.test("parseKeychainList reads the quoted paths, in order", () => {
   assertEquals(parseKeychainList(""), []);
 });
 
-Deno.test("parseIdentities reads hash and name, once each", () => {
+test("parseIdentities reads hash and name, once each", () => {
   const out = [
     "Policy: Code Signing",
     "  Matching identities",
@@ -214,7 +215,7 @@ Deno.test("parseIdentities reads hash and name, once each", () => {
   assertEquals(parseIdentities("     0 valid identities found"), []);
 });
 
-Deno.test("every password setter registers the value as a secret", () => {
+test("every password setter registers the value as a secret", () => {
   // markSecret is a no-op outside a run; a subclass sees what is registered.
   const seen: string[] = [];
   class Spy extends SecurityUnlockKeychainSettings {
@@ -258,7 +259,7 @@ async function withFakeSecurity(
   }
 }
 
-Deno.test("a failed command never shows the password, in argv or stderr", async () => {
+test("a failed command never shows the password, in argv or stderr", async () => {
   await withFakeSecurity({
     "unlock-keychain": {
       stderr: `security: SecKeychainUnlock ${PW}: bad password`,
@@ -278,7 +279,7 @@ Deno.test("a failed command never shows the password, in argv or stderr", async 
   });
 });
 
-Deno.test("listKeychains and findIdentity return parsed results", async () => {
+test("listKeychains and findIdentity return parsed results", async () => {
   await withFakeSecurity({
     "list-keychains": { stdout: '    "/k/login.keychain-db"' },
     "find-identity": { stdout: `  1) ${HASH} "Dev"\n     1 valid` },
@@ -294,7 +295,7 @@ Deno.test("listKeychains and findIdentity return parsed results", async () => {
   });
 });
 
-Deno.test("SecurityTasks reach execution", async () => {
+test("SecurityTasks reach execution", async () => {
   const runs: Array<() => Promise<unknown>> = [
     () => SecurityTasks.createKeychain((s) => missingTool(s).keychain("k")),
     () => SecurityTasks.deleteKeychain((s) => missingTool(s).keychain("k")),
@@ -308,7 +309,7 @@ Deno.test("SecurityTasks reach execution", async () => {
   for (const run of runs) await assertRejects(run, ToolNotFoundError);
 });
 
-Deno.test("security wrappers resolve their binary from PATH", async () => {
+test("security wrappers resolve their binary from PATH", async () => {
   const makers: Array<() => ToolSettings> = [
     () => new SecurityCreateKeychainSettings().keychain("k"),
     () => new SecurityDeleteKeychainSettings().keychain("k"),

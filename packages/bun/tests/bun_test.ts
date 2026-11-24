@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -21,11 +22,11 @@ import {
   BunXSettings,
 } from "../src/bun.ts";
 
-Deno.test("the default binary is bun", () => {
+test("the default binary is bun", () => {
   assertEquals(new BunInstallSettings().argv()[0], "bun");
 });
 
-Deno.test("install: bare, --production, --frozen-lockfile", () => {
+test("install: bare, --production, --frozen-lockfile", () => {
   assertEquals(new BunInstallSettings().argv().slice(1), ["install"]);
   assertEquals(
     new BunInstallSettings().production().frozenLockfile().argv().slice(1),
@@ -33,7 +34,7 @@ Deno.test("install: bare, --production, --frozen-lockfile", () => {
   );
 });
 
-Deno.test("add: packages required; --dev, --optional, --exact, --global", () => {
+test("add: packages required; --dev, --optional, --exact, --global", () => {
   assertThrows(
     () => new BunAddSettings().argv(),
     Error,
@@ -52,7 +53,7 @@ Deno.test("add: packages required; --dev, --optional, --exact, --global", () => 
   );
 });
 
-Deno.test("remove: names required", () => {
+test("remove: names required", () => {
   assertThrows(
     () => new BunRemoveSettings().argv(),
     Error,
@@ -64,7 +65,7 @@ Deno.test("remove: names required", () => {
   );
 });
 
-Deno.test("run: script required; forwarded args", () => {
+test("run: script required; forwarded args", () => {
   assertThrows(
     () => new BunRunSettings().argv(),
     Error,
@@ -78,7 +79,7 @@ Deno.test("run: script required; forwarded args", () => {
   );
 });
 
-Deno.test("x: command required; forwarded args", () => {
+test("x: command required; forwarded args", () => {
   assertThrows(
     () => new BunXSettings().argv(),
     Error,
@@ -90,7 +91,7 @@ Deno.test("x: command required; forwarded args", () => {
   );
 });
 
-Deno.test("test: bare, --coverage, --bail, and paths", () => {
+test("test: bare, --coverage, --bail, and paths", () => {
   assertEquals(new BunTestSettings().argv().slice(1), ["test"]);
   assertEquals(
     new BunTestSettings().coverage().bail().paths("src/**").argv().slice(1),
@@ -98,7 +99,7 @@ Deno.test("test: bare, --coverage, --bail, and paths", () => {
   );
 });
 
-Deno.test("every BunTasks function reaches execution", async () => {
+test("every BunTasks function reaches execution", async () => {
   await assertRejects(() => BunTasks.install(missingTool), ToolNotFoundError);
   await assertRejects(
     () => BunTasks.add((s) => missingTool(s).packages("x")),
@@ -119,7 +120,7 @@ Deno.test("every BunTasks function reaches execution", async () => {
   await assertRejects(() => BunTasks.test(missingTool), ToolNotFoundError);
 });
 
-Deno.test("bun: conforms to the wrapper contract", async () => {
+test("bun: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new BunInstallSettings(), "bun", {
     resolution: "path",
   });

@@ -13,6 +13,7 @@
  * target / integration.yml on the OS matrix.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -46,7 +47,7 @@ function toolJson(reply: unknown): unknown {
   return JSON.parse(text);
 }
 
-Deno.test("two MCP sessions: query a suspended run over HTTP and signal it, audited", async () => {
+test("two MCP sessions: query a suspended run over HTTP and signal it, audited", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-mcp-e2e-" });
   let server: Deno.ChildProcess | undefined;
   try {

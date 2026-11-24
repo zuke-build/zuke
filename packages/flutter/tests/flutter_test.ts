@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -32,7 +33,7 @@ import {
   FlutterVersionSettings,
 } from "../mod.ts";
 
-Deno.test("flutter resolves its binary from PATH", async () => {
+test("flutter resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new FlutterAnalyzeSettings(),
     "flutter",
@@ -42,7 +43,7 @@ Deno.test("flutter resolves its binary from PATH", async () => {
   );
 });
 
-Deno.test("analyze: flags before path operands, dashed paths made safe", () => {
+test("analyze: flags before path operands, dashed paths made safe", () => {
   assertEquals(new FlutterAnalyzeSettings().argv(), ["flutter", "analyze"]);
   assertEquals(
     new FlutterAnalyzeSettings().path("lib").path("-x").noFatalInfos()
@@ -60,7 +61,7 @@ Deno.test("analyze: flags before path operands, dashed paths made safe", () => {
   );
 });
 
-Deno.test("test: every flag renders, compile flags, then paths", () => {
+test("test: every flag renders, compile flags, then paths", () => {
   assertEquals(
     new FlutterTestSettings().path("test/a_test.dart").path("--update-goldens")
       .coverage().coveragePath("cov/lcov.info").mergeCoverage()
@@ -113,7 +114,7 @@ Deno.test("test: every flag renders, compile flags, then paths", () => {
   );
 });
 
-Deno.test("test: concurrency and shard numbers are validated", () => {
+test("test: concurrency and shard numbers are validated", () => {
   assertThrows(
     () => new FlutterTestSettings().concurrency(0),
     Error,
@@ -141,7 +142,7 @@ Deno.test("test: concurrency and shard numbers are validated", () => {
   );
 });
 
-Deno.test("build: target, mode, entry point, compile and target flags", () => {
+test("build: target, mode, entry point, compile and target flags", () => {
   assertEquals(new FlutterBuildSettings("web").argv(), [
     "flutter",
     "build",
@@ -196,7 +197,7 @@ Deno.test("build: target, mode, entry point, compile and target flags", () => {
   );
 });
 
-Deno.test("pub: get, upgrade, outdated, deps", () => {
+test("pub: get, upgrade, outdated, deps", () => {
   assertEquals(new FlutterPubGetSettings().argv(), ["flutter", "pub", "get"]);
   assertEquals(
     new FlutterPubGetSettings().offline().enforceLockfile().argv(),
@@ -230,7 +231,7 @@ Deno.test("pub: get, upgrade, outdated, deps", () => {
   ]);
 });
 
-Deno.test("pub: add and remove need a package and refuse dashed names", () => {
+test("pub: add and remove need a package and refuse dashed names", () => {
   assertEquals(
     new FlutterPubPackagesSettings("add").package("http:^1.2.0")
       .package("dev:mocktail").argv(),
@@ -253,7 +254,7 @@ Deno.test("pub: add and remove need a package and refuse dashed names", () => {
   );
 });
 
-Deno.test("create: flags, platforms joined, directory last and required", () => {
+test("create: flags, platforms joined, directory last and required", () => {
   assertEquals(
     new FlutterCreateSettings().org("com.example").projectName("demo")
       .description("A demo").template("app").empty().platform("android")
@@ -287,7 +288,7 @@ Deno.test("create: flags, platforms joined, directory last and required", () => 
   );
 });
 
-Deno.test("clean and gen-l10n run flagless", () => {
+test("clean and gen-l10n run flagless", () => {
   assertEquals(new FlutterCommandSettings("clean").argv(), [
     "flutter",
     "clean",
@@ -298,7 +299,7 @@ Deno.test("clean and gen-l10n run flagless", () => {
   ]);
 });
 
-Deno.test("drive, install and devices", () => {
+test("drive, install and devices", () => {
   assertEquals(new FlutterDriveSettings().argv(), ["flutter", "drive"]);
   assertEquals(
     new FlutterDriveSettings().mode("profile")
@@ -345,7 +346,7 @@ Deno.test("drive, install and devices", () => {
   ]);
 });
 
-Deno.test("doctor, precache, config and version", () => {
+test("doctor, precache, config and version", () => {
   assertEquals(new FlutterDoctorSettings().argv(), ["flutter", "doctor"]);
   assertEquals(new FlutterDoctorSettings().verbose().argv(), [
     "flutter",
@@ -380,7 +381,7 @@ Deno.test("doctor, precache, config and version", () => {
   ]);
 });
 
-Deno.test("precache and config refuse names that are not flag names", () => {
+test("precache and config refuse names that are not flag names", () => {
   assertThrows(
     () => new FlutterPrecacheSettings().platform(""),
     Error,
@@ -398,7 +399,7 @@ Deno.test("precache and config refuse names that are not flag names", () => {
   );
 });
 
-Deno.test("FlutterTasks: every task reaches execution with its subcommand", async () => {
+test("FlutterTasks: every task reaches execution with its subcommand", async () => {
   const seen: string[][] = [];
   // Records the argv each task built, then points it at a binary that cannot exist.
   const probe = <S extends { argv(): string[] }>(s: S): S => {

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("shellcheck: findings are counted in the tty and gcc layouts", () => {
+test("shellcheck: findings are counted in the tty and gcc layouts", () => {
   const tty = [
     "",
     "In bad.sh line 2:",
@@ -36,7 +37,7 @@ Deno.test("shellcheck: findings are counted in the tty and gcc layouts", () => {
   assertEquals(parseShellcheckSummary(out(1, gcc)), { Findings: 3 });
 });
 
-Deno.test("shellcheck: a silent clean run is zero, a silent failure reports nothing", () => {
+test("shellcheck: a silent clean run is zero, a silent failure reports nothing", () => {
   assertEquals(parseShellcheckSummary(out(0)), { Findings: 0 });
   assertEquals(
     parseShellcheckSummary(
@@ -55,7 +56,7 @@ class Probe extends ShellcheckSettings {
   }
 }
 
-Deno.test("shellcheck: the hook reports onto the running target", async () => {
+test("shellcheck: the hook reports onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0));

@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -17,7 +18,7 @@ import {
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("withStateDir surfaces the body error even when cleanup fails", async () => {
+test("withStateDir surfaces the body error even when cleanup fails", async () => {
   const marker = new Error("body failure");
   let caught: unknown;
   try {
@@ -33,7 +34,7 @@ Deno.test("withStateDir surfaces the body error even when cleanup fails", async 
   assertEquals(caught, marker);
 });
 
-Deno.test("withStateDir resolves when cleanup fails after a successful body", async () => {
+test("withStateDir resolves when cleanup fails after a successful body", async () => {
   // The body succeeds but removes the dir itself, so the finally's own
   // Deno.remove throws NotFound. On the old (unwrapped) code that rejected
   // withStateDir even though nothing meaningful failed; the best-effort catch
@@ -47,7 +48,7 @@ Deno.test("withStateDir resolves when cleanup fails after a successful body", as
   assertEquals(Deno.env.get("ZUKE_STATE_DIR"), prev);
 });
 
-Deno.test("runCli surfaces an unhandled rejection during the run as a failure", async () => {
+test("runCli surfaces an unhandled rejection during the run as a failure", async () => {
   class Leaky extends Build {
     // A body that fires a detached promise it never awaits — a genuine
     // unhandled rejection escaping the run. The harness guard must surface it

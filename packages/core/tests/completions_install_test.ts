@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
@@ -29,7 +30,7 @@ async function withHome(fn: (home: string) => Promise<void>): Promise<void> {
   });
 }
 
-Deno.test("install bash writes the script and sources it from .bashrc", async () => {
+test("install bash writes the script and sources it from .bashrc", async () => {
   await withHome(async (home) => {
     const result = await installCompletions("bash", targets, params, {
       home,
@@ -51,7 +52,7 @@ Deno.test("install bash writes the script and sources it from .bashrc", async ()
   });
 });
 
-Deno.test("install is idempotent — the rc is sourced once", async () => {
+test("install is idempotent — the rc is sourced once", async () => {
   await withHome(async (home) => {
     const first = await installCompletions("zsh", targets, params, {
       home,
@@ -71,7 +72,7 @@ Deno.test("install is idempotent — the rc is sourced once", async () => {
   });
 });
 
-Deno.test("install preserves existing rc content and appends", async () => {
+test("install preserves existing rc content and appends", async () => {
   await withHome(async (home) => {
     await Deno.writeTextFile(`${home}/.bashrc`, "export FOO=1");
     const result = await installCompletions("bash", targets, params, {
@@ -84,7 +85,7 @@ Deno.test("install preserves existing rc content and appends", async () => {
   });
 });
 
-Deno.test("install fish drops a file in the completions dir, no rc edit", async () => {
+test("install fish drops a file in the completions dir, no rc edit", async () => {
   await withHome(async (home) => {
     const result = await installCompletions("fish", targets, params, {
       home,
@@ -101,7 +102,7 @@ Deno.test("install fish drops a file in the completions dir, no rc edit", async 
   });
 });
 
-Deno.test("install honours XDG_CONFIG_HOME for the script location", async () => {
+test("install honours XDG_CONFIG_HOME for the script location", async () => {
   await withHome(async (home) => {
     const xdg = `${home}/xdg`;
     const result = await installCompletions("bash", targets, params, {
@@ -112,7 +113,7 @@ Deno.test("install honours XDG_CONFIG_HOME for the script location", async () =>
   });
 });
 
-Deno.test("install single-quotes the sourced path so it can't be interpreted", async () => {
+test("install single-quotes the sourced path so it can't be interpreted", async () => {
   await withHome(async (home) => {
     // A config dir carrying shell metacharacters must not break out of the rc
     // line: the whole path is single-quoted and any embedded `'` is escaped.

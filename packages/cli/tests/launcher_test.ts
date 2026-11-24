@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -38,7 +39,7 @@ const FAKE_PIN: DenoPin = {
   },
 };
 
-Deno.test("the pin carries a well-formed checksum for every target", () => {
+test("the pin carries a well-formed checksum for every target", () => {
   assertEquals(denoReleaseTag(DENO_PIN), `v${DENO_PIN.version}`);
   assertEquals(/^\d+\.\d+\.\d+$/.test(DENO_PIN.version), true);
   const targets = Object.keys(DENO_PIN.checksums).sort();
@@ -49,7 +50,7 @@ Deno.test("the pin carries a well-formed checksum for every target", () => {
   }
 });
 
-Deno.test("both variants carry a shebang, the license header, and run zuke.ts", () => {
+test("both variants carry a shebang, the license header, and run zuke.ts", () => {
   for (const options of [BOOTSTRAP, PLAIN]) {
     const bash = launcherBash(options);
     assertEquals(bash.startsWith("#!/usr/bin/env bash\n# Copyright"), true);
@@ -62,7 +63,7 @@ Deno.test("both variants carry a shebang, the license header, and run zuke.ts", 
   }
 });
 
-Deno.test("the plain launchers fail closed when Deno is missing", () => {
+test("the plain launchers fail closed when Deno is missing", () => {
   // No install script, no download: report the missing Deno and point at the
   // one command to run. This is the variant for a project that must never
   // fetch a tool from its build entry point.
@@ -79,7 +80,7 @@ Deno.test("the plain launchers fail closed when Deno is missing", () => {
   }
 });
 
-Deno.test("the bootstrap bash launcher pins the release and every POSIX checksum", () => {
+test("the bootstrap bash launcher pins the release and every POSIX checksum", () => {
   const bash = launcherBash(BOOTSTRAP);
   assertStringIncludes(
     bash,
@@ -107,7 +108,7 @@ Deno.test("the bootstrap bash launcher pins the release and every POSIX checksum
   assertStringIncludes(bash, 'export PATH="$(dirname "$deno_bin"):$PATH"');
 });
 
-Deno.test("the bootstrap PowerShell launcher pins the release and every Windows checksum", () => {
+test("the bootstrap PowerShell launcher pins the release and every Windows checksum", () => {
   const pwsh = launcherPwsh(BOOTSTRAP);
   assertStringIncludes(pwsh, `$DefaultDenoVersion = "${DENO_PIN.version}"`);
   for (const target of WINDOWS_TARGETS) {
@@ -129,7 +130,7 @@ Deno.test("the bootstrap PowerShell launcher pins the release and every Windows 
   assertEquals(pwsh.includes("—"), false);
 });
 
-Deno.test("the launchers render whatever pin they are given", () => {
+test("the launchers render whatever pin they are given", () => {
   // The pin is a parameter, so a Deno bump is a data change and the rendered
   // scripts follow it — no hash or version is baked into the template text.
   const bash = launcherBash(BOOTSTRAP, FAKE_PIN);
@@ -143,7 +144,7 @@ Deno.test("the launchers render whatever pin they are given", () => {
   assertEquals(pwsh.includes(DENO_PIN.version), false);
 });
 
-Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
+test("launchers pass --frozen only once a deno.lock exists", () => {
   // A fresh scaffold has no lockfile, and `deno run --frozen` against a
   // missing one fails outright rather than writing it — so an unconditional
   // --frozen breaks the very first `./zuke` the CLI tells the user to run.
@@ -173,7 +174,7 @@ Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
   }
 });
 
-Deno.test("the unfrozen branch says so, so a deleted lockfile is not silent", () => {
+test("the unfrozen branch says so, so a deleted lockfile is not silent", () => {
   // Skipping --frozen is correct on a fresh scaffold, but the same branch is
   // taken if someone removes deno.lock later — which drops integrity
   // verification. Both launchers must announce that on stderr rather than
@@ -193,7 +194,7 @@ Deno.test("the unfrozen branch says so, so a deleted lockfile is not silent", ()
   }
 });
 
-Deno.test("the bash launcher execs Deno so the script is not read after it starts", () => {
+test("the bash launcher execs Deno so the script is not read after it starts", () => {
   // `./zuke launcherSync` rewrites the very file bash is executing. `exec`
   // replaces the shell with Deno before that target runs, so there is no
   // shell left to read a half-rewritten script.
@@ -204,7 +205,7 @@ Deno.test("the bash launcher execs Deno so the script is not read after it start
   }
 });
 
-Deno.test("a launcher runs the build file it is given, and refuses an unsafe name", () => {
+test("a launcher runs the build file it is given, and refuses an unsafe name", () => {
   for (const variant of [BOOTSTRAP, PLAIN]) {
     const options = { ...variant, buildFile: "build.ts" };
     const bash = launcherBash(options);

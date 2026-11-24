@@ -14,6 +14,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -21,7 +22,7 @@ import { runCli } from "./_harness.ts";
 /** Whether this platform creates symlinks without elevation. */
 const SYMLINKS_UNPRIVILEGED = Deno.build.os !== "windows";
 
-Deno.test({
+test({
   name: "a link-creating target is idempotent across runs",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -75,7 +76,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "linking onto an occupied path fails the build without force",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {

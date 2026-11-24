@@ -7,6 +7,7 @@
  * commenter before it spends anything.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   type CommandCaller,
@@ -40,7 +41,7 @@ const caller = (overrides: Partial<CommandCaller> = {}): CommandCaller => ({
   ...overrides,
 });
 
-Deno.test("the role floor admits it and every role above it", async () => {
+test("the role floor admits it and every role above it", async () => {
   for (const roleName of ["write", "maintain", "admin"]) {
     const { fn } = lookup({ permission: "write", roleName });
     assertEquals((await mayStartReview(caller(), fn)).allowed, true);
@@ -61,7 +62,7 @@ Deno.test("the role floor admits it and every role above it", async () => {
   );
 });
 
-Deno.test("a custom role is admitted by the base level the floor allows", async () => {
+test("a custom role is admitted by the base level the floor allows", async () => {
   const custom = (permission: string) =>
     lookup({ permission, roleName: "release-captain" }).fn;
   assertEquals((await mayStartReview(caller(), custom("write"))).allowed, true);
@@ -85,7 +86,7 @@ Deno.test("a custom role is admitted by the base level the floor allows", async 
   );
 });
 
-Deno.test("a named login is admitted before GitHub is asked", async () => {
+test("a named login is admitted before GitHub is asked", async () => {
   const { fn, asked } = lookup({ permission: "none", roleName: "none" });
   const verdict = await mayStartReview(caller({ users: ["mona"] }), fn);
   assertEquals(verdict, {
@@ -95,7 +96,7 @@ Deno.test("a named login is admitted before GitHub is asked", async () => {
   assertEquals(asked, []);
 });
 
-Deno.test("every doubt refuses: a bad login, an unknown role, an unreadable answer", async () => {
+test("every doubt refuses: a bad login, an unknown role, an unreadable answer", async () => {
   const { fn, asked } = lookup({ permission: "admin", roleName: "admin" });
   for (const actor of ["", "../evil", "a b"]) {
     assertEquals((await mayStartReview(caller({ actor }), fn)).allowed, false);
@@ -117,7 +118,7 @@ Deno.test("every doubt refuses: a bad login, an unknown role, an unreadable answ
   assertEquals(thrown.reason.includes("not an error"), true);
 });
 
-Deno.test("commandCaller reads the actor, the role and the logins from the env", () => {
+test("commandCaller reads the actor, the role and the logins from the env", () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   assertEquals(
@@ -140,7 +141,7 @@ Deno.test("commandCaller reads the actor, the role and the logins from the env",
   );
 });
 
-Deno.test("the GitHub host asks the collaborators API through GhTasks, only on a commanded run", async () => {
+test("the GitHub host asks the collaborators API through GhTasks, only on a commanded run", async () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   assertEquals(authorizeGithubCommand(env({})), undefined);
@@ -237,7 +238,7 @@ async function commanded(
   };
 }
 
-Deno.test("a refused commenter gets 😕 and a failed run: no review, no 👀", async () => {
+test("a refused commenter gets 😕 and a failed run: no review, no 👀", async () => {
   const { command, description, modelCalls, authorizations, threw } =
     await commanded(6161, "read");
   // Failing is what keeps the target's body from running for them.
@@ -254,7 +255,7 @@ Deno.test("a refused commenter gets 😕 and a failed run: no review, no 👀", 
   assertEquals(authorizations, ["Bearer tkn"]);
 });
 
-Deno.test("without the job's token the lookup falls back to the comment token", async () => {
+test("without the job's token the lookup falls back to the comment token", async () => {
   const { authorizations, command } = await commanded(6162, "read", {
     GITHUB_TOKEN: undefined,
   });
@@ -262,7 +263,7 @@ Deno.test("without the job's token the lookup falls back to the comment token", 
   assertEquals(command, ["confused"]);
 });
 
-Deno.test("an admitted commenter's review starts as before", async () => {
+test("an admitted commenter's review starts as before", async () => {
   const { command, modelCalls, threw, lines } = await commanded(6163, "write");
   assertEquals(threw, undefined);
   assertEquals(
@@ -313,7 +314,7 @@ function strangerRun(comment: number, roleName: string) {
   return { github, lookups, reactions, fetch, env };
 }
 
-Deno.test("a refusal never mints the comment token: 😕 goes out with the job's token", async () => {
+test("a refusal never mints the comment token: 😕 goes out with the job's token", async () => {
   const run = strangerRun(6201, "read");
   let minted = 0;
   await captureLines(() =>
@@ -344,7 +345,7 @@ Deno.test("a refusal never mints the comment token: 😕 goes out with the job's
   );
 });
 
-Deno.test("preflight refuses before anything else, and the run's reviewers share one lookup", async () => {
+test("preflight refuses before anything else, and the run's reviewers share one lookup", async () => {
   const run = strangerRun(6202, "read");
   const errors: unknown[] = [];
   await captureLines(() =>
@@ -377,7 +378,7 @@ Deno.test("preflight refuses before anything else, and the run's reviewers share
   );
 });
 
-Deno.test("preflight is a no-op on a run no comment started", async () => {
+test("preflight is a no-op on a run no comment started", async () => {
   await withEnv(
     { GITHUB_ACTIONS: "true", ZUKE_REVIEW_COMMENT: undefined },
     async () => {

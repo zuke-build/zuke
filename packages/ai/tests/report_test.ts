@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -41,7 +42,7 @@ const ASSESSMENT: Assessment = {
   ],
 };
 
-Deno.test("formatUsage renders only the counts the provider reported", () => {
+test("formatUsage renders only the counts the provider reported", () => {
   assertEquals(formatUsage(undefined), undefined);
   // A usage object with no counts at all is not an empty line — it is nothing.
   assertEquals(formatUsage({}), undefined);
@@ -52,7 +53,7 @@ Deno.test("formatUsage renders only the counts the provider reported", () => {
   );
 });
 
-Deno.test("reviewStartLine echoes the gate and the comment flag", () => {
+test("reviewStartLine echoes the gate and the comment flag", () => {
   assertEquals(
     reviewStartLine("sec", {
       target: "deploy",
@@ -75,7 +76,7 @@ Deno.test("reviewStartLine echoes the gate and the comment flag", () => {
   );
 });
 
-Deno.test("consoleLines prints ids and locations only where they exist", () => {
+test("consoleLines prints ids and locations only where they exist", () => {
   const lines = consoleLines("sec", ASSESSMENT);
   assertEquals(lines[0], "[sec] score 6/10 (medium) — 2 finding(s)");
   // The located, fingerprinted finding carries both suffixes …
@@ -85,7 +86,7 @@ Deno.test("consoleLines prints ids and locations only where they exist", () => {
   assertEquals(lines[3], "  one real issue");
 });
 
-Deno.test("consoleLines audits suppressed, refuted, dismissed, and fixed findings", () => {
+test("consoleLines audits suppressed, refuted, dismissed, and fixed findings", () => {
   const lines = consoleLines("sec", ASSESSMENT, undefined, {
     suppressed: 2,
     suppressedFindings: [
@@ -133,7 +134,7 @@ Deno.test("consoleLines audits suppressed, refuted, dismissed, and fixed finding
   assertStringIncludes(text, "  note: a bounded pass");
 });
 
-Deno.test("toMarkdown fills missing audit fields with an em dash", () => {
+test("toMarkdown fills missing audit fields with an em dash", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     refuted: [{ finding: { title: "not real", severity: "low" } }],
     dismissed: [{ finding: { title: "quietly gone", severity: "low" } }],
@@ -149,7 +150,7 @@ Deno.test("toMarkdown fills missing audit fields with an em dash", () => {
   assertStringIncludes(md, "- pass skipped for budget");
 });
 
-Deno.test("a verified finding carries its verdict; a refutation relabels the summary", () => {
+test("a verified finding carries its verdict; a refutation relabels the summary", () => {
   const assessment: Assessment = {
     score: 6,
     severity: "medium",
@@ -187,7 +188,7 @@ Deno.test("a verified finding carries its verdict; a refutation relabels the sum
   assertEquals(clean.includes("written before verification"), false);
 });
 
-Deno.test("toMarkdown names the dismisser, the reason, and the rewording", () => {
+test("toMarkdown names the dismisser, the reason, and the rewording", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     dismissed: [{
       finding: { title: "argued away", severity: "low", id: "d1" },
@@ -202,7 +203,7 @@ Deno.test("toMarkdown names the dismisser, the reason, and the rewording", () =>
   );
 });
 
-Deno.test("a newline in a finding title cannot break out of its table row", () => {
+test("a newline in a finding title cannot break out of its table row", () => {
   // The reviewer's table row is one line. A title starting with a newline used
   // to end the row and continue as top-level Markdown — a forged "## Approved"
   // heading published inside the reviewer's own comment.
@@ -216,7 +217,7 @@ Deno.test("a newline in a finding title cannot break out of its table row", () =
   assertEquals(md.includes("\n## Approved"), false);
 });
 
-Deno.test("skipMarkdown neutralises the reason like any untrusted value", () => {
+test("skipMarkdown neutralises the reason like any untrusted value", () => {
   const md = skipMarkdown("sec", "deploy", "no <!-- zuke-ai-state:x --> key");
   assertEquals(md.includes("<!--"), false);
   assertStringIncludes(
@@ -226,7 +227,7 @@ Deno.test("skipMarkdown neutralises the reason like any untrusted value", () => 
   assertEquals(skipConsoleLine("sec", "no key"), "[sec] skipped — no key");
 });
 
-Deno.test("writeStepSummary is a silent no-op without env access", async () => {
+test("writeStepSummary is a silent no-op without env access", async () => {
   // The writer is best-effort: in a sandbox that denies env access it must
   // return without throwing — and without writing — even when the variable
   // actually points at a writable file.
@@ -292,7 +293,7 @@ Deno.test("writeStepSummary is a silent no-op without env access", async () => {
   }
 });
 
-Deno.test("an earlier-round refutation is labelled as standing, not fresh", () => {
+test("an earlier-round refutation is labelled as standing, not fresh", () => {
   const assessment: Assessment = {
     score: 0,
     severity: "none",
@@ -331,7 +332,7 @@ Deno.test("an earlier-round refutation is labelled as standing, not fresh", () =
   );
 });
 
-Deno.test("an accepted finding is listed under its own heading, apart from the argued ones", () => {
+test("an accepted finding is listed under its own heading, apart from the argued ones", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     dismissed: [
       {
@@ -377,7 +378,7 @@ Deno.test("an accepted finding is listed under its own heading, apart from the a
   );
 });
 
-Deno.test("the Commands panel is collapsed, names the mention, and appears only when asked for", () => {
+test("the Commands panel is collapsed, names the mention, and appears only when asked for", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     discussion: true,
     commands: { mention: "@zuke-build", onDemand: true },

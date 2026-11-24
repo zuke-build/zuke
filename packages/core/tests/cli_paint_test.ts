@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { cliPaint, PLAIN_PAINT } from "../src/cli_paint.ts";
 import {
@@ -20,7 +21,7 @@ const FACTS: VersionFacts = {
   platform: "linux-x86_64",
 };
 
-Deno.test("a runtime that names no TypeScript version gets no row for one", () => {
+test("a runtime that names no TypeScript version gets no row for one", () => {
   const panel = formatVersionPanel(
     { ...FACTS, runtime: ["node", "22.18.0"], typescript: undefined },
     PLAIN_PAINT,
@@ -29,7 +30,7 @@ Deno.test("a runtime that names no TypeScript version gets no row for one", () =
   assertEquals(panel.includes("typescript"), false);
 });
 
-Deno.test("plain paint is the identity, whatever it is handed", () => {
+test("plain paint is the identity, whatever it is handed", () => {
   for (const paint of [PLAIN_PAINT, cliPaint({ rich: false, color: true })]) {
     assertEquals(paint, PLAIN_PAINT);
     for (
@@ -49,7 +50,7 @@ Deno.test("plain paint is the identity, whatever it is handed", () => {
   }
 });
 
-Deno.test("rich paint colours each kind and glyphs only the headings", () => {
+test("rich paint colours each kind and glyphs only the headings", () => {
   const paint = cliPaint({ rich: true, color: true });
   assertEquals(paint.rich, true);
   assertEquals(stripAnsi(paint.heading("Targets:")), "◆ Targets:");
@@ -68,7 +69,7 @@ Deno.test("rich paint colours each kind and glyphs only the headings", () => {
   }
 });
 
-Deno.test("rich paint without colour keeps the glyph and emits no escapes", () => {
+test("rich paint without colour keeps the glyph and emits no escapes", () => {
   const paint = cliPaint({ rich: true, color: false });
   assertEquals(paint.heading("Targets:"), "◆ Targets:");
   assertEquals(paint.target("name"), "name");
@@ -76,14 +77,14 @@ Deno.test("rich paint without colour keeps the glyph and emits no escapes", () =
   assertEquals(paint.fail("Nope"), "✖ Nope");
 });
 
-Deno.test("rich paint marks status lines with a coloured glyph, never extra words", () => {
+test("rich paint marks status lines with a coloured glyph, never extra words", () => {
   const paint = cliPaint({ rich: true, color: true });
   assertEquals(paint.ok("Done") === "✔ Done", false);
   assertEquals(stripAnsi(paint.ok("Done")), "✔ Done");
   assertEquals(stripAnsi(paint.fail("Nope")), "✖ Nope");
 });
 
-Deno.test("versionPanel boxes any rows, emphasising the first value", () => {
+test("versionPanel boxes any rows, emphasising the first value", () => {
   const rows = [["cli", "1.10.0"], ["core", "1.42.0"]] as const;
   const text = versionPanel(rows, cliPaint({ rich: true, color: false }));
   const lines = text.split("\n");
@@ -96,13 +97,13 @@ Deno.test("versionPanel boxes any rows, emphasising the first value", () => {
   assertEquals(stripAnsi(coloured), text);
 });
 
-Deno.test("the palette and the panel are exported from the render entrypoint", () => {
+test("the palette and the panel are exported from the render entrypoint", () => {
   assertEquals(render.cliPaint, cliPaint);
   assertEquals(render.PLAIN_PAINT, PLAIN_PAINT);
   assertEquals(render.versionPanel, versionPanel);
 });
 
-Deno.test("the version panel boxes each fact under a zuke title", () => {
+test("the version panel boxes each fact under a zuke title", () => {
   const text = formatVersionPanel(
     FACTS,
     cliPaint({ rich: true, color: false }),
@@ -121,7 +122,7 @@ Deno.test("the version panel boxes each fact under a zuke title", () => {
   assertEquals(widths.size, 1);
 });
 
-Deno.test("the coloured version panel has the same visible text", () => {
+test("the coloured version panel has the same visible text", () => {
   const plainText = formatVersionPanel(
     FACTS,
     cliPaint({ rich: true, color: false }),
@@ -134,7 +135,7 @@ Deno.test("the coloured version panel has the same visible text", () => {
   assertEquals(stripAnsi(coloured), plainText);
 });
 
-Deno.test("versionFacts reports the running process", () => {
+test("versionFacts reports the running process", () => {
   const facts = versionFacts();
   assertEquals(facts.core, VERSION);
   assertEquals(facts.runtime, ["deno", Deno.version.deno]);

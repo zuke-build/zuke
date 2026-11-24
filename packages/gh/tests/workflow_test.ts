@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -143,7 +144,7 @@ function recordOf(value: JsonValue | undefined): Record<string, JsonValue> {
   return value;
 }
 
-Deno.test("githubWorkflow requires a repo and a workflow", () => {
+test("githubWorkflow requires a repo and a workflow", () => {
   assertThrows(() => githubWorkflow((g) => g), Error, "repo and a workflow");
   assertThrows(
     () => githubWorkflow((g) => g.repo("acme/app")),
@@ -152,7 +153,7 @@ Deno.test("githubWorkflow requires a repo and a workflow", () => {
   );
 });
 
-Deno.test("descriptor and poll interval reflect the settings", () => {
+test("descriptor and poll interval reflect the settings", () => {
   const trigger = githubWorkflow((g) =>
     g.repo("acme/app").workflow("e2e.yml").pollEvery("30s")
   );
@@ -160,7 +161,7 @@ Deno.test("descriptor and poll interval reflect the settings", () => {
   assertEquals(trigger.pollIntervalMs, 30_000);
 });
 
-Deno.test("first evaluation dispatches with a marker and suspends", async () => {
+test("first evaluation dispatches with a marker and suspends", async () => {
   const api = new ScriptedApi();
   const state = fakeState();
   const trigger = githubWorkflowWith(
@@ -178,7 +179,7 @@ Deno.test("first evaluation dispatches with a marker and suspends", async () => 
   assertEquals(api.dispatches[0].inputs.zuke_marker, "zuke:r1:e2e");
 });
 
-Deno.test("the marker is persisted before the workflow is dispatched", async () => {
+test("the marker is persisted before the workflow is dispatched", async () => {
   // Intent before effect: a process killed between the two must re-poll for the
   // run it may have started, never dispatch a second one.
   const state = fakeState();
@@ -198,7 +199,7 @@ Deno.test("the marker is persisted before the workflow is dispatched", async () 
   assertEquals(entry.marker, api.dispatches[0].inputs.zuke_marker);
 });
 
-Deno.test("polls until the run completes, then records the per-job result", async () => {
+test("polls until the run completes, then records the per-job result", async () => {
   const api = new ScriptedApi();
   const state = fakeState();
   const trigger = githubWorkflowWith(
@@ -226,7 +227,7 @@ Deno.test("polls until the run completes, then records the per-job result", asyn
   ]);
 });
 
-Deno.test("a failed run yields passed:false", async () => {
+test("a failed run yields passed:false", async () => {
   const api = new ScriptedApi();
   api.status = "completed";
   api.conclusion = "failure";
@@ -240,7 +241,7 @@ Deno.test("a failed run yields passed:false", async () => {
   assertEquals(readWorkflowResult(state)?.passed, false);
 });
 
-Deno.test("waits for the run to appear before polling it", async () => {
+test("waits for the run to appear before polling it", async () => {
   const api = new ScriptedApi();
   api.appears = false;
   const state = fakeState();
@@ -252,7 +253,7 @@ Deno.test("waits for the run to appear before polling it", async () => {
   assertEquals(await trigger.isSatisfied(NO_SIGNALS, c), false); // not found yet
 });
 
-Deno.test("a transient poll error re-suspends instead of failing the run", async () => {
+test("a transient poll error re-suspends instead of failing the run", async () => {
   let failJobs = true;
   const run: WorkflowRun = {
     id: 100,
@@ -288,7 +289,7 @@ Deno.test("a transient poll error re-suspends instead of failing the run", async
   assertEquals(readWorkflowResult(state)?.passed, true);
 });
 
-Deno.test("a satisfied wait stays satisfied and never re-dispatches", async () => {
+test("a satisfied wait stays satisfied and never re-dispatches", async () => {
   const api = new ScriptedApi();
   api.status = "completed";
   api.conclusion = "success";
@@ -303,7 +304,7 @@ Deno.test("a satisfied wait stays satisfied and never re-dispatches", async () =
   assertEquals(api.dispatches.length, 1);
 });
 
-Deno.test("inputs() and markerInput() feed the dispatch", async () => {
+test("inputs() and markerInput() feed the dispatch", async () => {
   const api = new ScriptedApi();
   const trigger = githubWorkflowWith(
     (g) =>
@@ -316,7 +317,7 @@ Deno.test("inputs() and markerInput() feed the dispatch", async () => {
   assertEquals(api.dispatches[0].inputs.zuke_marker, undefined);
 });
 
-Deno.test("readWorkflowResult returns undefined until the wait completes", () => {
+test("readWorkflowResult returns undefined until the wait completes", () => {
   assertEquals(readWorkflowResult(fakeState()), undefined);
   assertEquals(
     readWorkflowResult(fakeState({ githubWorkflow: { dispatched: true } })),
@@ -331,7 +332,7 @@ Deno.test("readWorkflowResult returns undefined until the wait completes", () =>
   );
 });
 
-Deno.test("readWorkflowResult tolerates malformed jobs", () => {
+test("readWorkflowResult tolerates malformed jobs", () => {
   const state = fakeState({
     githubWorkflow: {
       result: {
@@ -349,7 +350,7 @@ Deno.test("readWorkflowResult tolerates malformed jobs", () => {
   ]);
 });
 
-Deno.test("readWorkflowResult defaults malformed or absent job fields", () => {
+test("readWorkflowResult defaults malformed or absent job fields", () => {
   // A jobs field that is not an array reads as no jobs, not a crash.
   const notArray = fakeState({
     githubWorkflow: {
@@ -380,7 +381,7 @@ Deno.test("readWorkflowResult defaults malformed or absent job fields", () => {
   ]);
 });
 
-Deno.test("a completed run with a null conclusion is recorded as unknown", async () => {
+test("a completed run with a null conclusion is recorded as unknown", async () => {
   // GitHub can complete a run whose conclusion the API reports as null. That
   // is not a pass, and the recorded conclusion must still say something
   // readable rather than serialising a null.
@@ -403,7 +404,7 @@ Deno.test("a completed run with a null conclusion is recorded as unknown", async
 
 const DISPATCH_AT = Date.parse("2026-07-19T00:00:00.000Z");
 
-Deno.test("created-window mode correlates the single matching run", async () => {
+test("created-window mode correlates the single matching run", async () => {
   const api = new ScriptedApi();
   api.status = "completed";
   api.conclusion = "success";
@@ -422,7 +423,7 @@ Deno.test("created-window mode correlates the single matching run", async () => 
   assertEquals(readWorkflowResult(state)?.runId, 100);
 });
 
-Deno.test("created-window mode fails loudly on two candidates in the window", async () => {
+test("created-window mode fails loudly on two candidates in the window", async () => {
   const created = "2026-07-19T00:00:10.000Z";
   let dispatched = false;
   const api: GhWorkflowApi = {
@@ -474,7 +475,7 @@ Deno.test("created-window mode fails loudly on two candidates in the window", as
   );
 });
 
-Deno.test("created-window ignores a run on another branch or created before dispatch", async () => {
+test("created-window ignores a run on another branch or created before dispatch", async () => {
   let dispatched = false;
   const api: GhWorkflowApi = {
     dispatch: () => {
@@ -522,7 +523,7 @@ Deno.test("created-window ignores a run on another branch or created before disp
   assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // no candidate → suspended
 });
 
-Deno.test("marker mode fails fast with guidance once the discovery window elapses", async () => {
+test("marker mode fails fast with guidance once the discovery window elapses", async () => {
   const api = new ScriptedApi();
   api.appears = false; // the run never echoes the marker
   const c = clock(DISPATCH_AT);
@@ -545,7 +546,7 @@ Deno.test("marker mode fails fast with guidance once the discovery window elapse
   assertEquals(error.message.includes("zuke_marker"), true);
 });
 
-Deno.test("created-window mode fails fast when no run appears in the window", async () => {
+test("created-window mode fails fast when no run appears in the window", async () => {
   const api = new ScriptedApi();
   api.appears = false; // recentRuns → []
   const c = clock(DISPATCH_AT);
@@ -566,7 +567,7 @@ Deno.test("created-window mode fails fast when no run appears in the window", as
   );
 });
 
-Deno.test("a discovery error suspends within the window, but fails fast past it", async () => {
+test("a discovery error suspends within the window, but fails fast past it", async () => {
   // recentRuns keeps throwing (a bad token / renamed workflow / long outage):
   // within the window the wait stays suspended, but past the window it fails
   // fast — a permanent correlation error must not eat the whole .timeout().
@@ -598,7 +599,7 @@ Deno.test("a discovery error suspends within the window, but fails fast past it"
   );
 });
 
-Deno.test("a persisted record without dispatchedAt (pre-M18) fails fast after backfilling", async () => {
+test("a persisted record without dispatchedAt (pre-M18) fails fast after backfilling", async () => {
   const api = new ScriptedApi();
   api.appears = false; // never correlates
   const c = clock(DISPATCH_AT);
@@ -629,7 +630,7 @@ Deno.test("a persisted record without dispatchedAt (pre-M18) fails fast after ba
   );
 });
 
-Deno.test("a marker persisted without a landed dispatch re-polls, never re-dispatches", async () => {
+test("a marker persisted without a landed dispatch re-polls, never re-dispatches", async () => {
   // The record a process killed between the marker write and the dispatch call
   // leaves behind — the state the reaper now makes reachable. The trigger must
   // poll for the run it may have started and fail at the discovery deadline,
@@ -660,7 +661,7 @@ Deno.test("a marker persisted without a landed dispatch re-polls, never re-dispa
   assertEquals(api.dispatches.length, 0);
 });
 
-Deno.test("created-window excludes a run that already existed before dispatch", async () => {
+test("created-window excludes a run that already existed before dispatch", async () => {
   // A foreign workflow_dispatch run on the same branch, created 15s before our
   // dispatch, is in the baseline — so it is never claimed as ours.
   const foreign: WorkflowRun = {
@@ -725,7 +726,7 @@ function routerFetch(
   return { fetch, calls };
 }
 
-Deno.test("RestGhWorkflowApi.dispatch POSTs ref+inputs with auth", async () => {
+test("RestGhWorkflowApi.dispatch POSTs ref+inputs with auth", async () => {
   const { fetch, calls } = routerFetch({
     "POST https://api.github.com/repos/a/b/actions/workflows/w.yml/dispatches":
       {},
@@ -744,7 +745,7 @@ Deno.test("RestGhWorkflowApi.dispatch POSTs ref+inputs with auth", async () => {
   );
 });
 
-Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", async () => {
+test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1":
       {
@@ -771,7 +772,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", asyn
   assertEquals(runs[0]?.url, "u2");
 });
 
-Deno.test("RestGhWorkflowApi.findMarkedRuns returns nothing when no run matches", async () => {
+test("RestGhWorkflowApi.findMarkedRuns returns nothing when no run matches", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1":
       {
@@ -782,7 +783,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns returns nothing when no run matches"
   assertEquals(await api.findMarkedRuns("a/b", "w.yml", "m", "main"), []);
 });
 
-Deno.test("RestGhWorkflowApi.recentRuns maps workflow_dispatch runs", async () => {
+test("RestGhWorkflowApi.recentRuns maps workflow_dispatch runs", async () => {
   const url =
     "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100";
   const { fetch } = routerFetch({
@@ -809,7 +810,7 @@ Deno.test("RestGhWorkflowApi.recentRuns maps workflow_dispatch runs", async () =
   assertEquals(runs[0].headBranch, "main");
 });
 
-Deno.test("RestGhWorkflowApi.recentRuns tolerates a malformed payload", async () => {
+test("RestGhWorkflowApi.recentRuns tolerates a malformed payload", async () => {
   const url =
     "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100";
   const { fetch } = routerFetch({ [`GET ${url}`]: { workflow_runs: "nope" } });
@@ -837,7 +838,7 @@ Deno.test("RestGhWorkflowApi.recentRuns tolerates a malformed payload", async ()
   assertEquals(runs.map((r) => r.id), [3]);
 });
 
-Deno.test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async () => {
+test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/runs/9": {
       id: 9,
@@ -867,13 +868,13 @@ Deno.test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async ()
   assertEquals(jobs, [{ name: "unit", conclusion: "failure", url: "job-url" }]);
 });
 
-Deno.test("RestGhWorkflowApi throws on a non-2xx GET", async () => {
+test("RestGhWorkflowApi throws on a non-2xx GET", async () => {
   const { fetch } = routerFetch({}); // every route 404s
   const api = new RestGhWorkflowApi({ fetch });
   await assertRejects(() => api.getRun("a/b", 1), Error, "404");
 });
 
-Deno.test("RestGhWorkflowApi.dispatch throws on a non-2xx", async () => {
+test("RestGhWorkflowApi.dispatch throws on a non-2xx", async () => {
   const { fetch } = routerFetch({}); // dispatch route 404s
   const api = new RestGhWorkflowApi({ fetch });
   await assertRejects(
@@ -883,7 +884,7 @@ Deno.test("RestGhWorkflowApi.dispatch throws on a non-2xx", async () => {
   );
 });
 
-Deno.test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload", async () => {
+test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload", async () => {
   const base =
     "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1";
   const notArray = routerFetch({ [`GET ${base}`]: { workflow_runs: "nope" } });
@@ -917,7 +918,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload",
   );
 });
 
-Deno.test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", async () => {
+test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", async () => {
   const page1 = Array.from({ length: 100 }, (_, i) => ({
     id: i + 1,
     display_title: `noise-${i}`,
@@ -949,7 +950,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", as
   assertEquals(runs.map((r) => r.id), [999]); // page 2, not just the first 100
 });
 
-Deno.test("RestGhWorkflowApi aborts a hung request via its timeout", async () => {
+test("RestGhWorkflowApi aborts a hung request via its timeout", async () => {
   // A fetch that never resolves on its own but honours the AbortSignal.
   const hung: FetchFn = (_input, init) =>
     new Promise((_resolve, reject) => {
@@ -966,7 +967,7 @@ Deno.test("RestGhWorkflowApi aborts a hung request via its timeout", async () =>
   await assertRejects(() => api.getRun("a/b", 1)); // aborts, does not hang
 });
 
-Deno.test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () => {
+test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () => {
   // The same order the gh CLI resolves its token, injected through the readEnv
   // seam so the test never touches the real environment.
   const url = "https://api.github.com/repos/a/b/actions/workflows/w/dispatches";
@@ -999,7 +1000,7 @@ Deno.test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () =
   );
 });
 
-Deno.test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
+test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
   // The real environment, deliberately: what is under test is the reader the
   // default transport uses, which treats an empty variable as unset. Actions
   // defines GH_TOKEN for any job that names it, so a secret that is not set
@@ -1029,7 +1030,7 @@ Deno.test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
   );
 });
 
-Deno.test("a repository that is not owner/name is refused when the trigger is built", () => {
+test("a repository that is not owner/name is refused when the trigger is built", () => {
   // The slug is interpolated into every path this transport requests, so `..`
   // in it would redirect a token-bearing call. Checked once, at construction,
   // rather than on each request.
@@ -1041,7 +1042,7 @@ Deno.test("a repository that is not owner/name is refused when the trigger is bu
   );
 });
 
-Deno.test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async () => {
+test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async () => {
   // A proxy answering with a JSON array instead of the run object: the read
   // degrades to the same defaults as an empty run, not a crash on indexing.
   const { fetch } = routerFetch({
@@ -1058,7 +1059,7 @@ Deno.test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async 
   });
 });
 
-Deno.test("RestGhWorkflowApi maps missing run/job fields to defaults", async () => {
+test("RestGhWorkflowApi maps missing run/job fields to defaults", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/runs/9": {}, // no fields
     "GET https://api.github.com/repos/a/b/actions/runs/9/jobs": {
@@ -1085,7 +1086,7 @@ Deno.test("RestGhWorkflowApi maps missing run/job fields to defaults", async () 
 
 // --- marker correlation binds a run to *our* dispatch -----------------------
 
-Deno.test("a marked run raised by another event is not adopted", async () => {
+test("a marked run raised by another event is not adopted", async () => {
   // The marker is echoed into the run title by the workflow, so anyone who can
   // list the runs can read it and anyone who can dispatch the workflow can
   // raise a run wearing it. Being marked is therefore not being ours.
@@ -1103,7 +1104,7 @@ Deno.test("a marked run raised by another event is not adopted", async () => {
   assertEquals(readWorkflowResult(state), undefined);
 });
 
-Deno.test("a marked run on another ref is not adopted", async () => {
+test("a marked run on another ref is not adopted", async () => {
   const api = new ScriptedApi();
   api.headBranch = "attacker-branch";
   api.status = "completed";
@@ -1119,7 +1120,7 @@ Deno.test("a marked run on another ref is not adopted", async () => {
   assertEquals(readWorkflowResult(state), undefined);
 });
 
-Deno.test("a marked run created long after the dispatch is not adopted", async () => {
+test("a marked run created long after the dispatch is not adopted", async () => {
   // The upper bound is the security-carrying one. A marker contains a random
   // per-run id, so it has to be observed before it can be copied — a run
   // wearing ours was necessarily created after we dispatched. Without a
@@ -1145,7 +1146,7 @@ Deno.test("a marked run created long after the dispatch is not adopted", async (
   assertEquals(readWorkflowResult(state), undefined);
 });
 
-Deno.test("marker mode tolerates a clock that leads GitHub's", async () => {
+test("marker mode tolerates a clock that leads GitHub's", async () => {
   // Marker mode deliberately has no lower bound: the marker already rules out
   // an older run, and comparing our clock to GitHub's would strand a healthy
   // gate whenever the build machine's clock drifts ahead.
@@ -1165,7 +1166,7 @@ Deno.test("marker mode tolerates a clock that leads GitHub's", async () => {
   assertEquals(readWorkflowResult(state)?.passed, true);
 });
 
-Deno.test("the completion re-check judges identity, not recency", async () => {
+test("the completion re-check judges identity, not recency", async () => {
   // A record written before the dispatch time was persisted backfills the
   // anchor to "now". Re-applying a creation window to the already-correlated
   // run would then fail a healthy gate, and fail it on every later resume too.
@@ -1189,7 +1190,7 @@ Deno.test("the completion re-check judges identity, not recency", async () => {
   assertEquals(readWorkflowResult(state)?.passed, true);
 });
 
-Deno.test("a ref written in full form matches the short branch GitHub reports", async () => {
+test("a ref written in full form matches the short branch GitHub reports", async () => {
   const api = new ScriptedApi();
   api.headBranch = "main";
   api.status = "completed";
@@ -1205,7 +1206,7 @@ Deno.test("a ref written in full form matches the short branch GitHub reports", 
   assertEquals(readWorkflowResult(state)?.passed, true);
 });
 
-Deno.test("two runs wearing one marker are refused, not guessed between", async () => {
+test("two runs wearing one marker are refused, not guessed between", async () => {
   const now = new Date().toISOString();
   const mine: WorkflowRun = {
     id: 1,
@@ -1243,7 +1244,7 @@ Deno.test("two runs wearing one marker are refused, not guessed between", async 
   assertEquals(err.message.includes("u2"), true);
 });
 
-Deno.test("a persisted run id that no longer looks like ours is refused", async () => {
+test("a persisted run id that no longer looks like ours is refused", async () => {
   // A resume in another process trusts a run id out of durable state. The
   // identity check is repeated on the fetched run so a stale or swapped id
   // cannot become a gate result.
@@ -1267,7 +1268,7 @@ Deno.test("a persisted run id that no longer looks like ours is refused", async 
   assertEquals(readWorkflowResult(state), undefined); // no gate result recorded
 });
 
-Deno.test("findMarkedRuns narrows the query to our dispatch and ref", async () => {
+test("findMarkedRuns narrows the query to our dispatch and ref", async () => {
   // The page budget is finite, so a repository whose runs are mostly pushes
   // could otherwise push our own run past the last page and strand the gate.
   // Filtering at the API keeps the budget on runs that could be ours.

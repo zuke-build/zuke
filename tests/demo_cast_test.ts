@@ -12,6 +12,7 @@
  * the re-capture recipe).
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { ConsoleTasks } from "../packages/console/mod.ts";
 import { main } from "../packages/cli/mod.ts";
@@ -45,7 +46,7 @@ function castTranscript(): string {
   return text.replace(CONTROL_PATTERN, "").replaceAll("\r\n", "\n");
 }
 
-Deno.test("the demo cast matches the real interactive setup flow", async () => {
+test("the demo cast matches the real interactive setup flow", async () => {
   const transcript = castTranscript();
 
   // Replay the scene the cast stages: name "Pipeline", no overwrite, star

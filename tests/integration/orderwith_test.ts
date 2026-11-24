@@ -9,6 +9,7 @@
  * reverse-order compensation walk.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -29,7 +30,7 @@ function loadDependencyGraph(): Promise<Array<[string, string]>> {
   return Promise.resolve([["web", "api"]]); // web must build before api
 }
 
-Deno.test("orderWith imposes lazy per-run ordering", async () => {
+test("orderWith imposes lazy per-run ordering", async () => {
   const log: string[] = [];
   class Mono extends Build {
     web = target().executes(() => void log.push("web"));
@@ -54,7 +55,7 @@ Deno.test("orderWith imposes lazy per-run ordering", async () => {
   assertEquals(log.indexOf("web") < log.indexOf("api"), true);
 });
 
-Deno.test("orderWith and extraEdges merge into one edge set", async () => {
+test("orderWith and extraEdges merge into one edge set", async () => {
   const log: string[] = [];
   class Mono extends Build {
     a = target().executes(() => void log.push("a"));
@@ -80,7 +81,7 @@ Deno.test("orderWith and extraEdges merge into one edge set", async () => {
   assertEquals(log.indexOf("b") < log.indexOf("c"), true);
 });
 
-Deno.test("orderWith warns about a dead edge to a target not in the build", async () => {
+test("orderWith warns about a dead edge to a target not in the build", async () => {
   class Mono extends Build {
     a = target().executes(() => {});
     all = target().dependsOn(this.a).executes(() => {});
@@ -99,7 +100,7 @@ Deno.test("orderWith warns about a dead edge to a target not in the build", asyn
   assertStringIncludes(res.out + res.err, "not a target in this build");
 });
 
-Deno.test("orderWith stays silent for a declared target simply not in this run", async () => {
+test("orderWith stays silent for a declared target simply not in this run", async () => {
   class Mono extends Build {
     a = target().executes(() => {});
     other = target().executes(() => {}); // a real target, but not reached by `all`
@@ -119,7 +120,7 @@ Deno.test("orderWith stays silent for a declared target simply not in this run",
   );
 });
 
-Deno.test("orderWith tolerates a malformed edge with a nullish endpoint (no crash)", async () => {
+test("orderWith tolerates a malformed edge with a nullish endpoint (no crash)", async () => {
   class Mono extends Build {
     a = target().executes(() => {});
     all = target().dependsOn(this.a).executes(() => {});
@@ -136,7 +137,7 @@ Deno.test("orderWith tolerates a malformed edge with a nullish endpoint (no cras
   assertEquals(res.code, 0); // tolerated, not a crash
 });
 
-Deno.test("a failing orderWith fails the run cleanly, not with an unhandled rejection", async () => {
+test("a failing orderWith fails the run cleanly, not with an unhandled rejection", async () => {
   class B extends Build {
     a = target().executes(() => {});
     // The dependency-graph service is unreachable at plan time.
@@ -150,7 +151,7 @@ Deno.test("a failing orderWith fails the run cleanly, not with an unhandled reje
   assertStringIncludes(res.err, "dependency graph unavailable");
 });
 
-Deno.test("out-of-process cancel unwinds in orderWith execution order", async () => {
+test("out-of-process cancel unwinds in orderWith execution order", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class CD extends Build {

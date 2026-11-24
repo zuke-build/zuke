@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   GitBlameSettings,
@@ -25,7 +26,7 @@ import {
 // field, or emits a flag git spells differently, changes the array here. Every
 // argv was accepted by git 2.43.0.
 
-Deno.test("rev-list: every flag, in the order the argv builds them", () => {
+test("rev-list: every flag, in the order the argv builds them", () => {
   assertEquals(
     new GitRevListSettings()
       .count().maxCount(10).skip(2).all().branches().tags().remotes()
@@ -63,7 +64,7 @@ Deno.test("rev-list: every flag, in the order the argv builds them", () => {
   );
 });
 
-Deno.test("merge-base: the independent mode and repeated commits", () => {
+test("merge-base: the independent mode and repeated commits", () => {
   assertEquals(
     new GitMergeBaseSettings().independent().commits("a").commits("b", "c")
       .argv(),
@@ -71,7 +72,7 @@ Deno.test("merge-base: the independent mode and repeated commits", () => {
   );
 });
 
-Deno.test("for-each-ref: every flag, including the merged filter", () => {
+test("for-each-ref: every flag, including the merged filter", () => {
   assertEquals(
     new GitForEachRefSettings()
       .format("%(refname)").count(5).sort("-creatordate", "refname")
@@ -104,7 +105,7 @@ Deno.test("for-each-ref: every flag, including the merged filter", () => {
   );
 });
 
-Deno.test("show-ref: every flag, including --head and --exists", () => {
+test("show-ref: every flag, including --head and --exists", () => {
   assertEquals(
     new GitShowRefSettings()
       .tags().heads().head().dereference().hash().quietOutput().abbrev(7)
@@ -130,7 +131,7 @@ Deno.test("show-ref: every flag, including --head and --exists", () => {
   );
 });
 
-Deno.test("symbolic-ref: deleting, and reading without shortening", () => {
+test("symbolic-ref: deleting, and reading without shortening", () => {
   assertEquals(
     new GitSymbolicRefSettings().name("HEAD").delete().quietOutput().argv(),
     ["git", "symbolic-ref", "--delete", "--quiet", "HEAD"],
@@ -141,7 +142,7 @@ Deno.test("symbolic-ref: deleting, and reading without shortening", () => {
   );
 });
 
-Deno.test("ls-tree: every flag its listing offers", () => {
+test("ls-tree: every flag its listing offers", () => {
   assertEquals(
     new GitLsTreeSettings()
       .tree("HEAD").recursive().treesOnly().showTrees().nulTerminated().long()
@@ -173,14 +174,14 @@ Deno.test("ls-tree: every flag its listing offers", () => {
   );
 });
 
-Deno.test("cat-file: the filters conversion", () => {
+test("cat-file: the filters conversion", () => {
   assertEquals(
     new GitCatFileSettings().object("HEAD:a.txt").filters().argv(),
     ["git", "cat-file", "--filters", "HEAD:a.txt"],
   );
 });
 
-Deno.test("check-ignore: NUL termination alongside the quiet form", () => {
+test("check-ignore: NUL termination alongside the quiet form", () => {
   assertEquals(
     new GitCheckIgnoreSettings().quietOutput().nulTerminated().noIndex()
       .paths("a", "b").argv(),
@@ -188,7 +189,7 @@ Deno.test("check-ignore: NUL termination alongside the quiet form", () => {
   );
 });
 
-Deno.test("blame: reverse walking and repeated ranges", () => {
+test("blame: reverse walking and repeated ranges", () => {
   assertEquals(
     new GitBlameSettings()
       .file("a.ts").porcelain().reverse("v1..HEAD")
@@ -214,7 +215,7 @@ Deno.test("blame: reverse walking and repeated ranges", () => {
   );
 });
 
-Deno.test("shortlog: grouping by committer and by several fields", () => {
+test("shortlog: grouping by committer and by several fields", () => {
   assertEquals(
     new GitShortlogSettings()
       .summary().numbered().email().committer()
@@ -238,7 +239,7 @@ Deno.test("shortlog: grouping by committer and by several fields", () => {
   );
 });
 
-Deno.test("grep: every flag, and searching a revision", () => {
+test("grep: every flag, and searching a revision", () => {
   assertEquals(
     new GitGrepSettings()
       .pattern("TODO").ignoreCase().wordRegexp().invert().lineNumber()
@@ -272,7 +273,7 @@ Deno.test("grep: every flag, and searching a revision", () => {
   );
 });
 
-Deno.test("verify-commit and verify-tag: the raw and verbose forms", () => {
+test("verify-commit and verify-tag: the raw and verbose forms", () => {
   assertEquals(
     new GitVerifyCommitSettings().raw().objects("HEAD", "HEAD~1").argv(),
     ["git", "verify-commit", "--raw", "HEAD", "HEAD~1"],
@@ -290,14 +291,14 @@ Deno.test("verify-commit and verify-tag: the raw and verbose forms", () => {
   );
 });
 
-Deno.test("merge-tree: the trivial and write-tree forms carry their globals", () => {
+test("merge-tree: the trivial and write-tree forms carry their globals", () => {
   assertEquals(
     new GitMergeTreeSettings().dir("repo").branches("a", "b").argv(),
     ["git", "-C", "repo", "merge-tree", "a", "b"],
   );
 });
 
-Deno.test("name-rev: naming several commits at once", () => {
+test("name-rev: naming several commits at once", () => {
   assertEquals(
     new GitNameRevSettings().commits("HEAD", "HEAD~1")
       .refs("refs/tags/*", "refs/heads/*").argv(),
@@ -312,7 +313,7 @@ Deno.test("name-rev: naming several commits at once", () => {
   );
 });
 
-Deno.test("the global options reach every new subcommand", () => {
+test("the global options reach every new subcommand", () => {
   // GitSettings puts -C and -c before the subcommand; a settings class that
   // built its argv itself rather than through subcommandArgs would lose them.
   assertEquals(

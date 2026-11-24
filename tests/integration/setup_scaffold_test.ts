@@ -18,6 +18,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
@@ -59,7 +60,7 @@ async function scaffold(): Promise<{
   }
 }
 
-Deno.test("zuke setup scaffolds a project whose first run has no lockfile to freeze", async () => {
+test("zuke setup scaffolds a project whose first run has no lockfile to freeze", async () => {
   const { read, log, code } = await scaffold();
   assertEquals(code, 0);
   assertEquals(log.includes("Next: zuke"), true);
@@ -114,7 +115,7 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
   assertEquals(core, "jsr:@zuke/core@^1");
 });
 
-Deno.test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {
+test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {
   if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
   const dir = await Deno.makeTempDir({ prefix: "zuke-setup-link-" });
   const outside = await Deno.makeTempDir({ prefix: "zuke-setup-victim-" });
@@ -164,7 +165,7 @@ async function setupIn(
   return { code, log: lines.join("\n") };
 }
 
-Deno.test("integration: setup exits 1 rather than claim success over a JSONC deno.json", async () => {
+test("integration: setup exits 1 rather than claim success over a JSONC deno.json", async () => {
   // deno.json is JSONC — Deno accepts `//` comments that JSON.parse rejects.
   // The scaffolded build resolves @zuke/core through this file, so a skip here
   // leaves a build that cannot start; saying "Next: zuke" over that is worse
@@ -185,7 +186,7 @@ Deno.test("integration: setup exits 1 rather than claim success over a JSONC den
   }
 });
 
-Deno.test("integration: setup keeps a delegated importMap working", async () => {
+test("integration: setup keeps a delegated importMap working", async () => {
   // Deno ignores `importMap` as soon as `imports` appears beside it, so writing
   // one would silently disable the project's whole module resolution. Prove the
   // pre-existing project still resolves after setup has run over it.

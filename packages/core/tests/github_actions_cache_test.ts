@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -53,7 +54,7 @@ const json = (value: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" },
   });
 
-Deno.test("GitHubActionsCacheStore.get resolves the signed URL and fetches it", async () => {
+test("GitHubActionsCacheStore.get resolves the signed URL and fetches it", async () => {
   const { fetch, calls } = fakeFetch((call) => {
     if (call.url === `${SERVICE}GetCacheEntryDownloadURL`) {
       return json({
@@ -84,7 +85,7 @@ Deno.test("GitHubActionsCacheStore.get resolves the signed URL and fetches it", 
   assertEquals(download.headers.get("authorization"), null);
 });
 
-Deno.test("GitHubActionsCacheStore.get reads the JSON spelling of the URL too", async () => {
+test("GitHubActionsCacheStore.get reads the JSON spelling of the URL too", async () => {
   const { fetch } = fakeFetch((call) =>
     call.url.startsWith(SERVICE)
       ? json({ ok: true, signedDownloadUrl: "https://blob.test/e" })
@@ -99,7 +100,7 @@ Deno.test("GitHubActionsCacheStore.get reads the JSON spelling of the URL too", 
   assertEquals(got === null ? [] : Array.from(got), [9]);
 });
 
-Deno.test("GitHubActionsCacheStore.get reports a miss as null", async () => {
+test("GitHubActionsCacheStore.get reports a miss as null", async () => {
   const notOk = fakeFetch(() => json({ ok: false }));
   const store = new GitHubActionsCacheStore({
     url: "https://results.test",
@@ -143,7 +144,7 @@ Deno.test("GitHubActionsCacheStore.get reports a miss as null", async () => {
   assertEquals(await oddStore.get("k"), null);
 });
 
-Deno.test("GitHubActionsCacheStore.get throws on service and download errors", async () => {
+test("GitHubActionsCacheStore.get throws on service and download errors", async () => {
   const service = fakeFetch(() => new Response("boom", { status: 500 }));
   const store = new GitHubActionsCacheStore({
     url: "https://results.test",
@@ -167,7 +168,7 @@ Deno.test("GitHubActionsCacheStore.get throws on service and download errors", a
   assertEquals(downloadError instanceof HttpError, true);
 });
 
-Deno.test("GitHubActionsCacheStore.get refuses a body over the artifact cap", async () => {
+test("GitHubActionsCacheStore.get refuses a body over the artifact cap", async () => {
   const { fetch } = fakeFetch((call) =>
     call.url.startsWith(SERVICE)
       ? json({ ok: true, signed_download_url: "https://blob.test/e" })
@@ -186,7 +187,7 @@ Deno.test("GitHubActionsCacheStore.get refuses a body over the artifact cap", as
   );
 });
 
-Deno.test("GitHubActionsCacheStore.put reserves, uploads, and finalizes", async () => {
+test("GitHubActionsCacheStore.put reserves, uploads, and finalizes", async () => {
   const { fetch, calls } = fakeFetch((call) => {
     if (call.url === `${SERVICE}CreateCacheEntry`) {
       return json({
@@ -223,7 +224,7 @@ Deno.test("GitHubActionsCacheStore.put reserves, uploads, and finalizes", async 
   assertEquals(finalizeBody.size_bytes, "3");
 });
 
-Deno.test("GitHubActionsCacheStore.put leaves an entry another job finalized", async () => {
+test("GitHubActionsCacheStore.put leaves an entry another job finalized", async () => {
   const { fetch, calls } = fakeFetch(() =>
     json({ code: "already_exists", msg: "cache entry exists" }, 409)
   );
@@ -236,7 +237,7 @@ Deno.test("GitHubActionsCacheStore.put leaves an entry another job finalized", a
   assertEquals(calls.length, 1); // no upload, no finalize
 });
 
-Deno.test("GitHubActionsCacheStore.put throws when a step is refused", async () => {
+test("GitHubActionsCacheStore.put throws when a step is refused", async () => {
   const refused = fakeFetch(() => json({ ok: false }));
   const store = new GitHubActionsCacheStore({
     url: "https://results.test",

@@ -9,6 +9,7 @@
  * out, be taken by someone else and make the resume refuse to continue.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   defaultStateHost,
@@ -26,7 +27,7 @@ async function rollout(dir: string): Promise<{ id: string; status: string }> {
   return { id: runs[0].id, status: runs[0].status };
 }
 
-Deno.test("a parked run keeps its lock across processes until it is resumed", async () => {
+test("a parked run keeps its lock across processes until it is resumed", async () => {
   const stateDir = await Deno.makeTempDir({ prefix: "zuke-run-lock-e2e-" });
   const env = { ZUKE_STATE_DIR: stateDir };
   try {
@@ -57,7 +58,7 @@ Deno.test("a parked run keeps its lock across processes until it is resumed", as
   }
 });
 
-Deno.test("a resume whose lock lapsed to another process refuses and stays parked", async () => {
+test("a resume whose lock lapsed to another process refuses and stays parked", async () => {
   const stateDir = await Deno.makeTempDir({ prefix: "zuke-run-lock-e2e-" });
   const env = { ZUKE_STATE_DIR: stateDir, ZUKE_E2E_LOCK_TTL: "1s" };
   try {

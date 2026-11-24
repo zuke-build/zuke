@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   ArgoRolloutsCreateAnalysisRunSettings,
@@ -8,7 +9,7 @@ import {
   ArgoRolloutsLintSettings,
 } from "../mod.ts";
 
-Deno.test("create: one --filename per file, plus watch and no-color", () => {
+test("create: one --filename per file, plus watch and no-color", () => {
   assertEquals(
     new ArgoRolloutsCreateSettings()
       .filename("rollout.yaml", "svc.yaml")
@@ -33,7 +34,7 @@ Deno.test("create: one --filename per file, plus watch and no-color", () => {
   );
 });
 
-Deno.test("createAnalysisRun: from the cluster with every option", () => {
+test("createAnalysisRun: from the cluster with every option", () => {
   assertEquals(
     new ArgoRolloutsCreateAnalysisRunSettings()
       .from("success-rate")
@@ -65,7 +66,7 @@ Deno.test("createAnalysisRun: from the cluster with every option", () => {
   );
 });
 
-Deno.test("createAnalysisRun: from a local file", () => {
+test("createAnalysisRun: from a local file", () => {
   assertEquals(
     new ArgoRolloutsCreateAnalysisRunSettings().fromFile("t.yaml").argv()
       .slice(1),
@@ -73,7 +74,7 @@ Deno.test("createAnalysisRun: from a local file", () => {
   );
 });
 
-Deno.test("createAnalysisRun needs exactly one template source", () => {
+test("createAnalysisRun needs exactly one template source", () => {
   const message =
     "ArgoRolloutsTasks.createAnalysisRun: set exactly one of .from() and .fromFile().";
   assertThrows(
@@ -90,7 +91,7 @@ Deno.test("createAnalysisRun needs exactly one template source", () => {
   );
 });
 
-Deno.test("lint requires a file", () => {
+test("lint requires a file", () => {
   assertEquals(
     new ArgoRolloutsLintSettings().filename("rollout.yaml").namespace("prod")
       .argv().slice(1),

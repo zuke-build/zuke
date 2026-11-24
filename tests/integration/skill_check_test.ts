@@ -8,6 +8,7 @@
  * wired (see `build.ts` and `build/skill_check.ts`).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -31,7 +32,7 @@ function gateBuild(root: string) {
   return Gate;
 }
 
-Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
+test("skillsCheck passes a conforming tree through the CLI", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/my-skill`);
     await Deno.writeTextFile(
@@ -45,7 +46,7 @@ Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
   });
 });
 
-Deno.test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
+test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
   await withTemp(async (dir) => {
     // The realistic slip: the folder was renamed, the frontmatter was not.
     await Deno.mkdir(`${dir}/new-name`);

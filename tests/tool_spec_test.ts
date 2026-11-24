@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import type { DocTsType } from "../build/api_reference.ts";
 import {
@@ -63,7 +64,7 @@ function ref(typeName: string, ...typeParams: DocTsType[]): DocTsType {
   return { kind: "typeRef", repr: typeName, value: { typeName, typeParams } };
 }
 
-Deno.test("specType: keywords, literals, unions, arrays, records and references", () => {
+test("specType: keywords, literals, unions, arrays, records and references", () => {
   const s = scope();
   const cases: [DocTsType, SpecType][] = [
     [keyword("string"), { kind: "string" }],
@@ -143,7 +144,7 @@ Deno.test("specType: keywords, literals, unions, arrays, records and references"
   assertEquals(specType(undefined, s), { kind: "unknown" });
 });
 
-Deno.test("docOf: links unwrapped, trailing space and blank ends trimmed", () => {
+test("docOf: links unwrapped, trailing space and blank ends trimmed", () => {
   assertEquals(
     docOf("See {@link Foo | the foo} and {@linkcode Bar}.  \n\n"),
     "See the foo and Bar.",
@@ -151,7 +152,7 @@ Deno.test("docOf: links unwrapped, trailing space and blank ends trimmed", () =>
   assertEquals(docOf(undefined), "");
 });
 
-Deno.test("packageOf: the fixture wrappers read to their golden parts", async () => {
+test("packageOf: the fixture wrappers read to their golden parts", async () => {
   const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
   for (const name of ["widget", "tally", "relay"]) {
     const root = await docRootOf([`${FIXTURES}/${name}.ts`]);
@@ -159,7 +160,7 @@ Deno.test("packageOf: the fixture wrappers read to their golden parts", async ()
   }
 });
 
-Deno.test("packageOf: a root without tasks is no part of the spec", async () => {
+test("packageOf: a root without tasks is no part of the spec", async () => {
   const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
   assertEquals(
     packageOf("empty", { version: 1, nodes: {} }, tooling),
@@ -168,7 +169,7 @@ Deno.test("packageOf: a root without tasks is no part of the spec", async () => 
   assertEquals(firstSentence({ version: 1, nodes: {} }), "");
 });
 
-Deno.test("packageOf: an extends entry that names no interface it can read adds nothing", async () => {
+test("packageOf: an extends entry that names no interface it can read adds nothing", async () => {
   const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
   const method = (name: string) => ({
     name,
@@ -208,7 +209,7 @@ Deno.test("packageOf: an extends entry that names no interface it can read adds 
   assertEquals(odd?.tasks.map((t) => t.tasks.map((m) => m.name)), [["stop"]]);
 });
 
-Deno.test("toolingOf: the base settings, their public setters, no reserved member", async () => {
+test("toolingOf: the base settings, their public setters, no reserved member", async () => {
   const tooling = toolingOf(await docRootOf([TOOLING_ENTRYPOINT]));
   const names = tooling.map((s) => s.name);
   assert(names.includes("ToolSettings"), names.join(","));
@@ -233,7 +234,7 @@ Deno.test("toolingOf: the base settings, their public setters, no reserved membe
   assertEquals(env?.returns, { kind: "self" });
 });
 
-Deno.test("toolSpec: the workspace's wrappers, rendered as the committed file is", async () => {
+test("toolSpec: the workspace's wrappers, rendered as the committed file is", async () => {
   const spec = await toolSpec(["deno", "docker"]);
   assertEquals(spec.spec, TOOL_SPEC_VERSION);
   assertEquals(spec.packages.map((p) => p.name), ["deno", "docker"]);

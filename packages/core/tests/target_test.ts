@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { testPlan } from "./_fakes.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
 
-Deno.test("discovery recurses into component bundles with dotted names", () => {
+test("discovery recurses into component bundles with dotted names", () => {
   // A reusable component: a function returning a bundle of related targets.
   const releasable = () => {
     const pack = target().executes(() => {});
@@ -29,7 +30,7 @@ Deno.test("discovery recurses into component bundles with dotted names", () => {
   assertEquals(b.deploy.dependsOn_.map((t) => t.name_), ["release.publish"]);
 });
 
-Deno.test("discovery handles nested components and cyclic plain objects", () => {
+test("discovery handles nested components and cyclic plain objects", () => {
   const inner = () => ({ build: target().executes(() => {}) });
   class B extends Build {
     group = { ci: inner() }; // nested component bundle
@@ -44,7 +45,7 @@ Deno.test("discovery handles nested components and cyclic plain objects", () => 
   assertEquals([...targets.keys()], ["group.ci.build"]);
 });
 
-Deno.test("discoverGroups binds each group to its property name", () => {
+test("discoverGroups binds each group to its property name", () => {
   class B extends Build {
     checks = group();
     a = target().partOf(this.checks).executes(() => {});
@@ -55,7 +56,7 @@ Deno.test("discoverGroups binds each group to its property name", () => {
   assertEquals(b.checks.name_, "checks");
 });
 
-Deno.test("triggers, dependentFor, requires, proceedAfterFailure, unlisted record config", () => {
+test("triggers, dependentFor, requires, proceedAfterFailure, unlisted record config", () => {
   class B extends Build {
     before = target().executes(() => {});
     after = target().executes(() => {});
@@ -78,7 +79,7 @@ Deno.test("triggers, dependentFor, requires, proceedAfterFailure, unlisted recor
   assertEquals(b.main.unlisted_, true);
 });
 
-Deno.test("partOf joins a group; dependsOn(group) expands to its members", () => {
+test("partOf joins a group; dependsOn(group) expands to its members", () => {
   class B extends Build {
     checks = group();
     a = target().partOf(this.checks).executes(() => {});
@@ -97,7 +98,7 @@ Deno.test("partOf joins a group; dependsOn(group) expands to its members", () =>
   assertEquals(b.d.dependsOn_.map((t) => t.name_), ["a", "b", "c"]);
 });
 
-Deno.test("inputs, outputs, and onlyWhen record their configuration", () => {
+test("inputs, outputs, and onlyWhen record their configuration", () => {
   let allow = false;
   const t = target()
     .inputs("src", "deno.json")
@@ -113,7 +114,7 @@ Deno.test("inputs, outputs, and onlyWhen record their configuration", () => {
   assertEquals(t.onlyWhen_[0](conditionCtx), true);
 });
 
-Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () => {
+test("cacheKey, produces, consumes, always, whenSkipped record config", () => {
   class B extends Build {
     dep = target().executes(() => {});
     main = target()
@@ -134,7 +135,7 @@ Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () 
   assertEquals(b.main.skipDependencies_, true);
 });
 
-Deno.test("timeout and retry record their configuration, clamping inputs", () => {
+test("timeout and retry record their configuration, clamping inputs", () => {
   const t = target().timeout(500).retry(3, 250).executes(() => {});
   assertEquals(t.timeout_, 500);
   assertEquals(t.retries_, 3);
@@ -148,14 +149,14 @@ Deno.test("timeout and retry record their configuration, clamping inputs", () =>
   assertEquals(v.retries_, 2);
 });
 
-Deno.test("partOf ignores an undefined (forward-referenced) group", () => {
+test("partOf ignores an undefined (forward-referenced) group", () => {
   const t = target();
   // @ts-expect-error exercising the runtime guard against an unbound reference
   t.partOf(undefined);
   assertEquals(t.group_, undefined);
 });
 
-Deno.test("target() builder is chainable and records configuration", () => {
+test("target() builder is chainable and records configuration", () => {
   const dep = target();
   const t = target()
     .description("compile things")
@@ -168,7 +169,7 @@ Deno.test("target() builder is chainable and records configuration", () => {
   assertEquals(typeof t.fn_, "function");
 });
 
-Deno.test("executes accepts a body that returns a value", () => {
+test("executes accepts a body that returns a value", () => {
   // The DX regression: every *Tasks wrapper resolves to a CommandOutput, so
   // `.executes(() => DenoTasks.lint())` must type-check without an async
   // wrapper that exists only to discard the result.
@@ -178,7 +179,7 @@ Deno.test("executes accepts a body that returns a value", () => {
   assertEquals(typeof wrapped.fn_, "function");
 });
 
-Deno.test("before/after record soft ordering hints", () => {
+test("before/after record soft ordering hints", () => {
   const a = target();
   const b = target();
   const t = target().before(a).after(b);
@@ -186,7 +187,7 @@ Deno.test("before/after record soft ordering hints", () => {
   assertEquals(t.after_, [b]);
 });
 
-Deno.test("discovery binds each target to its property name", () => {
+test("discovery binds each target to its property name", () => {
   class B extends Build {
     clean = target().description("clean");
     compile = target().dependsOn(this.clean);
@@ -200,7 +201,7 @@ Deno.test("discovery binds each target to its property name", () => {
   assertEquals(targets.get("compile")!.name_, "compile");
 });
 
-Deno.test("discovery preserves declaration order", () => {
+test("discovery preserves declaration order", () => {
   class B extends Build {
     z = target();
     a = target();
@@ -209,7 +210,7 @@ Deno.test("discovery preserves declaration order", () => {
   assertEquals([...discoverTargets(new B()).keys()], ["z", "a", "m"]);
 });
 
-Deno.test("discovery rejects a target bound to two names", () => {
+test("discovery rejects a target bound to two names", () => {
   const shared = target();
   class B extends Build {
     one = shared;
@@ -218,7 +219,7 @@ Deno.test("discovery rejects a target bound to two names", () => {
   assertThrows(() => discoverTargets(new B()), Error, "two names");
 });
 
-Deno.test("recoverWith records remediations; recoverAttempts defaults to 1", () => {
+test("recoverWith records remediations; recoverAttempts defaults to 1", () => {
   const a = { remediate: () => ({ retry: false }) };
   const b = { remediate: () => ({ retry: true }) };
   const t = target().recoverWith(a).recoverWith(b);
@@ -226,7 +227,7 @@ Deno.test("recoverWith records remediations; recoverAttempts defaults to 1", () 
   assertEquals(t.recoverAttempts_, 1);
 });
 
-Deno.test("recoverAttempts clamps to at least 1 and floors fractions", () => {
+test("recoverAttempts clamps to at least 1 and floors fractions", () => {
   assertEquals(target().recoverAttempts(0).recoverAttempts_, 1);
   assertEquals(target().recoverAttempts(-5).recoverAttempts_, 1);
   assertEquals(target().recoverAttempts(2.9).recoverAttempts_, 2);

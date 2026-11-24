@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { connect, createServer } from "node:net";
 import { FileTasks } from "../src/file.ts";
@@ -18,7 +19,7 @@ function streamOf(...chunks: number[][]): ReadableStream<Uint8Array> {
   });
 }
 
-Deno.test("StreamTasks.toFile writes every chunk", async () => {
+test("StreamTasks.toFile writes every chunk", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/out.bin`;
     await StreamTasks.toFile(path, streamOf([1, 2], [3]));
@@ -28,7 +29,7 @@ Deno.test("StreamTasks.toFile writes every chunk", async () => {
   });
 });
 
-Deno.test("StreamTasks.toFile with createNew leaves an existing file", async () => {
+test("StreamTasks.toFile with createNew leaves an existing file", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/out.bin`;
     await StreamTasks.toFile(path, streamOf([1]), (s) => s.createNew());
@@ -44,7 +45,7 @@ async function textOf(stream: ReadableStream<Uint8Array>): Promise<string> {
   return await new Response(stream).text();
 }
 
-Deno.test("NetTasks carries bytes both ways over an accepted connection", async () => {
+test("NetTasks carries bytes both ways over an accepted connection", async () => {
   const listener = await NetTasks.listen();
   const client = await Deno.connect({
     hostname: "127.0.0.1",
@@ -61,7 +62,7 @@ Deno.test("NetTasks carries bytes both ways over an accepted connection", async 
   server.close();
 });
 
-Deno.test("NetTasks queues a connection that arrives before accept", async () => {
+test("NetTasks queues a connection that arrives before accept", async () => {
   const listener = await NetTasks.listen();
   const client = await Deno.connect({
     hostname: "127.0.0.1",
@@ -78,7 +79,7 @@ Deno.test("NetTasks queues a connection that arrives before accept", async () =>
   await assertRejects(() => listener.accept());
 });
 
-Deno.test("NetTasks rejects a waiting accept on close, and drops unaccepted connections", async () => {
+test("NetTasks rejects a waiting accept on close, and drops unaccepted connections", async () => {
   const listener = await NetTasks.listen();
   const waiting = listener.accept();
   listener.close();
@@ -96,7 +97,7 @@ Deno.test("NetTasks rejects a waiting accept on close, and drops unaccepted conn
   assertEquals(await textOf(client.readable).catch(() => ""), "");
 });
 
-Deno.test("NetTasks fails to listen on a port already taken", async () => {
+test("NetTasks fails to listen on a port already taken", async () => {
   const taken = await NetTasks.listen();
   try {
     await assertRejects(() =>
@@ -107,7 +108,7 @@ Deno.test("NetTasks fails to listen on a port already taken", async () => {
   }
 });
 
-Deno.test("NetTasks closes the connection when its reading is cancelled", async () => {
+test("NetTasks closes the connection when its reading is cancelled", async () => {
   const listener = await NetTasks.listen();
   const client = await Deno.connect({
     hostname: "127.0.0.1",
@@ -123,7 +124,7 @@ Deno.test("NetTasks closes the connection when its reading is cancelled", async 
   client.close();
 });
 
-Deno.test("NetTasks errors what it reads when the other side resets", async () => {
+test("NetTasks errors what it reads when the other side resets", async () => {
   const listener = await NetTasks.listen();
   const client = connect(listener.port, "127.0.0.1");
   const server = await listener.accept();
@@ -133,7 +134,7 @@ Deno.test("NetTasks errors what it reads when the other side resets", async () =
   server.close();
 });
 
-Deno.test("NetTasks pauses a fast sender until its bytes are read", async () => {
+test("NetTasks pauses a fast sender until its bytes are read", async () => {
   const listener = await NetTasks.listen();
   const client = await Deno.connect({
     hostname: "127.0.0.1",
@@ -157,7 +158,7 @@ Deno.test("NetTasks pauses a fast sender until its bytes are read", async () => 
   client.close();
 });
 
-Deno.test("StreamTasks.toFile cancels a stream it cannot write", async () => {
+test("StreamTasks.toFile cancels a stream it cannot write", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/taken.bin`;
     await FileTasks.writeBytes(path, new Uint8Array([1]));
@@ -174,7 +175,7 @@ Deno.test("StreamTasks.toFile cancels a stream it cannot write", async () => {
   });
 });
 
-Deno.test("StreamTasks.toFile applies the mode it is given", async () => {
+test("StreamTasks.toFile applies the mode it is given", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/private.bin`;
     await StreamTasks.toFile(path, streamOf([1]), (s) => s.mode(0o600));
@@ -186,7 +187,7 @@ Deno.test("StreamTasks.toFile applies the mode it is given", async () => {
   });
 });
 
-Deno.test("NetTasks survives a queued connection reset before it is accepted", async () => {
+test("NetTasks survives a queued connection reset before it is accepted", async () => {
   const listener = await NetTasks.listen();
   const client = connect(listener.port, "127.0.0.1");
   await new Promise((resolve) => client.once("connect", resolve));
@@ -200,7 +201,7 @@ Deno.test("NetTasks survives a queued connection reset before it is accepted", a
   server.close();
 });
 
-Deno.test("NetTasks closeWrite settles on a connection already closed", async () => {
+test("NetTasks closeWrite settles on a connection already closed", async () => {
   const listener = await NetTasks.listen();
   const client = await Deno.connect({
     hostname: "127.0.0.1",
@@ -216,7 +217,7 @@ Deno.test("NetTasks closeWrite settles on a connection already closed", async ()
   client.close();
 });
 
-Deno.test("NetTasks ends the listener on a server error after binding, not the process", async () => {
+test("NetTasks ends the listener on a server error after binding, not the process", async () => {
   // 1ei252lrz7ghf: an accept the system refuses must reach the caller.
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

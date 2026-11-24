@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { parseBrewInfo } from "../src/brew_info.ts";
 
@@ -45,7 +46,7 @@ const DOCUMENT = JSON.stringify({
   casks: [],
 });
 
-Deno.test("brew info: formulae, versions and installed versions are typed", () => {
+test("brew info: formulae, versions and installed versions are typed", () => {
   assertEquals(parseBrewInfo(DOCUMENT), {
     formulae: [
       {
@@ -74,7 +75,7 @@ Deno.test("brew info: formulae, versions and installed versions are typed", () =
   });
 });
 
-Deno.test("brew info: a document of another shape names the field", () => {
+test("brew info: a document of another shape names the field", () => {
   const entry = {
     name: "app",
     full_name: "app",
@@ -122,7 +123,7 @@ Deno.test("brew info: a document of another shape names the field", () => {
   });
 });
 
-Deno.test("brew info: output that is not JSON is reported with a prefix of it", () => {
+test("brew info: output that is not JSON is reported with a prefix of it", () => {
   assertThrows(
     () => parseBrewInfo("Error: No available formula with the name"),
     Error,

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -74,7 +75,7 @@ async function staged() {
   return { model, ctx };
 }
 
-Deno.test("containerAppCanary: stage pins the traffic, deploys the candidate with none, and records the rollout", async () => {
+test("containerAppCanary: stage pins the traffic, deploys the candidate with none, and records the rollout", async () => {
   const { model, ctx } = await staged();
   assertEquals(model.calls.map((argv) => argv.slice(0, 3).join(" ")), [
     "containerapp show --name=api",
@@ -104,7 +105,7 @@ Deno.test("containerAppCanary: stage pins the traffic, deploys the candidate wit
   assertEquals(ctx.summary, { Candidate: "api--v2", Stable: "api--v1" });
 });
 
-Deno.test("containerAppCanary: expose splits by revision name and promote hands the traffic back to latest", async () => {
+test("containerAppCanary: expose splits by revision name and promote hands the traffic back to latest", async () => {
   const { model, ctx } = await staged();
   const app = platform(model);
   assertEquals(await app.expose(10, ctx), 10);
@@ -120,7 +121,7 @@ Deno.test("containerAppCanary: expose splits by revision name and promote hands 
   assertEquals(model.mutations().length, before);
 });
 
-Deno.test("containerAppCanary: traffic pinned by name before stays pinned, to the candidate", async () => {
+test("containerAppCanary: traffic pinned by name before stays pinned, to the candidate", async () => {
   const model = new ContainerAppModel();
   model.api.traffic = [{ revisionName: "api--v1", weight: 100 }];
   const ctx = context();
@@ -135,7 +136,7 @@ Deno.test("containerAppCanary: traffic pinned by name before stays pinned, to th
   assertEquals(model.mutations().length, before);
 });
 
-Deno.test("containerAppCanary: stage refuses an app it cannot split", async () => {
+test("containerAppCanary: stage refuses an app it cannot split", async () => {
   const cases: ReadonlyArray<
     readonly [
       label: string,
@@ -178,7 +179,7 @@ Deno.test("containerAppCanary: stage refuses an app it cannot split", async () =
   }
 });
 
-Deno.test("containerAppCanary: a deploy that makes no new revision, or one that does not provision, takes no traffic", async () => {
+test("containerAppCanary: a deploy that makes no new revision, or one that does not provision, takes no traffic", async () => {
   const same = new ContainerAppModel();
   const ctx = context();
   await assertRejects(
@@ -203,7 +204,7 @@ Deno.test("containerAppCanary: a deploy that makes no new revision, or one that 
   assertEquals(failed.shares(), { "api--v1": 100 });
 });
 
-Deno.test("containerAppCanary: stage needs an image and names Azure takes", async () => {
+test("containerAppCanary: stage needs an image and names Azure takes", async () => {
   const bad: ReadonlyArray<
     readonly [
       label: string,
@@ -246,7 +247,7 @@ Deno.test("containerAppCanary: stage needs an image and names Azure takes", asyn
   );
 });
 
-Deno.test("containerAppCanary: a stage run again after the pin still knows the traffic followed latest", async () => {
+test("containerAppCanary: a stage run again after the pin still knows the traffic followed latest", async () => {
   const model = new ContainerAppModel();
   const ctx = context();
   // The first attempt pins the traffic, then its deploy fails.
@@ -272,7 +273,7 @@ Deno.test("containerAppCanary: a stage run again after the pin still knows the t
   assertEquals(model.trafficMoves().at(-1), ["latest=100"]);
 });
 
-Deno.test("containerAppCanary: a stage run again over its record checks it and deploys nothing", async () => {
+test("containerAppCanary: a stage run again over its record checks it and deploys nothing", async () => {
   const { model, ctx } = await staged();
   model.calls = [];
   await platform(model).stage(ctx);
@@ -280,7 +281,7 @@ Deno.test("containerAppCanary: a stage run again over its record checks it and d
   assertEquals(ctx.summary.Candidate, "api--v2");
 });
 
-Deno.test("containerAppCanary: an unrecordable rollout stops before any traffic moves to the candidate", async () => {
+test("containerAppCanary: an unrecordable rollout stops before any traffic moves to the candidate", async () => {
   const model = new ContainerAppModel();
   await assertRejects(
     () => platform(model).stage(context(memoryState(false))),
@@ -290,7 +291,7 @@ Deno.test("containerAppCanary: an unrecordable rollout stops before any traffic 
   assertEquals(model.shares(), { "api--v1": 100 });
 });
 
-Deno.test("containerAppCanary: an unknown stage marker is never acted on", async () => {
+test("containerAppCanary: an unknown stage marker is never acted on", async () => {
   for (const call of ["stage", "expose", "abort"] as const) {
     // Over a whole record, so the marker alone is what refuses.
     const { model, ctx } = await staged();
@@ -311,7 +312,7 @@ Deno.test("containerAppCanary: an unknown stage marker is never acted on", async
   }
 });
 
-Deno.test("containerAppCanary: a record missing a part changes nothing", async () => {
+test("containerAppCanary: a record missing a part changes nothing", async () => {
   const keys: ReadonlyArray<readonly [key: string, value: JsonValue]> = [
     ["containerAppCanaryApp", "--x"],
     ["containerAppCanaryResourceGroup", ""],
@@ -345,7 +346,7 @@ Deno.test("containerAppCanary: a record missing a part changes nothing", async (
   }
 });
 
-Deno.test("containerAppCanary: a call configured for another app, group or subscription changes nothing", async () => {
+test("containerAppCanary: a call configured for another app, group or subscription changes nothing", async () => {
   const changes: ReadonlyArray<
     readonly [
       label: string,
@@ -386,7 +387,7 @@ Deno.test("containerAppCanary: a call configured for another app, group or subsc
   }
 });
 
-Deno.test("containerAppCanary: an app the CLI now reaches in another subscription is neither moved nor rolled back", async () => {
+test("containerAppCanary: an app the CLI now reaches in another subscription is neither moved nor rolled back", async () => {
   // No flags: the CLI's default subscription decides, as `az account set` does.
   const model = new ContainerAppModel();
   const app = containerAppCanary((a) =>
@@ -424,7 +425,7 @@ Deno.test("containerAppCanary: an app the CLI now reaches in another subscriptio
   assertEquals(model.shares("sub-test/rg-prod/api"), { "api--t1": 100 });
 });
 
-Deno.test("containerAppCanary: traffic changed by someone else is not moved", async () => {
+test("containerAppCanary: traffic changed by someone else is not moved", async () => {
   const changes: ReadonlyArray<
     readonly [
       label: string,
@@ -465,7 +466,7 @@ Deno.test("containerAppCanary: traffic changed by someone else is not moved", as
   }
 });
 
-Deno.test("containerAppCanary: a candidate made again under its name is never sent traffic", async () => {
+test("containerAppCanary: a candidate made again under its name is never sent traffic", async () => {
   for (const call of ["expose", "promote"] as const) {
     const { model, ctx } = await staged();
     model.api.revisions["api--v2"].created = "2026-10-20T00:00:00Z";
@@ -489,7 +490,7 @@ Deno.test("containerAppCanary: a candidate made again under its name is never se
   );
 });
 
-Deno.test("containerAppCanary: a revision deployed mid-rollout is never promoted", async () => {
+test("containerAppCanary: a revision deployed mid-rollout is never promoted", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(10, ctx);
   model.api.latest = "api--v3";
@@ -501,7 +502,7 @@ Deno.test("containerAppCanary: a revision deployed mid-rollout is never promoted
   assertEquals(model.shares(), { "api--v1": 90, "api--v2": 10 });
 });
 
-Deno.test("containerAppCanary: a rollback sends the traffic back to the stable revision by name", async () => {
+test("containerAppCanary: a rollback sends the traffic back to the stable revision by name", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(25, ctx);
   await platform(model).abort(ctx);
@@ -514,7 +515,7 @@ Deno.test("containerAppCanary: a rollback sends the traffic back to the stable r
   assertEquals(promoted.model.shares(), { "api--v1": 100 });
 });
 
-Deno.test("containerAppCanary: a rollback never undoes a third revision's share", async () => {
+test("containerAppCanary: a rollback never undoes a third revision's share", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(10, ctx);
   model.api.traffic?.push({ revisionName: "api--v9", weight: 5 });
@@ -527,13 +528,13 @@ Deno.test("containerAppCanary: a rollback never undoes a third revision's share"
   assertEquals(model.mutations(), []);
 });
 
-Deno.test("containerAppCanary: a rollback run by hand goes to the configured stable revision", async () => {
+test("containerAppCanary: a rollback run by hand goes to the configured stable revision", async () => {
   const model = new ContainerAppModel();
   await platform(model, (a) => a.stable("api--v1")).abort(context());
   assertEquals(model.trafficMoves(), [["api--v1=100"]]);
 });
 
-Deno.test("containerAppCanary: an engine rollback with nothing recorded runs nothing", async () => {
+test("containerAppCanary: an engine rollback with nothing recorded runs nothing", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so pinning traffic to the stable revision would
   // change an app no rollout touched.
@@ -550,7 +551,7 @@ Deno.test("containerAppCanary: an engine rollback with nothing recorded runs not
   assertEquals(ctx.summary, {});
 });
 
-Deno.test("containerAppCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
+test("containerAppCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const model = new ContainerAppModel();
     await platform(model, (a) => a.stable("api--v1"))
@@ -559,7 +560,7 @@ Deno.test("containerAppCanary: a hand run, named or from an engine that names no
   }
 });
 
-Deno.test("containerAppCanary: a rollback run by hand without a usable stable revision refuses", async () => {
+test("containerAppCanary: a rollback run by hand without a usable stable revision refuses", async () => {
   const model = new ContainerAppModel();
   await assertRejects(
     () => platform(model).abort(context()),
@@ -576,7 +577,7 @@ Deno.test("containerAppCanary: a rollback run by hand without a usable stable re
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: promote needs a staged rollout", async () => {
+test("containerAppCanary: promote needs a staged rollout", async () => {
   const model = new ContainerAppModel();
   await assertRejects(
     () => platform(model).promote(context()),
@@ -586,7 +587,7 @@ Deno.test("containerAppCanary: promote needs a staged rollout", async () => {
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: expose takes whole percents only, and a staged rollout", async () => {
+test("containerAppCanary: expose takes whole percents only, and a staged rollout", async () => {
   const model = new ContainerAppModel();
   for (const percent of [-1, 101, 12.5, Number.NaN]) {
     await assertRejects(
@@ -603,7 +604,7 @@ Deno.test("containerAppCanary: expose takes whole percents only, and a staged ro
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: an az lambda that resolves differently per command runs nothing it disagrees with", async () => {
+test("containerAppCanary: an az lambda that resolves differently per command runs nothing it disagrees with", async () => {
   const { model, ctx } = await staged();
   let calls = 0;
   const flipping = containerAppCanary((a) =>
@@ -624,7 +625,7 @@ Deno.test("containerAppCanary: an az lambda that resolves differently per comman
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: a failed traffic move fails the call even under noThrow", async () => {
+test("containerAppCanary: a failed traffic move fails the call even under noThrow", async () => {
   const { model, ctx } = await staged();
   const run = model.runner;
   const failing = containerAppCanary((a) =>
@@ -640,7 +641,7 @@ Deno.test("containerAppCanary: a failed traffic move fails the call even under n
   await assertRejects(() => failing.abort(ctx), CommandError);
 });
 
-Deno.test("containerAppCanary: answers that are not what was asked for are refused", async () => {
+test("containerAppCanary: answers that are not what was asked for are refused", async () => {
   const ID =
     "/subscriptions/s/resourceGroups/rg/providers/Microsoft.App/containerApps/api";
   const base = {
@@ -703,7 +704,7 @@ Deno.test("containerAppCanary: answers that are not what was asked for are refus
   }
 });
 
-Deno.test("containerAppCanary: with no .az(...) it runs the az CLI found on PATH", async () => {
+test("containerAppCanary: with no .az(...) it runs the az CLI found on PATH", async () => {
   await withEmptyPath(async () => {
     const app = containerAppCanary((a) =>
       a.name("api").resourceGroup("rg").image("i")
@@ -712,7 +713,7 @@ Deno.test("containerAppCanary: with no .az(...) it runs the az CLI found on PATH
   });
 });
 
-Deno.test("containerAppCanary: commands that change the app print nothing, whatever output the az lambda asks for", async () => {
+test("containerAppCanary: commands that change the app print nothing, whatever output the az lambda asks for", async () => {
   // `containerapp update` answers with the whole app, plain environment
   // variable values included, so it must never print.
   const model = new ContainerAppModel();
@@ -735,7 +736,7 @@ Deno.test("containerAppCanary: commands that change the app print nothing, whate
   }
 });
 
-Deno.test("containerAppCanary: an app whose newest revision has not provisioned is not staged", async () => {
+test("containerAppCanary: an app whose newest revision has not provisioned is not staged", async () => {
   // Traffic that follows the latest revision goes to the newest ready one,
   // not to a newer revision that failed: pinning that one would move the
   // traffic, and record the wrong stable revision for every rollback.
@@ -755,7 +756,7 @@ Deno.test("containerAppCanary: an app whose newest revision has not provisioned 
   assertEquals(model.shares(), { "api--v1": 100 });
 });
 
-Deno.test("containerAppCanary: traffic that followed latest is handed back only to a ready candidate", async () => {
+test("containerAppCanary: traffic that followed latest is handed back only to a ready candidate", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(50, ctx);
   // The candidate is still the newest revision, but no longer the newest
@@ -771,7 +772,7 @@ Deno.test("containerAppCanary: traffic that followed latest is handed back only 
   assertEquals(model.shares(), { "api--v1": 50, "api--v2": 50 });
 });
 
-Deno.test("containerAppCanary: a revision someone else deploys during stage is not taken for the candidate", async () => {
+test("containerAppCanary: a revision someone else deploys during stage is not taken for the candidate", async () => {
   const model = new ContainerAppModel();
   const racing: typeof model.runner = async (settings) => {
     const output = await model.runner(settings);
@@ -802,7 +803,7 @@ Deno.test("containerAppCanary: a revision someone else deploys during stage is n
   assertEquals(model.shares(), { "api--v1": 100 });
 });
 
-Deno.test("containerAppCanary: a stage run again over its record refuses an app the CLI now reaches elsewhere", async () => {
+test("containerAppCanary: a stage run again over its record refuses an app the CLI now reaches elsewhere", async () => {
   const model = new ContainerAppModel();
   const ctx = context();
   const app = containerAppCanary((a) =>
@@ -821,7 +822,7 @@ Deno.test("containerAppCanary: a stage run again over its record refuses an app 
   assertEquals(model.mutations(), []);
 });
 
-Deno.test("containerAppCanary: a promote run again after a newer deploy changes nothing", async () => {
+test("containerAppCanary: a promote run again after a newer deploy changes nothing", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(50, ctx);
   await platform(model).promote(ctx);
@@ -843,7 +844,7 @@ Deno.test("containerAppCanary: a promote run again after a newer deploy changes 
   assertEquals(model.shares(), { "api--v3": 100 });
 });
 
-Deno.test("containerAppCanary: a candidate name that is not a revision's never reaches a query", async () => {
+test("containerAppCanary: a candidate name that is not a revision's never reaches a query", async () => {
   const model = new ContainerAppModel();
   const odd: typeof model.runner = async (settings) => {
     const output = await model.runner(settings);
@@ -863,14 +864,14 @@ Deno.test("containerAppCanary: a candidate name that is not a revision's never r
   assertEquals(model.calls.some((argv) => argv[1] === "revision"), false);
 });
 
-Deno.test("containerAppCanary: the candidate image goes to the container named", async () => {
+test("containerAppCanary: the candidate image goes to the container named", async () => {
   const model = new ContainerAppModel();
   await platform(model, (a) => a.containerName("web")).stage(context());
   const update = model.calls.find((argv) => argv[1] === "update") ?? [];
   assertEquals(flagValue(update, "--container-name"), "web");
 });
 
-Deno.test("containerAppCanary: the recovery quotes what a shell would split", async () => {
+test("containerAppCanary: the recovery quotes what a shell would split", async () => {
   const model = new ContainerAppModel();
   model.apps["sub-prod/rg(prod)/api"] = model.api;
   const ctx = context();
@@ -883,7 +884,7 @@ Deno.test("containerAppCanary: the recovery quotes what a shell would split", as
   assertStringIncludes(error.message, "'--resource-group=rg(prod)'");
 });
 
-Deno.test("containerAppCanary: every write after the check goes to the subscription checked", async () => {
+test("containerAppCanary: every write after the check goes to the subscription checked", async () => {
   // No flags: the CLI's default subscription decides — and another job
   // switches it between this call's read and its write.
   const model = new ContainerAppModel();
@@ -913,7 +914,7 @@ Deno.test("containerAppCanary: every write after the check goes to the subscript
   assertEquals(model.shares("sub-test/rg-prod/api"), { "api--t1": 100 });
 });
 
-Deno.test("containerAppCanary: a stage resumed under another subscription refuses before it pins anything there", async () => {
+test("containerAppCanary: a stage resumed under another subscription refuses before it pins anything there", async () => {
   const model = new ContainerAppModel();
   model.apps["sub-test/rg-prod/api"] = {
     mode: "Multiple",
@@ -947,7 +948,7 @@ Deno.test("containerAppCanary: a stage resumed under another subscription refuse
   assertEquals(model.shares("sub-test/rg-prod/api"), { "api--t1": 100 });
 });
 
-Deno.test("containerAppCanary: the rollback of a stage that failed hands the traffic back to latest", async () => {
+test("containerAppCanary: the rollback of a stage that failed hands the traffic back to latest", async () => {
   // The deploy changed nothing, so no revision was made: once stage fails,
   // the pin is the only change left, and "latest" serves the same revision.
   const model = new ContainerAppModel();
@@ -971,7 +972,7 @@ Deno.test("containerAppCanary: the rollback of a stage that failed hands the tra
   assertEquals(model.trafficMoves().length, 2);
 });
 
-Deno.test("containerAppCanary: the rollback of a stage that made a revision leaves the traffic pinned, and says so", async () => {
+test("containerAppCanary: the rollback of a stage that made a revision leaves the traffic pinned, and says so", async () => {
   const model = new ContainerAppModel();
   model.provisioning = "Failed";
   const ctx = context(memoryState(), "rollback");
@@ -985,7 +986,7 @@ Deno.test("containerAppCanary: the rollback of a stage that made a revision leav
   assertEquals(ctx.summary, { "Pinned to": "api--v1" });
 });
 
-Deno.test("containerAppCanary: the rollback of a failed stage leaves traffic pinned by name before as it is", async () => {
+test("containerAppCanary: the rollback of a failed stage leaves traffic pinned by name before as it is", async () => {
   const model = new ContainerAppModel();
   model.api.traffic = [{ revisionName: "api--v1", weight: 100 }];
   model.provisioning = "Failed";
@@ -996,7 +997,7 @@ Deno.test("containerAppCanary: the rollback of a failed stage leaves traffic pin
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: the rollback of a stage that never pinned changes nothing", async () => {
+test("containerAppCanary: the rollback of a stage that never pinned changes nothing", async () => {
   const model = new ContainerAppModel();
   const failing: typeof model.runner = (settings) =>
     settings.argv()[2] === "ingress"
@@ -1013,7 +1014,7 @@ Deno.test("containerAppCanary: the rollback of a stage that never pinned changes
   assertEquals(model.mutations(), []);
 });
 
-Deno.test("containerAppCanary: the rollback of a failed stage configured for another app refuses", async () => {
+test("containerAppCanary: the rollback of a failed stage configured for another app refuses", async () => {
   const model = new ContainerAppModel();
   model.provisioning = "Failed";
   const ctx = context();
@@ -1049,7 +1050,7 @@ function crashingOnDeploy(
   );
 }
 
-Deno.test("containerAppCanary: a stage run again after the pin refuses traffic someone else moved", async () => {
+test("containerAppCanary: a stage run again after the pin refuses traffic someone else moved", async () => {
   const model = new ContainerAppModel();
   const ctx = context();
   const app = crashingOnDeploy(model);
@@ -1068,7 +1069,7 @@ Deno.test("containerAppCanary: a stage run again after the pin refuses traffic s
   assertEquals(model.mutations(), []);
 });
 
-Deno.test("containerAppCanary: a stage run again after a pin by name names nothing to undo", async () => {
+test("containerAppCanary: a stage run again after a pin by name names nothing to undo", async () => {
   const model = new ContainerAppModel();
   model.api.traffic = [{ revisionName: "api--v1", weight: 100 }];
   const ctx = context();
@@ -1087,7 +1088,7 @@ Deno.test("containerAppCanary: a stage run again after a pin by name names nothi
   assertEquals(model.calls, []);
 });
 
-Deno.test("containerAppCanary: a staged marker with no record changes nothing", async () => {
+test("containerAppCanary: a staged marker with no record changes nothing", async () => {
   const model = new ContainerAppModel();
   const ctx = context();
   await ctx.state.set({ containerAppCanaryStage: "staged" });

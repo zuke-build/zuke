@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -15,11 +16,11 @@ import {
   BiomeTasks,
 } from "../src/biome.ts";
 
-Deno.test("the default binary is biome", () => {
+test("the default binary is biome", () => {
   assertEquals(new BiomeCheckSettings().argv()[0], "biome");
 });
 
-Deno.test("shared filters: config, reporter, --staged, --changed, paths", () => {
+test("shared filters: config, reporter, --staged, --changed, paths", () => {
   assertEquals(
     new BiomeCiSettings()
       .config("biome.json")
@@ -41,7 +42,7 @@ Deno.test("shared filters: config, reporter, --staged, --changed, paths", () => 
   );
 });
 
-Deno.test("check: bare, --write, --unsafe with paths", () => {
+test("check: bare, --write, --unsafe with paths", () => {
   assertEquals(new BiomeCheckSettings().argv().slice(1), ["check"]);
   assertEquals(
     new BiomeCheckSettings().write().unsafe().paths("src").argv().slice(1),
@@ -49,31 +50,31 @@ Deno.test("check: bare, --write, --unsafe with paths", () => {
   );
 });
 
-Deno.test("format: --write with paths", () => {
+test("format: --write with paths", () => {
   assertEquals(
     new BiomeFormatSettings().write().paths("src").argv().slice(1),
     ["format", "--write", "src"],
   );
 });
 
-Deno.test("lint: --write, --unsafe with paths", () => {
+test("lint: --write, --unsafe with paths", () => {
   assertEquals(
     new BiomeLintSettings().write().unsafe().paths("src").argv().slice(1),
     ["lint", "--write", "--unsafe", "src"],
   );
 });
 
-Deno.test("ci: bare", () => {
+test("ci: bare", () => {
   assertEquals(new BiomeCiSettings().argv().slice(1), ["ci"]);
 });
 
-Deno.test("biome: resolves its binary from node_modules by default", async () => {
+test("biome: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new BiomeCheckSettings(), "biome", {
     resolution: "node_modules",
   });
 });
 
-Deno.test("every BiomeTasks function reaches execution", async () => {
+test("every BiomeTasks function reaches execution", async () => {
   await assertRejects(() => BiomeTasks.check(missingTool), ToolNotFoundError);
   await assertRejects(() => BiomeTasks.format(missingTool), ToolNotFoundError);
   await assertRejects(() => BiomeTasks.lint(missingTool), ToolNotFoundError);

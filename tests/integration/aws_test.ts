@@ -10,6 +10,7 @@
  * nothing is spawned and no account is needed.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -77,7 +78,7 @@ class Gate extends Build {
     });
 }
 
-Deno.test("a build gates on a CloudWatch metric read through AwsTasks", async () => {
+test("a build gates on a CloudWatch metric read through AwsTasks", async () => {
   calls = [];
   datapoints = [1, 0, 1];
   const passed = await runCli(Gate, ["gate"]);
@@ -102,7 +103,7 @@ class Leaky extends Build {
     });
 }
 
-Deno.test("a secret read through AwsTasks is masked in the build's output", async () => {
+test("a secret read through AwsTasks is masked in the build's output", async () => {
   calls = [];
   const { code, out, err } = await runCli(Leaky, ["leak"]);
   assertEquals(code, 1);
@@ -117,7 +118,7 @@ Deno.test("a secret read through AwsTasks is masked in the build's output", asyn
 // A credential a wrapper registers mid-run is not a `secret()` parameter, so
 // only the redactor knows it; the runner must still be told to mask it, or a
 // later child that echoes it prints it in the clear in the Actions log.
-Deno.test("a secret read through AwsTasks is add-masked under GitHub Actions", async () => {
+test("a secret read through AwsTasks is add-masked under GitHub Actions", async () => {
   calls = [];
   await withEnv(
     { CI: "true", GITHUB_ACTIONS: "true", GITHUB_STEP_SUMMARY: undefined },
@@ -159,7 +160,7 @@ class Deploy extends Build {
   );
 }
 
-Deno.test("canary's cloudwatch analysis promotes a healthy candidate", async () => {
+test("canary's cloudwatch analysis promotes a healthy candidate", async () => {
   platform = new FakePlatform();
   calls = [];
   datapoints = [0, 1, 0];
@@ -172,7 +173,7 @@ Deno.test("canary's cloudwatch analysis promotes a healthy candidate", async () 
   });
 });
 
-Deno.test("canary's cloudwatch analysis rolls an unhealthy candidate back", async () => {
+test("canary's cloudwatch analysis rolls an unhealthy candidate back", async () => {
   platform = new FakePlatform();
   datapoints = [9];
   await withStateDir(async () => {

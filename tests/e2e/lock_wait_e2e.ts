@@ -11,6 +11,7 @@
  * holder the waiter cannot see, renew, or release.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { runFixture, spawnFixture } from "./_harness.ts";
 
@@ -22,7 +23,7 @@ const HOLD_MS = 3_000;
 /** How long the waiter is given before it is considered stuck. */
 const START_DELAY_MS = 500;
 
-Deno.test("a run waits for a lock another process holds", async () => {
+test("a run waits for a lock another process holds", async () => {
   const stateDir = await Deno.makeTempDir({ prefix: "zuke-lock-e2e-" });
   const env = { ZUKE_STATE_DIR: stateDir, ZUKE_E2E_HOLD_MS: String(HOLD_MS) };
   try {

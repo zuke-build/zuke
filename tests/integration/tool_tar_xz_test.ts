@@ -8,6 +8,7 @@
  * and the symlinked `bin/dart` preserved — then puts its `bin/` on `PATH`.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
 import { sha256Hex } from "../../packages/core/src/internal.ts";
@@ -46,12 +47,12 @@ async function installFlutter(): Promise<void> {
   });
 }
 
-Deno.test(
+test(
   "a build installs a tar.xz runtime tree through ToolTasks.installTree",
   installFlutter,
 );
 
-Deno.test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
+test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
   const path = Deno.env.get("PATH");
   Deno.env.set("PATH", "");
   try {

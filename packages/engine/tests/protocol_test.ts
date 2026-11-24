@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { sdkCommand } from "../src/config.ts";
 import {
@@ -30,7 +31,7 @@ const HELLO = {
   cwd: "/work",
 };
 
-Deno.test("parseHello accepts a well-formed greeting with the right token", () => {
+test("parseHello accepts a well-formed greeting with the right token", () => {
   assertEquals(parseHello(HELLO, "t"), {
     sdk: "zuke-test",
     token: "t",
@@ -39,7 +40,7 @@ Deno.test("parseHello accepts a well-formed greeting with the right token", () =
   });
 });
 
-Deno.test("parseHello rejects a wrong token, protocol, or shape", () => {
+test("parseHello rejects a wrong token, protocol, or shape", () => {
   assertThrows(() => parseHello(HELLO, "other"), Error, "token mismatch");
   assertThrows(
     () => parseHello({ ...HELLO, protocol: 2 }, "t"),
@@ -105,7 +106,7 @@ const NO_HOOKS = {
   onFinish: false,
 };
 
-Deno.test("parseManifest fills every default, so a phase 0 manifest still parses", () => {
+test("parseManifest fills every default, so a phase 0 manifest still parses", () => {
   assertEquals(
     parseManifest({
       name: "B",
@@ -133,7 +134,7 @@ Deno.test("parseManifest fills every default, so a phase 0 manifest still parses
   );
 });
 
-Deno.test("parseManifest carries every target setting, parameter kind, group and config field", () => {
+test("parseManifest carries every target setting, parameter kind, group and config field", () => {
   const full = parseManifest({
     name: "B",
     targets: [{
@@ -217,7 +218,7 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
   assertEquals(full.config, { deadline: "45m", unforceable: ["a"] });
 });
 
-Deno.test("parseManifest names the malformed field", () => {
+test("parseManifest names the malformed field", () => {
   const target = (extra: Record<string, unknown>) => ({
     name: "B",
     targets: [{ name: "a", ...extra }],
@@ -295,7 +296,7 @@ Deno.test("parseManifest names the malformed field", () => {
   }
 });
 
-Deno.test("parseSettings takes the declared sections and names what is missing or malformed", () => {
+test("parseSettings takes the declared sections and names what is missing or malformed", () => {
   const declared = {
     ...BARE_TARGET,
     name: "gate",
@@ -371,7 +372,7 @@ Deno.test("parseSettings takes the declared sections and names what is missing o
   }
 });
 
-Deno.test("a service target carries its kind, probe flag and timeout, and refuses another kind", () => {
+test("a service target carries its kind, probe flag and timeout, and refuses another kind", () => {
   const [db] = parseManifest({
     name: "B",
     targets: [{
@@ -400,7 +401,7 @@ Deno.test("a service target carries its kind, probe flag and timeout, and refuse
   assertThrows(() => parseHandle(null, "db"), Error, "must answer a handle");
 });
 
-Deno.test("parseBooleanAnswer and parseCacheKey accept one type and name the target", () => {
+test("parseBooleanAnswer and parseCacheKey accept one type and name the target", () => {
   assertEquals(parseBooleanAnswer("wait.check", true, "a"), true);
   assertEquals(parseCacheKey("k", "a"), "k");
   assertThrows(
@@ -415,7 +416,7 @@ Deno.test("parseBooleanAnswer and parseCacheKey accept one type and name the tar
   );
 });
 
-Deno.test("the context-call parsers accept their shapes and name the malformed field", () => {
+test("the context-call parsers accept their shapes and name the malformed field", () => {
   assertEquals(parseStateRead({ target: "a" }, "state.get"), {
     target: "a",
     of: undefined,
@@ -474,7 +475,7 @@ Deno.test("the context-call parsers accept their shapes and name the malformed f
   for (const [call, message] of cases) assertThrows(call, Error, message);
 });
 
-Deno.test("parseExec requires a target and a non-empty argv", () => {
+test("parseExec requires a target and a non-empty argv", () => {
   assertEquals(parseExec({ target: "t", argv: ["ls"] }), {
     target: "t",
     argv: ["ls"],
@@ -504,14 +505,14 @@ Deno.test("parseExec requires a target and a non-empty argv", () => {
   );
 });
 
-Deno.test("isRecord tells plain objects from arrays and primitives", () => {
+test("isRecord tells plain objects from arrays and primitives", () => {
   assertEquals(isRecord({}), true);
   assertEquals(isRecord([]), false);
   assertEquals(isRecord(null), false);
   assertEquals(isRecord("x"), false);
 });
 
-Deno.test("sdkCommand reads sdk.command and explains what is missing", () => {
+test("sdkCommand reads sdk.command and explains what is missing", () => {
   assertEquals(
     sdkCommand('{"name":"B","sdk":{"command":["uv","run","b.py"]}}', "z"),
     ["uv", "run", "b.py"],

@@ -5,6 +5,7 @@
  * The pure argv of every typed command, and each task reaching execution.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -55,7 +56,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("login: a service principal with a federated token", () => {
+test("login: a service principal with a federated token", () => {
   assertEquals(
     args(
       new AzLoginSettings().servicePrincipal().username("app-id")
@@ -74,7 +75,7 @@ Deno.test("login: a service principal with a federated token", () => {
   );
 });
 
-Deno.test("login: a service principal with a secret or a certificate", () => {
+test("login: a service principal with a secret or a certificate", () => {
   assertEquals(
     args(
       new AzLoginSettings().servicePrincipal().username("a").tenant("t")
@@ -104,7 +105,7 @@ Deno.test("login: a service principal with a secret or a certificate", () => {
   );
 });
 
-Deno.test("login: a managed identity", () => {
+test("login: a managed identity", () => {
   assertEquals(args(new AzLoginSettings().identity()), [
     "login",
     "--identity",
@@ -124,7 +125,7 @@ Deno.test("login: a managed identity", () => {
   );
 });
 
-Deno.test("login: incomplete or mixed credentials are refused", () => {
+test("login: incomplete or mixed credentials are refused", () => {
   const refusals: Array<() => unknown> = [
     () => new AzLoginSettings().argv(),
     () => new AzLoginSettings().servicePrincipal().username("a").argv(),
@@ -156,7 +157,7 @@ Deno.test("login: incomplete or mixed credentials are refused", () => {
   );
 });
 
-Deno.test("logout: the active account, or a named one", () => {
+test("logout: the active account, or a named one", () => {
   assertEquals(args(new AzLogoutSettings()), ["logout"]);
   assertEquals(args(new AzLogoutSettings().username("u")), [
     "logout",
@@ -164,7 +165,7 @@ Deno.test("logout: the active account, or a named one", () => {
   ]);
 });
 
-Deno.test("account: show, set, list, get-access-token", () => {
+test("account: show, set, list, get-access-token", () => {
   assertEquals(args(new AzAccountShowSettings()), ["account", "show"]);
   assertEquals(args(new AzAccountSetSettings().subscription("prod")), [
     "account",
@@ -202,7 +203,7 @@ Deno.test("account: show, set, list, get-access-token", () => {
   );
 });
 
-Deno.test("group: create, show, delete, exists", () => {
+test("group: create, show, delete, exists", () => {
   assertEquals(
     args(
       new AzGroupCreateSettings().name("rg").location("westeurope")
@@ -264,7 +265,7 @@ Deno.test("group: create, show, delete, exists", () => {
   );
 });
 
-Deno.test("acr: login, with and without a token", () => {
+test("acr: login, with and without a token", () => {
   assertEquals(args(new AzAcrLoginSettings().name("reg")), [
     "acr",
     "login",
@@ -301,7 +302,7 @@ Deno.test("acr: login, with and without a token", () => {
   assertThrows(() => new AzAcrLoginSettings().argv(), Error, "no registry");
 });
 
-Deno.test("acr: build", () => {
+test("acr: build", () => {
   assertEquals(
     args(new AzAcrBuildSettings().registry("reg").source(".")),
     ["acr", "build", "--registry=reg", "."],
@@ -345,7 +346,7 @@ Deno.test("acr: build", () => {
   );
 });
 
-Deno.test("acr: repository show-tags and delete", () => {
+test("acr: repository show-tags and delete", () => {
   assertEquals(
     args(new AzAcrRepositoryShowTagsSettings().name("reg").repository("api")),
     ["acr", "repository", "show-tags", "--name=reg", "--repository=api"],
@@ -395,7 +396,7 @@ Deno.test("acr: repository show-tags and delete", () => {
   );
 });
 
-Deno.test("aks: get-credentials and show", () => {
+test("aks: get-credentials and show", () => {
   assertEquals(
     args(new AzAksGetCredentialsSettings().name("k").resourceGroup("rg")),
     ["aks", "get-credentials", "--name=k", "--resource-group=rg"],
@@ -437,7 +438,7 @@ Deno.test("aks: get-credentials and show", () => {
   );
 });
 
-Deno.test("containerapp: update", () => {
+test("containerapp: update", () => {
   assertEquals(
     args(new AzContainerappUpdateSettings().name("api").resourceGroup("rg")),
     ["containerapp", "update", "--name=api", "--resource-group=rg"],
@@ -474,7 +475,7 @@ Deno.test("containerapp: update", () => {
   );
 });
 
-Deno.test("containerapp: show, revision list, activate, deactivate", () => {
+test("containerapp: show, revision list, activate, deactivate", () => {
   assertEquals(
     args(new AzContainerappShowSettings().name("api").resourceGroup("rg")),
     ["containerapp", "show", "--name=api", "--resource-group=rg"],
@@ -531,7 +532,7 @@ Deno.test("containerapp: show, revision list, activate, deactivate", () => {
   );
 });
 
-Deno.test("containerapp: ingress traffic set by revision and by label", () => {
+test("containerapp: ingress traffic set by revision and by label", () => {
   assertEquals(
     args(
       new AzContainerappIngressTrafficSetSettings().name("api")
@@ -587,7 +588,7 @@ Deno.test("containerapp: ingress traffic set by revision and by label", () => {
   }
 });
 
-Deno.test("webapp: deploy", () => {
+test("webapp: deploy", () => {
   assertEquals(
     args(
       new AzWebappDeploySettings().name("web").resourceGroup("rg")
@@ -631,7 +632,7 @@ Deno.test("webapp: deploy", () => {
   );
 });
 
-Deno.test("webapp: show, appsettings set, slot swap", () => {
+test("webapp: show, appsettings set, slot swap", () => {
   assertEquals(
     args(new AzWebappShowSettings().name("web").resourceGroup("rg")),
     [
@@ -744,7 +745,7 @@ Deno.test("webapp: show, appsettings set, slot swap", () => {
   );
 });
 
-Deno.test("functionapp: deployment source config-zip", () => {
+test("functionapp: deployment source config-zip", () => {
   assertEquals(
     args(
       new AzFunctionappDeploymentSourceConfigZipSettings().name("fn")
@@ -788,7 +789,7 @@ Deno.test("functionapp: deployment source config-zip", () => {
   );
 });
 
-Deno.test("keyvault: secret show and set", () => {
+test("keyvault: secret show and set", () => {
   assertEquals(
     args(new AzKeyvaultSecretShowSettings().vaultName("kv").name("db")),
     [
@@ -870,7 +871,7 @@ Deno.test("keyvault: secret show and set", () => {
   );
 });
 
-Deno.test("deployment group: create, what-if, show", () => {
+test("deployment group: create, what-if, show", () => {
   assertEquals(
     args(
       new AzDeploymentGroupCreateSettings().resourceGroup("rg")
@@ -966,7 +967,7 @@ Deno.test("deployment group: create, what-if, show", () => {
   );
 });
 
-Deno.test("storage blob: upload, download, upload-batch", () => {
+test("storage blob: upload, download, upload-batch", () => {
   assertEquals(
     args(
       new AzStorageBlobUploadSettings().containerName("c").name("b")
@@ -1094,7 +1095,7 @@ Deno.test("storage blob: upload, download, upload-batch", () => {
   );
 });
 
-Deno.test("every typed task reaches execution", async () => {
+test("every typed task reaches execution", async () => {
   const tasks: Array<() => Promise<unknown>> = [
     () => AzTasks.login((s) => missingTool(s.identity())),
     () => AzTasks.logout((s) => missingTool(s)),

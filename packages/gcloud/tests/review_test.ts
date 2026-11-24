@@ -10,6 +10,7 @@
  * "success".
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -57,7 +58,7 @@ function ignoringFetch() {
 /** A context whose redactor masks nothing. */
 const plain = { redact: (text: string) => text };
 
-Deno.test("S1: a token with a line break is refused without quoting it", async () => {
+test("S1: a token with a line break is refused without quoting it", async () => {
   // Deno's own refusal of the header value is `Invalid header value:
   // "Bearer <token>"` — the token, quoted whole, in the error.
   const token = ["eeeeeeee", "ffffffff"].join("\n");
@@ -90,7 +91,7 @@ Deno.test("S1: a token with a line break is refused without quoting it", async (
   }
 });
 
-Deno.test("S1: a provider's truncation notice is a refusal, not a header", async () => {
+test("S1: a provider's truncation notice is a refusal, not a header", async () => {
   // A truncated capture begins mid-token, so the default provider refuses
   // it rather than send what survives.
   const fetch = ignoringFetch();
@@ -117,7 +118,7 @@ Deno.test("S1: a provider's truncation notice is a refusal, not a header", async
   assertEquals(ok.headers[0].get("authorization"), `Bearer ${TOKEN}`);
 });
 
-Deno.test("S2: a typed monitoring value cannot widen the filter, before any request", async () => {
+test("S2: a typed monitoring value cannot widen the filter, before any request", async () => {
   const fetch = ignoringFetch();
   await assertRejects(
     () =>
@@ -140,7 +141,7 @@ Deno.test("S2: a typed monitoring value cannot widen the filter, before any requ
   assertEquals(fetch.calls, 0);
 });
 
-Deno.test("S3: a policy operand that reads as a flag is refused before the runner", async () => {
+test("S3: a policy operand that reads as a flag is refused before the runner", async () => {
   const runner = ignoring("");
   await assertRejects(
     () =>
@@ -153,7 +154,7 @@ Deno.test("S3: a policy operand that reads as a flag is refused before the runne
   assertEquals(runner.calls, 0);
 });
 
-Deno.test("L1: a count over the limit fails even when the runner ignores --limit", async () => {
+test("L1: a count over the limit fails even when the runner ignores --limit", async () => {
   const many = JSON.stringify(Array.from({ length: 50 }, () => ({})));
   await assertRejects(
     () =>
@@ -163,7 +164,7 @@ Deno.test("L1: a count over the limit fails even when the runner ignores --limit
   );
 });
 
-Deno.test("L2: a bad limit is refused before the runner, not made valid by the + 1", async () => {
+test("L2: a bad limit is refused before the runner, not made valid by the + 1", async () => {
   const runner = ignoring("[]");
   await assertRejects(
     () => GcloudTasks.logEntryCount((s) => s.limit(0).runner(runner.run)),
@@ -173,7 +174,7 @@ Deno.test("L2: a bad limit is refused before the runner, not made valid by the +
   assertEquals(runner.calls, 0);
 });
 
-Deno.test("L3: a failed read is not a count of zero, even after noThrow", async () => {
+test("L3: a failed read is not a count of zero, even after noThrow", async () => {
   await assertRejects(
     () =>
       GcloudTasks.logEntryCount((s) =>
@@ -192,7 +193,7 @@ Deno.test("L3: a failed read is not a count of zero, even after noThrow", async 
   );
 });
 
-Deno.test("L4: a distribution with no samples is no data, not a value of 0", async () => {
+test("L4: a distribution with no samples is no data, not a value of 0", async () => {
   const empty = {
     timeSeries: [{
       points: [{
@@ -220,7 +221,7 @@ Deno.test("L4: a distribution with no samples is no data, not a value of 0", asy
   );
 });
 
-Deno.test("L5: an invalid date is refused rather than thrown as a RangeError", async () => {
+test("L5: an invalid date is refused rather than thrown as a RangeError", async () => {
   const fetch = ignoringFetch();
   await assertRejects(
     () =>
@@ -243,7 +244,7 @@ Deno.test("L5: an invalid date is refused rather than thrown as a RangeError", a
   assertEquals(fetch.calls, 0);
 });
 
-Deno.test("L6: a blank raw filter is no filter, not ()", async () => {
+test("L6: a blank raw filter is no filter, not ()", async () => {
   const runner = ignoring("[]");
   await GcloudTasks.logEntryCount((s) =>
     s.filter("  ").runner((settings) => {
@@ -263,7 +264,7 @@ Deno.test("L6: a blank raw filter is no filter, not ()", async () => {
   );
 });
 
-Deno.test("S4: a log count never captures a payload, and a bad answer is not quoted", async () => {
+test("S4: a log count never captures a payload, and a bad answer is not quoted", async () => {
   const seen: string[][] = [];
   const secret = "hhhhhhhh";
   const error = await assertRejects(

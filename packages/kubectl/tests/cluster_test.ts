@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   KubectlApiResourcesSettings,
@@ -16,7 +17,7 @@ import {
   KubectlVersionSettings,
 } from "../mod.ts";
 
-Deno.test("the config commands render their arguments", () => {
+test("the config commands render their arguments", () => {
   assertEquals(
     new KubectlConfigCurrentContextSettings().argv().slice(1),
     ["config", "current-context"],
@@ -39,7 +40,7 @@ Deno.test("the config commands render their arguments", () => {
   );
 });
 
-Deno.test("use-context distinguishes the context it switches to from the one it runs under", () => {
+test("use-context distinguishes the context it switches to from the one it runs under", () => {
   // `.context(...)` is the global flag picking a context for one command;
   // `.contextName(...)` is the operand naming the context to switch to. Both
   // render, and they mean different things.
@@ -55,7 +56,7 @@ Deno.test("use-context distinguishes the context it switches to from the one it 
   );
 });
 
-Deno.test("set-context names a context or takes the current one", () => {
+test("set-context names a context or takes the current one", () => {
   assertEquals(
     new KubectlConfigSetContextSettings().contextName("prod").cluster("east")
       .user("deployer").namespace("apps").argv().slice(1),
@@ -88,7 +89,7 @@ Deno.test("set-context names a context or takes the current one", () => {
   );
 });
 
-Deno.test("version, cluster-info and the api listings render their flags", () => {
+test("version, cluster-info and the api listings render their flags", () => {
   assertEquals(
     new KubectlVersionSettings().clientOnly().output("json").argv().slice(1),
     ["version", "--client", "-o", "json"],
@@ -127,7 +128,7 @@ Deno.test("version, cluster-info and the api listings render their flags", () =>
   );
 });
 
-Deno.test("auth can-i names the action, or asks for the whole list", () => {
+test("auth can-i names the action, or asks for the whole list", () => {
   assertEquals(
     new KubectlAuthCanISettings().verb("create").resource("deployments")
       .namespace("prod").argv().slice(1),
@@ -164,7 +165,7 @@ Deno.test("auth can-i names the action, or asks for the whole list", () => {
   );
 });
 
-Deno.test("kubectl's --quiet stays distinct from Zuke's own", () => {
+test("kubectl's --quiet stays distinct from Zuke's own", () => {
   // ToolSettings.quiet() suppresses Zuke's echo of the command; kubectl's
   // --quiet suppresses can-i's answer. Shadowing the first would have broken
   // every other wrapper's contract, so the second is named apart.
@@ -178,7 +179,7 @@ Deno.test("kubectl's --quiet stays distinct from Zuke's own", () => {
   );
 });
 
-Deno.test("kustomize renders its directory and flags", () => {
+test("kustomize renders its directory and flags", () => {
   assertEquals(
     new KubectlKustomizeSettings().dir("overlays/prod").output("out.yaml")
       .enableHelm().loadRestrictor("LoadRestrictionsNone").argv().slice(1),

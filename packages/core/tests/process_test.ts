@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { isNotFound } from "../src/internal.ts";
 import {
@@ -46,7 +47,7 @@ async function text(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 for (const [backend, spawn] of BACKENDS) {
-  Deno.test(`${backend}: spawnProcess starts the command with its arguments, one per entry`, async () => {
+  test(`${backend}: spawnProcess starts the command with its arguments, one per entry`, async () => {
     const child = run(spawn, "console.log(JSON.stringify(Deno.args))");
     // Nothing re-splits or re-quotes an argument: this one stays whole.
     const odd = spawn(Deno.execPath(), {
@@ -65,7 +66,7 @@ for (const [backend, spawn] of BACKENDS) {
     assertEquals(child.pid > 0, true);
   });
 
-  Deno.test(`${backend}: spawnProcess wires stdin, stdout, stderr, the directory and the environment`, async () => {
+  test(`${backend}: spawnProcess wires stdin, stdout, stderr, the directory and the environment`, async () => {
     const dir = await Deno.makeTempDir();
     const child = run(
       spawn,
@@ -88,7 +89,7 @@ for (const [backend, spawn] of BACKENDS) {
     await Deno.remove(dir);
   });
 
-  Deno.test(`${backend}: a child started from a cleared environment sees none of the parent's`, async () => {
+  test(`${backend}: a child started from a cleared environment sees none of the parent's`, async () => {
     Deno.env.set("ZUKE_PROCESS_PARENT", "inherited");
     try {
       const script =
@@ -117,7 +118,7 @@ for (const [backend, spawn] of BACKENDS) {
     }
   });
 
-  Deno.test(`${backend}: a process run to its end gives its status and what it piped`, async () => {
+  test(`${backend}: a process run to its end gives its status and what it piped`, async () => {
     const options: ProcessOptions = {
       args: [
         "eval",
@@ -153,7 +154,7 @@ for (const [backend, spawn] of BACKENDS) {
     );
   });
 
-  Deno.test(`${backend}: running a command that is not there rejects`, async () => {
+  test(`${backend}: running a command that is not there rejects`, async () => {
     const options: ProcessOptions = {
       args: [],
       stdin: "null",
@@ -165,7 +166,7 @@ for (const [backend, spawn] of BACKENDS) {
     );
   });
 
-  Deno.test(`${backend}: a child ends when it is killed, and when its abort signal fires`, async () => {
+  test(`${backend}: a child ends when it is killed, and when its abort signal fires`, async () => {
     const forever = "await new Promise(() => setInterval(() => {}, 1000));";
     const killed = run(spawn, forever);
     killed.kill("SIGKILL");
@@ -187,7 +188,7 @@ for (const [backend, spawn] of BACKENDS) {
     assertEquals((await aborted.status).success, false);
   });
 
-  Deno.test(`${backend}: a stream that was not piped is not there to read`, async () => {
+  test(`${backend}: a stream that was not piped is not there to read`, async () => {
     const child = spawn(Deno.execPath(), {
       args: ["eval", ""],
       stdin: "null",
@@ -198,7 +199,7 @@ for (const [backend, spawn] of BACKENDS) {
     assertEquals((await child.status).code, 0);
   });
 
-  Deno.test(`${backend}: a child killed by a signal reports the signal and the code a shell gives`, async () => {
+  test(`${backend}: a child killed by a signal reports the signal and the code a shell gives`, async () => {
     const child = run(
       spawn,
       "await new Promise(() => setInterval(() => {}, 1000));",
@@ -218,7 +219,7 @@ for (const [backend, spawn] of BACKENDS) {
     assertThrows(() => child.kill());
   });
 
-  Deno.test(`${backend}: output larger than a pipe holds arrives whole, with input written meanwhile`, async () => {
+  test(`${backend}: output larger than a pipe holds arrives whole, with input written meanwhile`, async () => {
     const child = run(
       spawn,
       `const input = await new Response(Deno.stdin.readable).text();
@@ -237,7 +238,7 @@ for (const [backend, spawn] of BACKENDS) {
     assertEquals((await child.status).code, 0);
   });
 
-  Deno.test(`${backend}: closing the input of a child that has exited succeeds`, async () => {
+  test(`${backend}: closing the input of a child that has exited succeeds`, async () => {
     const child = spawn(Deno.execPath(), {
       args: ["eval", ""],
       stdin: "piped",
@@ -249,14 +250,14 @@ for (const [backend, spawn] of BACKENDS) {
   });
 }
 
-Deno.test("Deno: a command that does not exist is refused at once", () => {
+test("Deno: a command that does not exist is refused at once", () => {
   assertThrows(
     () => spawnProcess("zuke-no-such-command-anywhere", { args: [] }),
     Deno.errors.NotFound,
   );
 });
 
-Deno.test("Node: a command that does not exist is a child that never started", async () => {
+test("Node: a command that does not exist is a child that never started", async () => {
   const child = spawnOnNode("zuke-no-such-command-anywhere", {
     args: [],
     stdin: "piped",
@@ -276,7 +277,7 @@ Deno.test("Node: a command that does not exist is a child that never started", a
   assertThrows(() => child.kill());
 });
 
-Deno.test("Node: a directory that does not exist is a child that never started", async () => {
+test("Node: a directory that does not exist is a child that never started", async () => {
   const child = spawnOnNode(Deno.execPath(), {
     args: ["eval", ""],
     cwd: "/zuke/no/such/directory",
@@ -286,7 +287,7 @@ Deno.test("Node: a directory that does not exist is a child that never started",
   assertEquals(isNotFound(await assertRejects(() => child.status)), true);
 });
 
-Deno.test("Node: a signal the platform does not have is refused by name", async () => {
+test("Node: a signal the platform does not have is refused by name", async () => {
   const child = spawnOnNode(Deno.execPath(), {
     args: ["eval", ""],
     stdin: "null",
@@ -307,7 +308,7 @@ Deno.test("Node: a signal the platform does not have is refused by name", async 
   await child.status;
 });
 
-Deno.test("a spawned process that never started says why when it is stopped", async () => {
+test("a spawned process that never started says why when it is stopped", async () => {
   const child = spawnOnNode("zuke-no-such-command-anywhere", { args: [] });
   const service = new SpawnedProcess(child, "zuke-no-such-command-anywhere");
   assertEquals(service.pid, -1);
@@ -315,7 +316,7 @@ Deno.test("a spawned process that never started says why when it is stopped", as
   assertEquals(isNotFound(await assertRejects(() => service.status)), true);
 });
 
-Deno.test("a child's environment is the parent's with the added variables over it", () => {
+test("a child's environment is the parent's with the added variables over it", () => {
   const parent = {
     Path: "C:\\parent",
     HOME: "/home",
@@ -343,7 +344,7 @@ Deno.test("a child's environment is the parent's with the added variables over i
   });
 });
 
-Deno.test("runProcess starts the command and waits for it", async () => {
+test("runProcess starts the command and waits for it", async () => {
   const output = await runProcess(Deno.execPath(), {
     args: ["eval", "console.log('ran')"],
     stdin: "null",

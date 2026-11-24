@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -29,7 +30,7 @@ import {
 } from "../build/snippets.ts";
 import { withTemp } from "../packages/core/tests/_temp.ts";
 
-Deno.test("extract: a marked ts block is captured with jsr specifiers rewritten", () => {
+test("extract: a marked ts block is captured with jsr specifiers rewritten", () => {
   const md = [
     "# Title",
     "",
@@ -48,12 +49,12 @@ Deno.test("extract: a marked ts block is captured with jsr specifiers rewritten"
   assertEquals(snippets[0].code.includes("jsr:@zuke/"), false);
 });
 
-Deno.test("extract: an unmarked ts block is left as prose", () => {
+test("extract: an unmarked ts block is left as prose", () => {
   const md = ["```ts", "const broken: number = 'x';", "```"].join("\n");
   assertEquals(extractCheckedSnippets(md, "docs/x.md").length, 0);
 });
 
-Deno.test("extract: a blank line between the marker and the fence is tolerated", () => {
+test("extract: a blank line between the marker and the fence is tolerated", () => {
   const md = [CHECK_MARKER, "", "", "```ts", "const a = 1;", "```"].join("\n");
   const snippets = extractCheckedSnippets(md, "docs/x.md");
   assertEquals(snippets.length, 1);
@@ -61,7 +62,7 @@ Deno.test("extract: a blank line between the marker and the fence is tolerated",
   assertEquals(snippets[0].code, "const a = 1;");
 });
 
-Deno.test("extract: the marker only attaches to a ts/typescript fence", () => {
+test("extract: the marker only attaches to a ts/typescript fence", () => {
   const yaml = [CHECK_MARKER, "```yaml", "a: 1", "```"].join("\n");
   assertEquals(extractCheckedSnippets(yaml, "docs/x.md").length, 0);
   // A tsx fence is not a ts fence.
@@ -76,7 +77,7 @@ Deno.test("extract: the marker only attaches to a ts/typescript fence", () => {
   assertEquals(extractCheckedSnippets(ts, "docs/x.md").length, 1);
 });
 
-Deno.test("extract: multiple marked blocks keep document order and line numbers", () => {
+test("extract: multiple marked blocks keep document order and line numbers", () => {
   const md = [
     CHECK_MARKER,
     "```ts",
@@ -93,7 +94,7 @@ Deno.test("extract: multiple marked blocks keep document order and line numbers"
   assertEquals(snippets.map((s) => s.code), ["const a = 1;", "const b = 2;"]);
 });
 
-Deno.test("collect: reads and aggregates marked snippets across files in order", async () => {
+test("collect: reads and aggregates marked snippets across files in order", async () => {
   await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
     const b = `${dir}/b.md`;
@@ -111,7 +112,7 @@ Deno.test("collect: reads and aggregates marked snippets across files in order",
   });
 });
 
-Deno.test("check: no marked snippets means no work and no failures", async () => {
+test("check: no marked snippets means no work and no failures", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(md, "```ts\nconst broken: number = 'x';\n```");
@@ -125,7 +126,7 @@ Deno.test("check: no marked snippets means no work and no failures", async () =>
   });
 });
 
-Deno.test("check: a failing snippet is reported with its source location, temp path reduced", async () => {
+test("check: a failing snippet is reported with its source location, temp path reduced", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(
@@ -148,7 +149,7 @@ Deno.test("check: a failing snippet is reported with its source location, temp p
   });
 });
 
-Deno.test("check: every snippet is checked in one run, and a clean run stops there", async () => {
+test("check: every snippet is checked in one run, and a clean run stops there", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(
@@ -176,7 +177,7 @@ Deno.test("check: every snippet is checked in one run, and a clean run stops the
   });
 });
 
-Deno.test("check: a failed batch is re-checked per snippet, naming only the failing one", async () => {
+test("check: a failed batch is re-checked per snippet, naming only the failing one", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(
@@ -209,7 +210,7 @@ Deno.test("check: a failed batch is re-checked per snippet, naming only the fail
   });
 });
 
-Deno.test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts", () => {
+test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts", () => {
   // POSIX: the forward-slash path and its file:// URL both reduce.
   assertEquals(
     reduceTempPath("at file:///t/s_0.ts:1:1 then /t/s_0.ts", "/t/s_0.ts"),
@@ -226,7 +227,7 @@ Deno.test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts"
   );
 });
 
-Deno.test("format: renders every failure by source location above its detail", () => {
+test("format: renders every failure by source location above its detail", () => {
   const message = formatSnippetFailures([
     { file: "docs/x.md", line: 12, detail: "TS2684 boom" },
     { file: "skills/y.md", line: 3, detail: "TS2322 nope" },
@@ -238,7 +239,7 @@ Deno.test("format: renders every failure by source location above its detail", (
   assertStringIncludes(message, "<!-- check -->");
 });
 
-Deno.test("check (real deno): the pilot's wrong order fails, the correct order passes", async () => {
+test("check (real deno): the pilot's wrong order fails, the correct order passes", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/params.md`;
     await Deno.writeTextFile(
@@ -278,7 +279,7 @@ Deno.test("check (real deno): the pilot's wrong order fails, the correct order p
 
 // --- the inline-specifier guard ---
 
-Deno.test("inline: an inlined jsr import is found with its line and text", () => {
+test("inline: an inlined jsr import is found with its line and text", () => {
   const md = [
     "# Doc",
     "",
@@ -293,12 +294,12 @@ Deno.test("inline: an inlined jsr import is found with its line and text", () =>
   assertEquals(found[0].text, 'import { Build } from "jsr:@zuke/core";');
 });
 
-Deno.test("inline: a bare specifier is not a finding", () => {
+test("inline: a bare specifier is not a finding", () => {
   const md = 'import { Build } from "@zuke/core";';
   assertEquals(findInlineSpecifiers(md, "docs/x.md"), []);
 });
 
-Deno.test("inline: a command line keeps its jsr: specifier", () => {
+test("inline: a command line keeps its jsr: specifier", () => {
   // The `jsr:` form is correct — and the only thing that works — on a command
   // line, so the guard is anchored on `from "…"` and must not touch these.
   const md = [
@@ -313,21 +314,21 @@ Deno.test("inline: a command line keeps its jsr: specifier", () => {
   assertEquals(findInlineSpecifiers(md, "README.md"), []);
 });
 
-Deno.test("inline: a non-zuke inline specifier is out of scope", () => {
+test("inline: a non-zuke inline specifier is out of scope", () => {
   // The rule this guard enforces is about the @zuke packages' own docs; a
   // third-party specifier in a snippet is the doc author's call.
   const md = 'import { parse } from "jsr:@std/yaml";';
   assertEquals(findInlineSpecifiers(md, "docs/x.md"), []);
 });
 
-Deno.test("inline: a subpath import is caught too", () => {
+test("inline: a subpath import is caught too", () => {
   const md = 'import { $ } from "jsr:@zuke/core/shell";';
   const found = findInlineSpecifiers(md, "docs/shell.md");
   assertEquals(found.length, 1);
   assertStringIncludes(found[0].text, "@zuke/core/shell");
 });
 
-Deno.test("inline: every matching line is found, not every other one", () => {
+test("inline: every matching line is found, not every other one", () => {
   // The scanner tests one shared regex against line after line. That is only
   // safe while the pattern has no `g` flag: a global regex carries `lastIndex`
   // between calls, and `.test()` would start each line where the previous
@@ -342,7 +343,7 @@ Deno.test("inline: every matching line is found, not every other one", () => {
   assertEquals(found.map((f) => f.line), [1, 2, 3]);
 });
 
-Deno.test("inline: collect aggregates across files in order", async () => {
+test("inline: collect aggregates across files in order", async () => {
   await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
     const b = `${dir}/b.md`;
@@ -354,7 +355,7 @@ Deno.test("inline: collect aggregates across files in order", async () => {
   });
 });
 
-Deno.test("format: the inline report names each location and the remedy", () => {
+test("format: the inline report names each location and the remedy", () => {
   const message = formatInlineSpecifiers([
     {
       file: "docs/x.md",

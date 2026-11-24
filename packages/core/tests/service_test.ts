@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -20,7 +21,7 @@ import {
 
 // --- ServiceBuilder.launch_ ---
 
-Deno.test("launch_ without a start throws ServiceError", async () => {
+test("launch_ without a start throws ServiceError", async () => {
   await assertRejects(
     () => new ServiceBuilder().launch_("api"),
     ServiceError,
@@ -28,7 +29,7 @@ Deno.test("launch_ without a start throws ServiceError", async () => {
   );
 });
 
-Deno.test("a service with no readiness check starts immediately", async () => {
+test("a service with no readiness check starts immediately", async () => {
   let stopped = false;
   const running = await service()
     .start(() => ({ stop: () => void (stopped = true) }))
@@ -38,7 +39,7 @@ Deno.test("a service with no readiness check starts immediately", async () => {
   assertEquals(stopped, true);
 });
 
-Deno.test("a service waits for its readiness probe before it is up", async () => {
+test("a service waits for its readiness probe before it is up", async () => {
   let checks = 0;
   const running = await service()
     .start(() => ({ stop: () => {} }))
@@ -48,7 +49,7 @@ Deno.test("a service waits for its readiness probe before it is up", async () =>
   await running.stop();
 });
 
-Deno.test("a service that never becomes ready fails and is torn down", async () => {
+test("a service that never becomes ready fails and is torn down", async () => {
   let stopped = false;
   await assertRejects(
     () =>
@@ -64,7 +65,7 @@ Deno.test("a service that never becomes ready fails and is torn down", async () 
   assertEquals(stopped, true);
 });
 
-Deno.test("a hung readiness probe is still bounded by the timeout", async () => {
+test("a hung readiness probe is still bounded by the timeout", async () => {
   let stopped = false;
   await assertRejects(
     () =>
@@ -80,7 +81,7 @@ Deno.test("a hung readiness probe is still bounded by the timeout", async () => 
   assertEquals(stopped, true);
 });
 
-Deno.test("a custom stop overrides the handle's own stop", async () => {
+test("a custom stop overrides the handle's own stop", async () => {
   let handleStopped = false;
   let customStopped = false;
   const running = await service()
@@ -93,7 +94,7 @@ Deno.test("a custom stop overrides the handle's own stop", async () => {
 
 // --- ServiceRegistry ---
 
-Deno.test("the registry stops services in reverse and tolerates a failure", async () => {
+test("the registry stops services in reverse and tolerates a failure", async () => {
   const order: string[] = [];
   const reg = new ServiceRegistry();
   const stopper = (label: string) => () => {
@@ -115,7 +116,7 @@ Deno.test("the registry stops services in reverse and tolerates a failure", asyn
 
 // --- tcpReachable ---
 
-Deno.test("tcpReachable reports whether a port is accepting connections", async () => {
+test("tcpReachable reports whether a port is accepting connections", async () => {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
   const port = listener.addr.transport === "tcp" ? listener.addr.port : 0;
   assertEquals(await tcpReachable(`127.0.0.1:${port}`), true);
@@ -126,13 +127,13 @@ Deno.test("tcpReachable reports whether a port is accepting connections", async 
   assertEquals(await tcpReachable(`:${port}`), false);
 });
 
-Deno.test("tcpReachable parses a bracketed IPv6 address", async () => {
+test("tcpReachable parses a bracketed IPv6 address", async () => {
   // Port 1 is not listening, so this is false — but it exercises the
   // "[host]:port" split (a bare lastIndexOf(':') would mangle the address).
   assertEquals(await tcpReachable("[::1]:1"), false);
 });
 
-Deno.test("tcpReachable validates the address", async () => {
+test("tcpReachable validates the address", async () => {
   await assertRejects(() => tcpReachable("host"), ServiceError, "no port");
   await assertRejects(
     () => tcpReachable("host:nope"),
@@ -146,7 +147,7 @@ Deno.test("tcpReachable validates the address", async () => {
 
 // --- Command.spawn / SpawnedProcess ---
 
-Deno.test("Command.spawn starts a process that stop() terminates", async () => {
+test("Command.spawn starts a process that stop() terminates", async () => {
   const bin = Deno.execPath();
   const script = "await new Promise(() => {})"; // hangs until killed
   const proc = $`${bin} eval ${script}`.spawn();
@@ -156,7 +157,7 @@ Deno.test("Command.spawn starts a process that stop() terminates", async () => {
   assertEquals(status.success, false); // terminated by signal
 });
 
-Deno.test({
+test({
   name: "stop() escalates to SIGKILL when SIGTERM is ignored",
   // On Windows SIGTERM maps to TerminateProcess and cannot be ignored, so the
   // escalation path is unreachable there.
@@ -174,7 +175,7 @@ Deno.test({
   },
 });
 
-Deno.test("spawn rejects an empty command", () => {
+test("spawn rejects an empty command", () => {
   let threw = false;
   try {
     new Command([]).spawn();
@@ -186,7 +187,7 @@ Deno.test("spawn rejects an empty command", () => {
 
 // --- executor integration ---
 
-Deno.test("execute starts a service, keeps it up for dependents, and stops it after", async () => {
+test("execute starts a service, keeps it up for dependents, and stops it after", async () => {
   const events: string[] = [];
   class E2E extends Build {
     api = service()
@@ -208,7 +209,7 @@ Deno.test("execute starts a service, keeps it up for dependents, and stops it af
   assertEquals(events, ["start", "test", "stop"]);
 });
 
-Deno.test("a service that fails readiness fails the build; the dependent is skipped", async () => {
+test("a service that fails readiness fails the build; the dependent is skipped", async () => {
   const events: string[] = [];
   let ranTest = false;
   class E2E extends Build {
@@ -230,7 +231,7 @@ Deno.test("a service that fails readiness fails the build; the dependent is skip
   assertEquals(events, ["start", "stop"]); // launch_ tore down the process
 });
 
-Deno.test("a service is stopped even when a dependent target fails", async () => {
+test("a service is stopped even when a dependent target fails", async () => {
   const events: string[] = [];
   class E2E extends Build {
     api = service()

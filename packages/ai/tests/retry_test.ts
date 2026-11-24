@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AiReviewError } from "../mod.ts";
 import { retryingFetch } from "../src/retry.ts";
@@ -41,7 +42,7 @@ function scriptedFetch(
   };
 }
 
-Deno.test("a single transient 503 is retried, then the 200 succeeds", async () => {
+test("a single transient 503 is retried, then the 200 succeeds", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(
     new Response("overloaded", { status: 503 }),
@@ -58,7 +59,7 @@ Deno.test("a single transient 503 is retried, then the 200 succeeds", async () =
   assertEquals(sleeps, [10]); // exactly one backoff between the two attempts
 });
 
-Deno.test("all attempts return retryable failures: the last response surfaces", async () => {
+test("all attempts return retryable failures: the last response surfaces", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(
     new Response("", { status: 503 }),
@@ -76,7 +77,7 @@ Deno.test("all attempts return retryable failures: the last response surfaces", 
   assertEquals(sleeps, [5, 10]); // exponential backoff between attempts
 });
 
-Deno.test("non-retryable statuses (e.g. 401) come straight back without a sleep", async () => {
+test("non-retryable statuses (e.g. 401) come straight back without a sleep", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(new Response("nope", { status: 401 }));
   const response = await retryingFetch(
@@ -90,7 +91,7 @@ Deno.test("non-retryable statuses (e.g. 401) come straight back without a sleep"
   assertEquals(sleeps.length, 0);
 });
 
-Deno.test("a Retry-After header (seconds) overrides the exponential backoff", async () => {
+test("a Retry-After header (seconds) overrides the exponential backoff", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(
     new Response("", { status: 429, headers: { "retry-after": "7" } }),
@@ -105,7 +106,7 @@ Deno.test("a Retry-After header (seconds) overrides the exponential backoff", as
   assertEquals(sleeps, [7000]); // honoured the header, not the 1000ms base
 });
 
-Deno.test("a thrown fetch (network error) is retried, then surfaces an AiReviewError", async () => {
+test("a thrown fetch (network error) is retried, then surfaces an AiReviewError", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(
     new TypeError("connection reset"),
@@ -125,7 +126,7 @@ Deno.test("a thrown fetch (network error) is retried, then surfaces an AiReviewE
   assertEquals(sleeps, [5]); // one backoff between the two attempts
 });
 
-Deno.test("thrown-fetch backoff is capped at MAX_DELAY_MS", async () => {
+test("thrown-fetch backoff is capped at MAX_DELAY_MS", async () => {
   const { sleeps, sleep } = recordSleep();
   const f = scriptedFetch(
     new TypeError("connection reset"),
@@ -142,7 +143,7 @@ Deno.test("thrown-fetch backoff is capped at MAX_DELAY_MS", async () => {
   assertEquals(sleeps, [20_000, 30_000]);
 });
 
-Deno.test("a thrown fetch followed by a success returns the success", async () => {
+test("a thrown fetch followed by a success returns the success", async () => {
   const { sleep } = recordSleep();
   const f = scriptedFetch(
     new TypeError("temporary DNS failure"),
@@ -157,7 +158,7 @@ Deno.test("a thrown fetch followed by a success returns the success", async () =
   assertEquals(response.status, 200);
 });
 
-Deno.test("onRetry reports each retry — its status, the attempt count, and the delay", async () => {
+test("onRetry reports each retry — its status, the attempt count, and the delay", async () => {
   const { sleep } = recordSleep();
   const f = scriptedFetch(
     new Response("", { status: 503 }),
@@ -178,7 +179,7 @@ Deno.test("onRetry reports each retry — its status, the attempt count, and the
   assertEquals(seen, ["1/3 HTTP 503 10", "2/3 connection reset 20"]);
 });
 
-Deno.test("a hung request is aborted by the per-attempt timeout and surfaces as a timeout", async () => {
+test("a hung request is aborted by the per-attempt timeout and surfaces as a timeout", async () => {
   const { sleep } = recordSleep();
   // A fetch that never resolves on its own — it only settles when aborted.
   const hang =

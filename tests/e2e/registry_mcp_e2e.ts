@@ -13,6 +13,7 @@
  * / integration.yml on the OS matrix.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -71,7 +72,7 @@ function toolText(reply: unknown): string {
   return text;
 }
 
-Deno.test("a build registered after startup appears as a runnable MCP tool", async () => {
+test("a build registered after startup appears as a runnable MCP tool", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-reg-mcp-e2e-" });
   let server: Deno.ChildProcess | undefined;
   try {

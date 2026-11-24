@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -38,13 +39,13 @@ function dualBuild(): Build & { wf: ReturnType<typeof aiReviewWorkflow> } {
   return b;
 }
 
-Deno.test("aiReviewWorkflow writes to the conventional GitHub workflow path", () => {
+test("aiReviewWorkflow writes to the conventional GitHub workflow path", () => {
   const b = dualBuild();
   assertEquals(b.wf.path, ".github/workflows/ai-review.yml");
   assertEquals(b.wf.provider, "github");
 });
 
-Deno.test("the generated YAML carries the right triggers, permissions, concurrency, and gate", () => {
+test("the generated YAML carries the right triggers, permissions, concurrency, and gate", () => {
   const yaml = dualBuild().wf.render();
   assertStringIncludes(yaml, "name: AI Review");
   // Every branch's pull requests.
@@ -68,7 +69,7 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
   assertStringIncludes(yaml, "timeout-minutes: 15");
 });
 
-Deno.test("the steps are: the Zuke prelude, fetch base, run ./zuke <target>", () => {
+test("the steps are: the Zuke prelude, fetch base, run ./zuke <target>", () => {
   const yaml = dualBuild().wf.render();
   // One prelude step from core, rather than a harden and a checkout built here
   // from this package's own pinned constants.
@@ -84,7 +85,7 @@ Deno.test("the steps are: the Zuke prelude, fetch base, run ./zuke <target>", ()
   assertStringIncludes(yaml, "run: ./zuke review");
 });
 
-Deno.test("every reviewer's key env var is wired into the run step's env block", () => {
+test("every reviewer's key env var is wired into the run step's env block", () => {
   const yaml = dualBuild().wf.render();
   assertStringIncludes(yaml, 'OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"');
   assertStringIncludes(yaml, 'GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"');
@@ -94,7 +95,7 @@ Deno.test("every reviewer's key env var is wired into the run step's env block",
   assertStringIncludes(yaml, "ZUKE_REVIEW_BASE: FETCH_HEAD");
 });
 
-Deno.test("no reviewer uses .comment() → permissions stays read-only, no GITHUB_TOKEN", () => {
+test("no reviewer uses .comment() → permissions stays read-only, no GITHUB_TOKEN", () => {
   class B extends Build {
     key = parameter("Claude key").secret().env("ANTHROPIC_API_KEY");
     rev = securityReviewer((r) => r.provider("claude").apiKey(this.key)); // no .comment()
@@ -110,7 +111,7 @@ Deno.test("no reviewer uses .comment() → permissions stays read-only, no GITHU
   assertStringIncludes(yaml, "ANTHROPIC_API_KEY:");
 });
 
-Deno.test("baseBranch, target, name, path, and timeoutMinutes override the defaults", () => {
+test("baseBranch, target, name, path, and timeoutMinutes override the defaults", () => {
   class B extends Build {
     key = parameter("Key").secret().env("K");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -133,7 +134,7 @@ Deno.test("baseBranch, target, name, path, and timeoutMinutes override the defau
   assertStringIncludes(yaml, "timeout-minutes: 30");
 });
 
-Deno.test("an unsafe baseBranch is rejected before it reaches the command", () => {
+test("an unsafe baseBranch is rejected before it reaches the command", () => {
   const rev = securityReviewer((r) => r.provider("openai").apiKey("k"));
   assertThrows(
     () => aiReviewWorkflow({ reviewers: [rev], baseBranch: "main; rm -rf /" }),
@@ -148,7 +149,7 @@ Deno.test("an unsafe baseBranch is rejected before it reaches the command", () =
   );
 });
 
-Deno.test("an unsafe target is rejected before it reaches the command", () => {
+test("an unsafe target is rejected before it reaches the command", () => {
   const rev = securityReviewer((r) => r.provider("openai").apiKey("k"));
   assertThrows(
     () => aiReviewWorkflow({ reviewers: [rev], target: "review && curl evil" }),
@@ -157,7 +158,7 @@ Deno.test("an unsafe target is rejected before it reaches the command", () => {
   );
 });
 
-Deno.test("slashes and dots in a branch name are accepted", () => {
+test("slashes and dots in a branch name are accepted", () => {
   class B extends Build {
     key = parameter("Key").secret().env("K");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -174,7 +175,7 @@ Deno.test("slashes and dots in a branch name are accepted", () => {
   );
 });
 
-Deno.test("a custom .githubToken(param) is wired by that parameter's env var", () => {
+test("a custom .githubToken(param) is wired by that parameter's env var", () => {
   class B extends Build {
     apiKey = parameter("Key").secret().env("OPENAI_API_KEY");
     botToken = parameter("Bot token").secret().env("BOT_TOKEN");
@@ -193,7 +194,7 @@ Deno.test("a custom .githubToken(param) is wired by that parameter's env var", (
   assertEquals(yaml.includes("GITHUB_TOKEN"), false);
 });
 
-Deno.test("a literal-string apiKey is skipped from env (no parameter to map)", () => {
+test("a literal-string apiKey is skipped from env (no parameter to map)", () => {
   // Allowed but not recommended: the generator can't infer an env var.
   const rev = securityReviewer((r) =>
     r.provider("openai").apiKey("sk-literal")
@@ -208,7 +209,7 @@ Deno.test("a literal-string apiKey is skipped from env (no parameter to map)", (
 
 // ─── GitLab ─────────────────────────────────────────────────────────────────
 
-Deno.test("gitlab: defaults to the include-snippet path and an MR-only job", () => {
+test("gitlab: defaults to the include-snippet path and an MR-only job", () => {
   class B extends Build {
     key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
     rev = securityReviewer((r) =>
@@ -234,7 +235,7 @@ Deno.test("gitlab: defaults to the include-snippet path and an MR-only job", () 
   assertEquals(yaml.includes("OPENAI_API_KEY"), false);
 });
 
-Deno.test("gitlab: target and timeoutMinutes overrides apply", () => {
+test("gitlab: target and timeoutMinutes overrides apply", () => {
   class B extends Build {
     key = parameter("Key").secret().env("K");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -254,7 +255,7 @@ Deno.test("gitlab: target and timeoutMinutes overrides apply", () => {
 
 // ─── Azure Pipelines ────────────────────────────────────────────────────────
 
-Deno.test("azure: defaults, PR trigger, and each secret wired as $(NAME) env", () => {
+test("azure: defaults, PR trigger, and each secret wired as $(NAME) env", () => {
   class B extends Build {
     openaiKey = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
     geminiKey = parameter("Gemini key").secret().env("GEMINI_API_KEY");
@@ -287,7 +288,7 @@ Deno.test("azure: defaults, PR trigger, and each secret wired as $(NAME) env", (
   assertStringIncludes(yaml, 'SYSTEM_ACCESSTOKEN: "$(SYSTEM_ACCESSTOKEN)"');
 });
 
-Deno.test("azure: a custom .commentToken(param) replaces SYSTEM_ACCESSTOKEN", () => {
+test("azure: a custom .commentToken(param) replaces SYSTEM_ACCESSTOKEN", () => {
   class B extends Build {
     apiKey = parameter("Key").secret().env("OPENAI_API_KEY");
     botToken = parameter("Bot token").secret().env("BOT_TOKEN");
@@ -305,7 +306,7 @@ Deno.test("azure: a custom .commentToken(param) replaces SYSTEM_ACCESSTOKEN", ()
   assertEquals(yaml.includes("SYSTEM_ACCESSTOKEN"), false);
 });
 
-Deno.test("azure: no reviewer uses .comment() → no SYSTEM_ACCESSTOKEN mapping", () => {
+test("azure: no reviewer uses .comment() → no SYSTEM_ACCESSTOKEN mapping", () => {
   class B extends Build {
     key = parameter("Key").secret().env("ANTHROPIC_API_KEY");
     rev = securityReviewer((r) => r.provider("claude").apiKey(this.key)); // no .comment()
@@ -320,7 +321,7 @@ Deno.test("azure: no reviewer uses .comment() → no SYSTEM_ACCESSTOKEN mapping"
 
 // ─── Bitbucket Pipelines ─────────────────────────────────────────────────────
 
-Deno.test("bitbucket: defaults to bitbucket-pipelines.yml with a pull-requests step", () => {
+test("bitbucket: defaults to bitbucket-pipelines.yml with a pull-requests step", () => {
   class B extends Build {
     key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
     rev = securityReviewer((r) =>
@@ -346,7 +347,7 @@ Deno.test("bitbucket: defaults to bitbucket-pipelines.yml with a pull-requests s
   assertEquals(yaml.includes("OPENAI_API_KEY"), false);
 });
 
-Deno.test("bitbucket: target and timeoutMinutes overrides apply", () => {
+test("bitbucket: target and timeoutMinutes overrides apply", () => {
   class B extends Build {
     key = parameter("Key").secret().env("K");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -364,7 +365,7 @@ Deno.test("bitbucket: target and timeoutMinutes overrides apply", () => {
   assertStringIncludes(yaml, "max-time: 30");
 });
 
-Deno.test("fetchBase: false drops the fetch step and the FETCH_HEAD override", () => {
+test("fetchBase: false drops the fetch step and the FETCH_HEAD override", () => {
   class B extends Build {
     key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -384,13 +385,13 @@ Deno.test("fetchBase: false drops the fetch step and the FETCH_HEAD override", (
   assertStringIncludes(yaml, "run: ./zuke review");
 });
 
-Deno.test("fetchBase defaults to true, since a PR checkout has no base", () => {
+test("fetchBase defaults to true, since a PR checkout has no base", () => {
   const yaml = dualBuild().wf.render();
   assertStringIncludes(yaml, "git fetch --no-tags --depth=1 origin master");
   assertStringIncludes(yaml, "ZUKE_REVIEW_BASE: FETCH_HEAD");
 });
 
-Deno.test("naming either action renders the two separate steps", () => {
+test("naming either action renders the two separate steps", () => {
   // The opt-out, for a repository that cannot consume a Marketplace action.
   // Naming an action means those specific actions were asked for, so rendering
   // one that runs neither would discard a pin the caller chose.
@@ -412,7 +413,7 @@ Deno.test("naming either action renders the two separate steps", () => {
   assertStringIncludes(yaml, `checkout@${"b".repeat(40)}`);
 });
 
-Deno.test("the prelude carries a pin without this package holding one", () => {
+test("the prelude carries a pin without this package holding one", () => {
   // Why the two constants could be deleted: core's prelude ships its own pin,
   // so nothing here can go stale against a release. That mattered — those
   // constants made ai-review.yml the one generated workflow whose SHAs came
@@ -422,7 +423,7 @@ Deno.test("the prelude carries a pin without this package holding one", () => {
   assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40}/.test(yaml), true);
 });
 
-Deno.test("the prelude pin comes from the resolver, not core's fallback", () => {
+test("the prelude pin comes from the resolver, not core's fallback", () => {
   // Without a resolver the prelude falls back to the reference baked into the
   // core this package resolved against — a release behind the moment the action
   // is released again, and silently: this file would name a different commit
@@ -464,7 +465,7 @@ function commandBuild(
   return b.wf.render();
 }
 
-Deno.test("command adds the issue_comment trigger and a job gated on the command, a human account and a pull request", () => {
+test("command adds the issue_comment trigger and a job gated on the command, a human account and a pull request", () => {
   const yaml = commandBuild();
   assertStringIncludes(yaml, "pull_request: {}");
   assertStringIncludes(yaml, "issue_comment:\n    types:\n      - created");
@@ -500,7 +501,7 @@ Deno.test("command adds the issue_comment trigger and a job gated on the command
   );
 });
 
-Deno.test("the command job carries the named secrets and no base fetch; the pull_request job is unchanged", () => {
+test("the command job carries the named secrets and no base fetch; the pull_request job is unchanged", () => {
   const yaml = commandBuild();
   const [reviewJob, commandJob] = yaml.split("  commandReview:");
   // Only the command job receives the extra secrets.
@@ -532,7 +533,7 @@ Deno.test("the command job carries the named secrets and no base fetch; the pull
   assertStringIncludes(commandJob, "timeout-minutes: 15");
 });
 
-Deno.test("concurrency is one group per pull request, declared on the jobs, never on the workflow", () => {
+test("concurrency is one group per pull request, declared on the jobs, never on the workflow", () => {
   // The review's own comment, posted as an app, fires `issue_comment` again.
   // That run is skipped by the bot check — but a workflow-level group would
   // still admit it, and cancel-in-progress would cancel the review mid-post.
@@ -564,7 +565,7 @@ Deno.test("concurrency is one group per pull request, declared on the jobs, neve
   );
 });
 
-Deno.test("spec secrets reach the review step of both jobs; the command's stay on its own", () => {
+test("spec secrets reach the review step of both jobs; the command's stay on its own", () => {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     security = securityReviewer((r) =>
@@ -601,7 +602,7 @@ Deno.test("spec secrets reach the review step of both jobs; the command's stay o
   );
 });
 
-Deno.test("a spec secret that is not a valid secret name is rejected", () => {
+test("a spec secret that is not a valid secret name is rejected", () => {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     security = securityReviewer((r) => r.provider("openai").apiKey(this.key));
@@ -648,7 +649,7 @@ function blockingBuild(allowedEndpoints?: string[]): string {
   return b.wf.render();
 }
 
-Deno.test("a blocking egress policy lists the build's endpoints and every provider host, on both jobs", () => {
+test("a blocking egress policy lists the build's endpoints and every provider host, on both jobs", () => {
   const yaml = blockingBuild(["dl.deno.land:443", "api.openai.com:443"]);
   const [reviewJob, commandJob] = yaml.split("  commandReview:");
   for (const job of [reviewJob, commandJob]) {
@@ -668,20 +669,20 @@ Deno.test("a blocking egress policy lists the build's endpoints and every provid
   );
 });
 
-Deno.test("auditing egress renders no allow-list, and is the default", () => {
+test("auditing egress renders no allow-list, and is the default", () => {
   const yaml = commandBuild();
   assertStringIncludes(yaml, "egress-policy: audit");
   assertEquals(yaml.includes("allowed-endpoints"), false);
 });
 
-Deno.test("without a command there is no issue_comment trigger and no second job", () => {
+test("without a command there is no issue_comment trigger and no second job", () => {
   const yaml = dualBuild().wf.render();
   assertEquals(yaml.includes("issue_comment"), false);
   assertEquals(yaml.includes("commandReview"), false);
   assertEquals(yaml.includes("ZUKE_REVIEW_PR"), false);
 });
 
-Deno.test("a command that could break out of the expression, or no command text, is rejected", () => {
+test("a command that could break out of the expression, or no command text, is rejected", () => {
   for (
     const text of [
       "",
@@ -713,7 +714,7 @@ Deno.test("a command that could break out of the expression, or no command text,
   }
 });
 
-Deno.test("the command is GitHub-only: another host renders no comment job", () => {
+test("the command is GitHub-only: another host renders no comment job", () => {
   class B extends Build {
     key = parameter("Key").secret().env("K");
     rev = securityReviewer((r) => r.provider("claude").apiKey(this.key));
@@ -731,7 +732,7 @@ Deno.test("the command is GitHub-only: another host renders no comment job", () 
   assertEquals(yaml.includes("commandReview"), false);
 });
 
-Deno.test("the command job decides who asked in a step with no secrets, then reviews", () => {
+test("the command job decides who asked in a step with no secrets, then reviews", () => {
   // Who may start a review is decided by the build's own preflight, in a step
   // that holds the job's token and nothing else; the step with the keys runs
   // only when it passed. No shell and no `gh` of the job's own.
@@ -771,7 +772,7 @@ Deno.test("the command job decides who asked in a step with no secrets, then rev
   assertEquals(commandJob.includes("ZUKE_REVIEW_USERS"), false);
 });
 
-Deno.test("also adds commands that start the run too, each matched like the first", () => {
+test("also adds commands that start the run too, each matched like the first", () => {
   const yaml = commandBuild((c) =>
     c.text("@zuke-build review").also("@zuke-build accept")
   );
@@ -816,7 +817,7 @@ function mentionBuild(
   return b.wf.render();
 }
 
-Deno.test("a reviewer that takes commands derives the command job, review and accept alike", () => {
+test("a reviewer that takes commands derives the command job, review and accept alike", () => {
   const yaml = mentionBuild();
   assertStringIncludes(yaml, "commandReview:\n    name: AI review on command");
   const gate =
@@ -834,7 +835,7 @@ Deno.test("a reviewer that takes commands derives the command job, review and ac
   assertStringIncludes(refined, "ZUKE_REVIEW_ROLE: triage");
 });
 
-Deno.test("a command text of its own replaces the derived ones; also still adds", () => {
+test("a command text of its own replaces the derived ones; also still adds", () => {
   const yaml = mentionBuild((c) => c.text("/review").also("/accept"));
   assertEquals(yaml.includes("@acme-bot review"), false);
   assertStringIncludes(
@@ -844,7 +845,7 @@ Deno.test("a command text of its own replaces the derived ones; also still adds"
   );
 });
 
-Deno.test("reviewers taking commands under different mentions are refused", () => {
+test("reviewers taking commands under different mentions are refused", () => {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     security = securityReviewer((r) =>
@@ -868,7 +869,7 @@ Deno.test("reviewers taking commands under different mentions are refused", () =
   );
 });
 
-Deno.test("role and users reach the build as the command job's env", () => {
+test("role and users reach the build as the command job's env", () => {
   const yaml = mentionBuild((c) => c.role("read").users("alice", "bob-2"));
   const job = yaml.split("  commandReview:")[1];
   assertStringIncludes(job, "ZUKE_REVIEW_ROLE: read");
@@ -886,7 +887,7 @@ Deno.test("role and users reach the build as the command job's env", () => {
   );
 });
 
-Deno.test("secrets take the build's parameters and read the env name off them", () => {
+test("secrets take the build's parameters and read the env name off them", () => {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     appId = parameter("App id").env("REVIEW_APP_ID");
@@ -916,7 +917,7 @@ Deno.test("secrets take the build's parameters and read the env name off them", 
   assertEquals(review.includes("EXTRA_TOKEN"), false);
 });
 
-Deno.test("a parameter with no env name is refused as a secret, by name", () => {
+test("a parameter with no env name is refused as a secret, by name", () => {
   const stray = parameter("Stray").secret(); // never a build field
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");

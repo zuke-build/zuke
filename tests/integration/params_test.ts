@@ -9,6 +9,7 @@
  * whole parse → resolve → execute path is exercised, not a unit seam.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -16,7 +17,7 @@ import {
 import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("a missing required parameter fails the build with a clear error", async () => {
+test("a missing required parameter fails the build with a clear error", async () => {
   class Deploy extends Build {
     environment = parameter("Target environment").required();
     deploy = target().executes(() => {});
@@ -26,7 +27,7 @@ Deno.test("a missing required parameter fails the build with a clear error", asy
   assertStringIncludes(err, "--environment is required");
 });
 
-Deno.test("a required array parameter is enforced through the CLI", async () => {
+test("a required array parameter is enforced through the CLI", async () => {
   const seen: string[][] = [];
   class Deploy extends Build {
     repos = parameter("repos to deploy").required().array();
@@ -43,7 +44,7 @@ Deno.test("a required array parameter is enforced through the CLI", async () => 
   assertEquals(seen, [["a", "b", "c"]]);
 });
 
-Deno.test("options() rejects an invalid value and accepts a valid one", async () => {
+test("options() rejects an invalid value and accepts a valid one", async () => {
   class Deploy extends Build {
     environment = parameter("Target environment").options("dev", "prod")
       .required();
@@ -61,7 +62,7 @@ Deno.test("options() rejects an invalid value and accepts a valid one", async ()
   assertStringIncludes(good.out, "env=prod");
 });
 
-Deno.test("a boolean flag resolves true when present and false when absent", async () => {
+test("a boolean flag resolves true when present and false when absent", async () => {
   const log: Array<boolean> = [];
   class Deploy extends Build {
     verbose = parameter("Verbose logging").boolean();
@@ -77,7 +78,7 @@ Deno.test("a boolean flag resolves true when present and false when absent", asy
   assertEquals(log, [true, false]);
 });
 
-Deno.test("a parameter falls back to its .env() variable when no flag is given", async () => {
+test("a parameter falls back to its .env() variable when no flag is given", async () => {
   const prev = Deno.env.get("DEPLOY_TOKEN");
   Deno.env.set("DEPLOY_TOKEN", "from-env");
   try {
@@ -95,7 +96,7 @@ Deno.test("a parameter falls back to its .env() variable when no flag is given",
   }
 });
 
-Deno.test("a secret parameter's value is redacted if it leaks into reported output", async () => {
+test("a secret parameter's value is redacted if it leaks into reported output", async () => {
   // A target that echoes the secret via its own console.log bypasses the
   // executor's reporter entirely (runCli captures the raw console, not a
   // filtered stream), so that path isn't observable through the CLI. What is
@@ -115,7 +116,7 @@ Deno.test("a secret parameter's value is redacted if it leaks into reported outp
   assertEquals(err.includes("hunter2"), false);
 });
 
-Deno.test("a parameter that would render as a built-in flag is refused by the CLI", async () => {
+test("a parameter that would render as a built-in flag is refused by the CLI", async () => {
   // `--actor` attributes a run. A build declaring `actor = parameter()` used
   // to render onto the same flag, and `parseArgs` matches the built-in first:
   // the value set the run's actor and the parameter was left unresolved. The
@@ -138,7 +139,7 @@ Deno.test("a parameter that would render as a built-in flag is refused by the CL
   assertStringIncludes(help.err, `renders as "--actor"`);
 });
 
-Deno.test("a parameter beside --actor keeps its own value and the run's actor", async () => {
+test("a parameter beside --actor keeps its own value and the run's actor", async () => {
   // The other half of the refusal: a name merely close to a built-in stays
   // usable, and the two flags do not contend.
   await withStateDir(async () => {
@@ -169,7 +170,7 @@ Deno.test("a parameter beside --actor keeps its own value and the run's actor", 
   });
 });
 
-Deno.test("a declared flag is the one the CLI accepts, and the derived one is not", async () => {
+test("a declared flag is the one the CLI accepts, and the derived one is not", async () => {
   const seen: boolean[] = [];
   class Ship extends Build {
     // `skipE2E` derives `--skip-e2-e`: the digit ends the run of capitals, so
@@ -189,7 +190,7 @@ Deno.test("a declared flag is the one the CLI accepts, and the derived one is no
   assertStringIncludes(derived.err + derived.out, "--skip-e2-e");
 });
 
-Deno.test("a declared flag is what --help and the JSON surface show", async () => {
+test("a declared flag is what --help and the JSON surface show", async () => {
   class Ship extends Build {
     skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
     ship = target().executes(() => {});
@@ -206,7 +207,7 @@ Deno.test("a declared flag is what --help and the JSON surface show", async () =
   assertStringIncludes(json.out, '"flag": "skip-e2e"');
 });
 
-Deno.test("the environment variable is unaffected by a declared flag", async () => {
+test("the environment variable is unaffected by a declared flag", async () => {
   const seen: boolean[] = [];
   class Ship extends Build {
     skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();

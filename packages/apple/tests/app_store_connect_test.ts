@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AppStoreConnectError, AppStoreConnectSettings } from "../mod.ts";
 import {
@@ -27,7 +28,7 @@ function bytesOf(part: string): Uint8Array<ArrayBuffer> {
   );
 }
 
-Deno.test("token: ES256, the claims the API wants, a verifiable signature", async () => {
+test("token: ES256, the claims the API wants, a verifiable signature", async () => {
   const key = await apiKey();
   const token = await signToken({
     issuerId: "issuer-uuid",
@@ -54,7 +55,7 @@ Deno.test("token: ES256, the claims the API wants, a verifiable signature", asyn
   );
 });
 
-Deno.test("token: a key that is not a P-256 PKCS #8 PEM is refused unquoted", async () => {
+test("token: a key that is not a P-256 PKCS #8 PEM is refused unquoted", async () => {
   // Assembled at run time: a literal PEM block, even a broken one, is what
   // secret scanners look for.
   const armor = (body: string) =>
@@ -89,7 +90,7 @@ async function settings(fetcher: typeof fetch): Promise<
   };
 }
 
-Deno.test("client: JSON:API requests carry the token; reads retry, writes do not", async () => {
+test("client: JSON:API requests carry the token; reads retry, writes do not", async () => {
   let gets = 0;
   const asc = fakeAsc((call) => {
     if (call.method === "GET") {
@@ -112,7 +113,7 @@ Deno.test("client: JSON:API requests carry the token; reads retry, writes do not
   assertEquals(asc.calls.at(-1)?.body, { data: {} });
 });
 
-Deno.test("client: a read gives up after three retries", async () => {
+test("client: a read gives up after three retries", async () => {
   const asc = fakeAsc(() => ({ status: 429 }));
   const { settings: s } = await settings(asc.fetch);
   await assertRejects(
@@ -123,7 +124,7 @@ Deno.test("client: a read gives up after three retries", async () => {
   assertEquals(asc.calls.length, 4);
 });
 
-Deno.test("client: a network error is retried on a read, thrown on a write", async () => {
+test("client: a network error is retried on a read, thrown on a write", async () => {
   let n = 0;
   const flaky: typeof fetch = () => {
     n++;
@@ -144,7 +145,7 @@ Deno.test("client: a network error is retried on a read, thrown on a write", asy
   );
 });
 
-Deno.test("client: the API's errors are listed in the message", async () => {
+test("client: the API's errors are listed in the message", async () => {
   const asc = fakeAsc(() => ({
     status: 409,
     body: {
@@ -176,7 +177,7 @@ Deno.test("client: the API's errors are listed in the message", async () => {
   assertEquals(plain.errors, []);
 });
 
-Deno.test("client: credentials and the URL are checked", async () => {
+test("client: credentials and the URL are checked", async () => {
   const ok = fakeAsc(() => ({ body: {} }));
   const key = await apiKey();
   const base = () => new AppStoreConnectSettings().fetch(ok.fetch);
@@ -221,7 +222,7 @@ Deno.test("client: credentials and the URL are checked", async () => {
   new AppStoreConnectClient(base().apiUrl("http://127.0.0.1:9/").log(() => {}));
 });
 
-Deno.test("client: the JSON:API readers take whatever shape comes back", () => {
+test("client: the JSON:API readers take whatever shape comes back", () => {
   assertEquals(resources({ data: { id: "one", attributes: { a: 1 } } }), [
     { id: "one", attributes: { a: 1 } },
   ]);
@@ -234,7 +235,7 @@ Deno.test("client: the JSON:API readers take whatever shape comes back", () => {
   assertEquals(stringAt({ id: 1 }, "id"), undefined);
 });
 
-Deno.test("client: the default environment reader is Deno.env", () => {
+test("client: the default environment reader is Deno.env", () => {
   Deno.env.set("ZUKE_ALLOW_INSECURE_URL", "1");
   try {
     // Plaintext is accepted only because the opt-out is set in the environment.

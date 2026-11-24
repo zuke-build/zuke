@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
   signedKey,
@@ -45,7 +46,7 @@ async function drain(
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-Deno.test("a MAC trailer binds every byte of a multi-chunk artifact", async () => {
+test("a MAC trailer binds every byte of a multi-chunk artifact", async () => {
   const artifact = new Uint8Array(2.5 * 1024 * 1024).map((_, i) => i % 251);
   const stored = await sign("s", "k", artifact);
   assertEquals(stored.length, artifact.length + 32);
@@ -77,7 +78,7 @@ Deno.test("a MAC trailer binds every byte of a multi-chunk artifact", async () =
   assertEquals(await verifySigned("s", "k2", byteStream(stored)), false);
 });
 
-Deno.test("an empty artifact signs; a blob shorter than a MAC is refused", async () => {
+test("an empty artifact signs; a blob shorter than a MAC is refused", async () => {
   const stored = await sign("s", "k", new Uint8Array());
   assertEquals(stored.length, 32);
   assertEquals(await verifySigned("s", "k", byteStream(stored)), true);
@@ -90,7 +91,7 @@ Deno.test("an empty artifact signs; a blob shorter than a MAC is refused", async
 
 // The signer used to read one branch of a tee while the upload read the other:
 // a slow upload left the tee buffering the whole archive for it.
-Deno.test("signing advances only as fast as the upload reads", async () => {
+test("signing advances only as fast as the upload reads", async () => {
   let produced = 0;
   const source = new ReadableStream<Uint8Array<ArrayBuffer>>({
     pull(controller) {

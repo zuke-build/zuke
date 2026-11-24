@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -20,17 +21,17 @@ import {
   NestTasks,
 } from "../src/nest.ts";
 
-Deno.test("the default binary is nest and the subcommand follows", () => {
+test("the default binary is nest and the subcommand follows", () => {
   assertEquals(new NestInfoSettings().argv(), ["nest", "info"]);
 });
 
-Deno.test("nest: resolves its binary from node_modules by default", async () => {
+test("nest: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new NestInfoSettings(), "nest", {
     resolution: "node_modules",
   });
 });
 
-Deno.test("new renders every option and requires a name", () => {
+test("new renders every option and requires a name", () => {
   assertEquals(new NestNewSettings().name("my-app").argv(), [
     "nest",
     "new",
@@ -66,7 +67,7 @@ Deno.test("new renders every option and requires a name", () => {
   assertThrows(() => new NestNewSettings().argv(), Error, ".name()");
 });
 
-Deno.test("generate renders every option and requires a schematic", () => {
+test("generate renders every option and requires a schematic", () => {
   assertEquals(new NestGenerateSettings().schematic("module").argv(), [
     "nest",
     "generate",
@@ -107,7 +108,7 @@ Deno.test("generate renders every option and requires a schematic", () => {
   );
 });
 
-Deno.test("build renders every option with the app positional last", () => {
+test("build renders every option with the app positional last", () => {
   assertEquals(new NestBuildSettings().argv(), ["nest", "build"]);
   assertEquals(
     new NestBuildSettings()
@@ -138,7 +139,7 @@ Deno.test("build renders every option with the app positional last", () => {
   );
 });
 
-Deno.test("start renders every option with the app positional last", () => {
+test("start renders every option with the app positional last", () => {
   assertEquals(new NestStartSettings().argv(), ["nest", "start"]);
   assertEquals(
     new NestStartSettings()
@@ -170,28 +171,28 @@ Deno.test("start renders every option with the app positional last", () => {
   );
 });
 
-Deno.test("NestTasks.new reaches execution", async () => {
+test("NestTasks.new reaches execution", async () => {
   await assertRejects(
     () => NestTasks.new((s) => missingTool(s.name("my-app"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("NestTasks.generate reaches execution", async () => {
+test("NestTasks.generate reaches execution", async () => {
   await assertRejects(
     () => NestTasks.generate((s) => missingTool(s.schematic("module"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("NestTasks.build reaches execution", async () => {
+test("NestTasks.build reaches execution", async () => {
   await assertRejects(() => NestTasks.build(missingTool), ToolNotFoundError);
 });
 
-Deno.test("NestTasks.start reaches execution", async () => {
+test("NestTasks.start reaches execution", async () => {
   await assertRejects(() => NestTasks.start(missingTool), ToolNotFoundError);
 });
 
-Deno.test("NestTasks.info reaches execution", async () => {
+test("NestTasks.info reaches execution", async () => {
   await assertRejects(() => NestTasks.info(missingTool), ToolNotFoundError);
 });

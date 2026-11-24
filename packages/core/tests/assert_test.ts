@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import {
   assert,
@@ -12,11 +13,11 @@ import {
 } from "../src/assert.ts";
 import { withTemp } from "./_temp.ts";
 
-Deno.test("fail always throws an AssertionError with the message", () => {
+test("fail always throws an AssertionError with the message", () => {
   assertThrows(() => fail("nope"), AssertionError, "nope");
 });
 
-Deno.test("assert passes on truthy, throws on falsy", () => {
+test("assert passes on truthy, throws on falsy", () => {
   assert(1 === 1); // no throw
   assert("x", "should pass");
   assertThrows(() => assert(false, "bad"), AssertionError, "bad");
@@ -24,7 +25,7 @@ Deno.test("assert passes on truthy, throws on falsy", () => {
   assertThrows(() => assert(0), AssertionError, "Assertion failed");
 });
 
-Deno.test("assertExists returns the value and narrows it", () => {
+test("assertExists returns the value and narrows it", () => {
   assertEquals(assertExists("hello"), "hello");
   assertEquals(assertExists(0), 0); // 0 is present, not nullish
   assertEquals(assertExists(false), false);
@@ -36,7 +37,7 @@ Deno.test("assertExists returns the value and narrows it", () => {
   assertThrows(() => assertExists(undefined), AssertionError, "present");
 });
 
-Deno.test("assertFileExists: passes for a file, fails for missing or a dir", async () => {
+test("assertFileExists: passes for a file, fails for missing or a dir", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/a.txt`;
     await Deno.writeTextFile(file, "hi");
@@ -54,14 +55,14 @@ Deno.test("assertFileExists: passes for a file, fails for missing or a dir", asy
   });
 });
 
-Deno.test("filesystem asserts rethrow non-NotFound stat errors", async () => {
+test("filesystem asserts rethrow non-NotFound stat errors", async () => {
   // A NUL byte makes Deno.stat reject with a TypeError, not NotFound, which
   // must propagate rather than be reported as a missing path.
   await assertRejects(() => assertFileExists("bad\0path"), TypeError);
   await assertRejects(() => assertDirectoryExists("bad\0path"), TypeError);
 });
 
-Deno.test("assertDirectoryExists: passes for a dir, fails for missing or a file", async () => {
+test("assertDirectoryExists: passes for a dir, fails for missing or a file", async () => {
   await withTemp(async (dir) => {
     await assertDirectoryExists(dir); // no throw
     const file = `${dir}/a.txt`;

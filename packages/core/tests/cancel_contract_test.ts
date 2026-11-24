@@ -18,6 +18,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -48,7 +49,7 @@ function shapeOf(event: RunEvent): Omit<RunEvent, "at"> {
   return rest;
 }
 
-Deno.test("cancel settles the record `cancelled` and reports what it undid", async () => {
+test("cancel settles the record `cancelled` and reports what it undid", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     class Cd extends Build {
@@ -108,7 +109,7 @@ Deno.test("cancel settles the record `cancelled` and reports what it undid", asy
   });
 });
 
-Deno.test("cancel with nothing to undo says so, in those words", async () => {
+test("cancel with nothing to undo says so, in those words", async () => {
   await withTempStore(async (store) => {
     class Cd extends Build {
       hold = target().waitsFor((s) =>
@@ -141,7 +142,7 @@ Deno.test("cancel with nothing to undo says so, in those words", async () => {
   });
 });
 
-Deno.test("cancelling an already-terminal run is a no-op that adds no events", async () => {
+test("cancelling an already-terminal run is a no-op that adds no events", async () => {
   await withTempStore(async (store) => {
     class Cd extends Build {
       ship = target().executes(() => {});
@@ -171,7 +172,7 @@ Deno.test("cancelling an already-terminal run is a no-op that adds no events", a
   });
 });
 
-Deno.test("a run left mid-cancellation is finalized without re-running compensations", async () => {
+test("a run left mid-cancellation is finalized without re-running compensations", async () => {
   // The recovery path: a canceller that crashed left the record `cancelling`.
   // A second cancel settles it rather than compensating twice, because a
   // compensation that is not idempotent is more dangerous run twice than left
@@ -215,7 +216,7 @@ Deno.test("a run left mid-cancellation is finalized without re-running compensat
   });
 });
 
-Deno.test("a failing compensation is recorded but does not stop the cancel", async () => {
+test("a failing compensation is recorded but does not stop the cancel", async () => {
   await withTempStore(async (store) => {
     class Cd extends Build {
       rollback = target().unlisted().executes(() => {
@@ -266,7 +267,7 @@ Deno.test("a failing compensation is recorded but does not stop the cancel", asy
   });
 });
 
-Deno.test("cancel refuses a run another build owns, and undoes nothing", async () => {
+test("cancel refuses a run another build owns, and undoes nothing", async () => {
   // A settlement runs *this* build's compensations, so a run belonging to
   // another build is refused before the lock is taken. Reported rather than
   // silently skipped: this path was handed one run by name.

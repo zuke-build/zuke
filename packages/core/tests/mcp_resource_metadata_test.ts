@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   metadataDocument,
@@ -16,7 +17,7 @@ import {
   withResourceMetadata,
 } from "../src/mcp/auth.ts";
 
-Deno.test("the well-known segment is inserted between host and path", () => {
+test("the well-known segment is inserted between host and path", () => {
   // The bug this pins: appending the well-known suffix to the path instead of
   // inserting it. A client fetches only the inserted form, so the appended one
   // is a 404 and discovery silently never happens.
@@ -30,7 +31,7 @@ Deno.test("the well-known segment is inserted between host and path", () => {
   );
 });
 
-Deno.test("a resource that is a bare origin publishes at the root", () => {
+test("a resource that is a bare origin publishes at the root", () => {
   // Which is the conformant location *for that identifier* — not a second copy.
   // A path-bearing resource publishes only at its inserted path: a client that
   // probed the root would derive the bare origin as the expected `resource`
@@ -46,14 +47,14 @@ Deno.test("a resource that is a bare origin publishes at the root", () => {
   );
 });
 
-Deno.test("a deeper path and a trailing slash both insert correctly", () => {
+test("a deeper path and a trailing slash both insert correctly", () => {
   assertEquals(
     metadataPath("https://build.example.com/team/mcp/"),
     "/.well-known/oauth-protected-resource/team/mcp",
   );
 });
 
-Deno.test("the document carries what RFC 9728 and MCP require", () => {
+test("the document carries what RFC 9728 and MCP require", () => {
   const document = metadataDocument(
     protectedResource("https://build.example.com/mcp")
       .authorizationServer("https://acme.eu.auth0.com")
@@ -71,7 +72,7 @@ Deno.test("the document carries what RFC 9728 and MCP require", () => {
   });
 });
 
-Deno.test("a field with no values is omitted, not serialised empty", () => {
+test("a field with no values is omitted, not serialised empty", () => {
   // RFC 9728 3.2 makes this a MUST, and an empty `scopes_supported` would in
   // any case advertise "this resource accepts no scopes".
   const document = metadataDocument(
@@ -83,7 +84,7 @@ Deno.test("a field with no values is omitted, not serialised empty", () => {
   assertEquals(Object.keys(document).includes("resource_documentation"), false);
 });
 
-Deno.test("a declaration with no authorization server is refused", () => {
+test("a declaration with no authorization server is refused", () => {
   // Optional in RFC 9728, required by MCP — and a document without one tells a
   // client nothing it can act on.
   const error = assertThrows(
@@ -93,7 +94,7 @@ Deno.test("a declaration with no authorization server is refused", () => {
   assertStringIncludes(error.message, "authorization server");
 });
 
-Deno.test("a resource identifier that is not a usable URL is refused", () => {
+test("a resource identifier that is not a usable URL is refused", () => {
   assertThrows(
     () => metadataPath("build.example.com/mcp"),
     ProtectedResourceError,
@@ -106,7 +107,7 @@ Deno.test("a resource identifier that is not a usable URL is refused", () => {
   );
 });
 
-Deno.test("a bare challenge carries no error, an invalid token does", () => {
+test("a bare challenge carries no error, an invalid token does", () => {
   // OAuth 2.1 5.3.1: a request that presented no credentials gets no error
   // information, because nothing of the client's has been rejected yet.
   assertEquals(UNAUTHORIZED.challenge, "Bearer");
@@ -114,7 +115,7 @@ Deno.test("a bare challenge carries no error, an invalid token does", () => {
   assertStringIncludes(INVALID_TOKEN.challenge ?? "", `error="invalid_token"`);
 });
 
-Deno.test("a challenge names the failure, the scopes and the metadata URL", () => {
+test("a challenge names the failure, the scopes and the metadata URL", () => {
   assertEquals(
     bearerChallenge({
       error: "insufficient_scope",
@@ -128,7 +129,7 @@ Deno.test("a challenge names the failure, the scopes and the metadata URL", () =
   );
 });
 
-Deno.test("a value that would break out of the header is filtered", () => {
+test("a value that would break out of the header is filtered", () => {
   // The allowed auth-param set excludes `"` and `\`, so interpolating an
   // unfiltered string is header injection — an exception message reaching
   // `description` is the realistic way that happens.
@@ -145,7 +146,7 @@ Deno.test("a value that would break out of the header is filtered", () => {
   assertEquals(bearerChallenge({ description: `"""` }), "Bearer");
 });
 
-Deno.test("the metadata URL is added to a challenge, once", () => {
+test("the metadata URL is added to a challenge, once", () => {
   assertEquals(
     withResourceMetadata("Bearer", "https://x.example.com/.well-known/y"),
     `Bearer resource_metadata="https://x.example.com/.well-known/y"`,
@@ -163,7 +164,7 @@ Deno.test("the metadata URL is added to a challenge, once", () => {
   assertEquals(withResourceMetadata(own, "https://x.example.com/y"), own);
 });
 
-Deno.test("the resource is emitted exactly as declared, not re-serialised", () => {
+test("the resource is emitted exactly as declared, not re-serialised", () => {
   // RFC 9728 3.3 has a client discard the document unless `resource` is
   // byte-identical to the URL it called. `new URL(x).toString()` is not
   // byte-preserving — it appends a slash to a bare origin — so normalising here
@@ -186,7 +187,7 @@ Deno.test("the resource is emitted exactly as declared, not re-serialised", () =
   }
 });
 
-Deno.test("an identifier that cannot make a well-known URL is refused at declaration", () => {
+test("an identifier that cannot make a well-known URL is refused at declaration", () => {
   // Each of these parses as a URL and would otherwise pass the startup check,
   // then fail when the transport derived a path or an absolute URL from it —
   // a throw on a public, unauthenticated route rather than a startup error.
@@ -206,7 +207,7 @@ Deno.test("an identifier that cannot make a well-known URL is refused at declara
   }
 });
 
-Deno.test("the metadata parameter is matched as a parameter, not a substring", () => {
+test("the metadata parameter is matched as a parameter, not a substring", () => {
   // Both directions were wrong with a plain `includes`. A description merely
   // mentioning the word suppressed a real URL, silently killing discovery...
   const mentions = `Bearer error_description="see resource_metadata= docs"`;
@@ -230,7 +231,7 @@ Deno.test("the metadata parameter is matched as a parameter, not a substring", (
   }
 });
 
-Deno.test("advertising offline_access is refused", () => {
+test("advertising offline_access is refused", () => {
   // It asks the authorization server for a refresh token and says nothing
   // about access to this resource; MCP tells a protected resource not to
   // advertise it. Refused rather than dropped, so the declaration does not

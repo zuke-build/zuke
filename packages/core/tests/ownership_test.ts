@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   assertOwnsRun,
@@ -47,7 +48,7 @@ function env(
   return (name) => map.get(name);
 }
 
-Deno.test("ZUKE_BUILD_ID wins over the repository", () => {
+test("ZUKE_BUILD_ID wins over the repository", () => {
   // The explicit answer, and the one a container or cron job needs — it has no
   // repository in its environment to fall back to.
   assertEquals(
@@ -59,14 +60,14 @@ Deno.test("ZUKE_BUILD_ID wins over the repository", () => {
   );
 });
 
-Deno.test("the repository is the free default in CI", () => {
+test("the repository is the free default in CI", () => {
   assertEquals(
     resolveBuildId(env({ GITHUB_REPOSITORY: "acme/api" })),
     "acme/api",
   );
 });
 
-Deno.test("an empty origin counts as unset", () => {
+test("an empty origin counts as unset", () => {
   // An exported-but-empty variable must not become an origin that matches
   // nothing — that would strand every run it touched.
   assertEquals(
@@ -79,19 +80,19 @@ Deno.test("an empty origin counts as unset", () => {
   );
 });
 
-Deno.test("no origin at all resolves to undefined", () => {
+test("no origin at all resolves to undefined", () => {
   assertEquals(resolveBuildId(env({})), undefined);
 });
 
-Deno.test("matching origins own the run", () => {
+test("matching origins own the run", () => {
   assertEquals(ownsRun(record("acme/api"), "acme/api"), true);
 });
 
-Deno.test("differing origins do not", () => {
+test("differing origins do not", () => {
   assertEquals(ownsRun(record("acme/api"), "acme/web"), false);
 });
 
-Deno.test("an absent origin on either side abstains", () => {
+test("an absent origin on either side abstains", () => {
   // The whole reason this is a filter and not a gate: a record written before
   // the field existed, or a process outside CI that sets nothing, must still be
   // recoverable by the shape-based checks that came before.
@@ -100,7 +101,7 @@ Deno.test("an absent origin on either side abstains", () => {
   assertEquals(ownsRun(record(), undefined), true);
 });
 
-Deno.test("the assertion names both origins and the run", () => {
+test("the assertion names both origins and the run", () => {
   assertThrows(
     () => assertOwnsRun(record("acme/api"), "acme/web"),
     ForeignRunError,
@@ -125,7 +126,7 @@ Deno.test("the assertion names both origins and the run", () => {
   assertStringIncludes(caught.message, "acme/web");
 });
 
-Deno.test("the assertion abstains exactly where the predicate does", () => {
+test("the assertion abstains exactly where the predicate does", () => {
   assertOwnsRun(record(), "acme/api");
   assertOwnsRun(record("acme/api"), undefined);
   assertOwnsRun(record("acme/api"), "acme/api");

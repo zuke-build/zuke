@@ -7,6 +7,7 @@
  * injectable `fetch` seam (no network). Mirrors the HttpStateStore tests.
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { HttpError } from "../src/http.ts";
 import type { CliDescription } from "../src/describe.ts";
@@ -62,7 +63,7 @@ function headerOf(
   return undefined;
 }
 
-Deno.test("HttpBuildRegistry.getBuild returns descriptor + ETag, or null on 404", async () => {
+test("HttpBuildRegistry.getBuild returns descriptor + ETag, or null on 404", async () => {
   const registry = new HttpBuildRegistry({
     url: "https://r.example/",
     token: "t",
@@ -86,7 +87,7 @@ Deno.test("HttpBuildRegistry.getBuild returns descriptor + ETag, or null on 404"
   assertEquals(await registry.getBuild("missing"), null);
 });
 
-Deno.test("HttpBuildRegistry.getBuild errors without an ETag or on failure", async () => {
+test("HttpBuildRegistry.getBuild errors without an ETag or on failure", async () => {
   const noEtag = new HttpBuildRegistry({
     url: "https://r.example",
     fetch: fakeFetch(() =>
@@ -106,7 +107,7 @@ Deno.test("HttpBuildRegistry.getBuild errors without an ETag or on failure", asy
   await assertRejects(() => failing.getBuild("CI"), HttpError);
 });
 
-Deno.test("HttpBuildRegistry.register sends preconditions and maps 412 to a conflict", async () => {
+test("HttpBuildRegistry.register sends preconditions and maps 412 to a conflict", async () => {
   const registry = new HttpBuildRegistry({
     url: "https://r.example",
     fetch: fakeFetch((_url, init) => {
@@ -131,7 +132,7 @@ Deno.test("HttpBuildRegistry.register sends preconditions and maps 412 to a conf
   assertEquals(updated, { ok: true, version: "v2" });
 });
 
-Deno.test("HttpBuildRegistry.register errors without an ETag or on failure", async () => {
+test("HttpBuildRegistry.register errors without an ETag or on failure", async () => {
   const noEtag = new HttpBuildRegistry({
     url: "https://r.example",
     fetch: fakeFetch(() => new Response(null, { status: 200 })),
@@ -149,7 +150,7 @@ Deno.test("HttpBuildRegistry.register errors without an ETag or on failure", asy
   await assertRejects(() => failing.register(descriptor(), null), HttpError);
 });
 
-Deno.test("HttpBuildRegistry.deregister tolerates 404 and reports other errors", async () => {
+test("HttpBuildRegistry.deregister tolerates 404 and reports other errors", async () => {
   let method: string | undefined;
   const ok = new HttpBuildRegistry({
     url: "https://r.example",
@@ -174,7 +175,7 @@ Deno.test("HttpBuildRegistry.deregister tolerates 404 and reports other errors",
   await assertRejects(() => failing.deregister("CI"), HttpError);
 });
 
-Deno.test("HttpBuildRegistry.listBuilds builds a query and validates the array", async () => {
+test("HttpBuildRegistry.listBuilds builds a query and validates the array", async () => {
   let seenUrl = "";
   const registry = new HttpBuildRegistry({
     url: "https://r.example",

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   ArgoRolloutsGetExperimentSettings,
@@ -10,7 +11,7 @@ import {
   ArgoRolloutsVersionSettings,
 } from "../mod.ts";
 
-Deno.test("getRollout: bare and every flag", () => {
+test("getRollout: bare and every flag", () => {
   assertEquals(
     new ArgoRolloutsGetRolloutSettings().name("api").argv().slice(1),
     ["get", "rollout", "api"],
@@ -46,7 +47,7 @@ Deno.test("getRollout: bare and every flag", () => {
   );
 });
 
-Deno.test("getExperiment: bare and every flag", () => {
+test("getExperiment: bare and every flag", () => {
   assertEquals(
     new ArgoRolloutsGetExperimentSettings().name("exp").argv().slice(1),
     ["get", "experiment", "exp"],
@@ -63,7 +64,7 @@ Deno.test("getExperiment: bare and every flag", () => {
   );
 });
 
-Deno.test("listRollouts: bare and every flag", () => {
+test("listRollouts: bare and every flag", () => {
   assertEquals(
     new ArgoRolloutsListRolloutsSettings().argv().slice(1),
     ["list", "rollouts"],
@@ -91,7 +92,7 @@ Deno.test("listRollouts: bare and every flag", () => {
   );
 });
 
-Deno.test("listExperiments: bare and its only flag", () => {
+test("listExperiments: bare and its only flag", () => {
   // The plugin registers only --all-namespaces here; its help text's --watch
   // example is a copy of list rollouts', and the real command rejects it.
   assertEquals(
@@ -104,7 +105,7 @@ Deno.test("listExperiments: bare and its only flag", () => {
   );
 });
 
-Deno.test("version: full and short", () => {
+test("version: full and short", () => {
   assertEquals(new ArgoRolloutsVersionSettings().argv().slice(1), ["version"]);
   assertEquals(
     new ArgoRolloutsVersionSettings().short().argv().slice(1),

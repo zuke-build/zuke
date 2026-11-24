@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -18,11 +19,11 @@ import {
   JsrTasks,
 } from "../src/jsr.ts";
 
-Deno.test("the default binary is jsr", () => {
+test("the default binary is jsr", () => {
   assertEquals(new JsrPublishSettings().argv()[0], "jsr");
 });
 
-Deno.test("publish: bare and all options", () => {
+test("publish: bare and all options", () => {
   assertEquals(new JsrPublishSettings().argv().slice(1), ["publish"]);
   assertEquals(
     new JsrPublishSettings()
@@ -47,7 +48,7 @@ Deno.test("publish: bare and all options", () => {
   );
 });
 
-Deno.test("add: packages required; --save-dev", () => {
+test("add: packages required; --save-dev", () => {
   assertThrows(
     () => new JsrAddSettings().argv(),
     Error,
@@ -62,7 +63,7 @@ Deno.test("add: packages required; --save-dev", () => {
   );
 });
 
-Deno.test("remove: names required", () => {
+test("remove: names required", () => {
   assertThrows(
     () => new JsrRemoveSettings().argv(),
     Error,
@@ -74,7 +75,7 @@ Deno.test("remove: names required", () => {
   );
 });
 
-Deno.test("every JsrTasks function reaches execution", async () => {
+test("every JsrTasks function reaches execution", async () => {
   await assertRejects(() => JsrTasks.publish(missingTool), ToolNotFoundError);
   await assertRejects(
     () => JsrTasks.add((s) => missingTool(s).packages("@std/assert")),
@@ -86,13 +87,13 @@ Deno.test("every JsrTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("jsr: conforms to the wrapper contract", async () => {
+test("jsr: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new JsrPublishSettings(), "jsr", {
     resolution: "path",
   });
 });
 
-Deno.test("the publish token is registered as a secret, and still in argv", () => {
+test("the publish token is registered as a secret, and still in argv", () => {
   // Both halves, because only one of them can be fixed here. `jsr publish`
   // takes the token as a flag and offers no environment variable, so the value
   // reaches the child's argv where `ps` and `/proc/<pid>/cmdline` expose it.

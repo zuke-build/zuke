@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   GhReleaseCreateSettings,
@@ -14,7 +15,7 @@ import {
 } from "../mod.ts";
 import { parseReleases } from "../src/release.ts";
 
-Deno.test("release create renders the tag, its assets, and its flags", () => {
+test("release create renders the tag, its assets, and its flags", () => {
   assertEquals(
     new GhReleaseCreateSettings()
       .repo("acme/app")
@@ -66,7 +67,7 @@ Deno.test("release create renders the tag, its assets, and its flags", () => {
   );
 });
 
-Deno.test("release create guards its tag, its notes, and the draft/latest pair", () => {
+test("release create guards its tag, its notes, and the draft/latest pair", () => {
   assertThrows(
     () => new GhReleaseCreateSettings().title("v1").argv(),
     Error,
@@ -88,7 +89,7 @@ Deno.test("release create guards its tag, its notes, and the draft/latest pair",
   );
 });
 
-Deno.test("release list and view render their flags", () => {
+test("release list and view render their flags", () => {
   assertEquals(
     new GhReleaseListSettings().excludeDrafts().excludePreReleases().order(
       "asc",
@@ -117,14 +118,14 @@ Deno.test("release list and view render their flags", () => {
   );
 });
 
-Deno.test("release list is the one read command gh gives no --web", () => {
+test("release list is the one read command gh gives no --web", () => {
   // Every other listing and view takes --web; `gh release list` does not, and
   // offering it would render a flag gh rejects as unknown.
   assertEquals("web" in new GhReleaseListSettings(), false);
   assertEquals("web" in new GhReleaseViewSettings(), true);
 });
 
-Deno.test("release upload needs both the release and what to attach", () => {
+test("release upload needs both the release and what to attach", () => {
   assertEquals(
     new GhReleaseUploadSettings().tag("v1.2.3").files("dist/app.tgz").clobber()
       .argv().slice(1),
@@ -142,7 +143,7 @@ Deno.test("release upload needs both the release and what to attach", () => {
   );
 });
 
-Deno.test("release download renders its filters and refuses the contradictions", () => {
+test("release download renders its filters and refuses the contradictions", () => {
   assertEquals(
     new GhReleaseDownloadSettings().tag("v1.2.3").pattern("*.tgz", "*.sig")
       .dir("out").clobber().argv().slice(1),
@@ -186,7 +187,7 @@ Deno.test("release download renders its filters and refuses the contradictions",
   );
 });
 
-Deno.test("release edit renames the tag with --tag, not the operand", () => {
+test("release edit renames the tag with --tag, not the operand", () => {
   assertEquals(
     new GhReleaseEditSettings()
       .tag("v1.2.3")
@@ -243,7 +244,7 @@ Deno.test("release edit renames the tag with --tag, not the operand", () => {
   );
 });
 
-Deno.test("release delete makes the build mean the deletion", () => {
+test("release delete makes the build mean the deletion", () => {
   assertEquals(
     new GhReleaseDeleteSettings().tag("v1.2.3").cleanupTag().yes().argv()
       .slice(1),
@@ -262,7 +263,7 @@ Deno.test("release delete makes the build mean the deletion", () => {
   );
 });
 
-Deno.test("parseReleases reads gh's JSON array", () => {
+test("parseReleases reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     {
       tagName: "v1.2.3",
@@ -288,7 +289,7 @@ Deno.test("parseReleases reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseReleases treats anything but an array of objects as empty", () => {
+test("parseReleases treats anything but an array of objects as empty", () => {
   assertEquals(parseReleases("[]"), []);
   assertEquals(parseReleases(""), []);
   assertEquals(parseReleases("no releases found"), []);
@@ -298,7 +299,7 @@ Deno.test("parseReleases treats anything but an array of objects as empty", () =
   assertEquals(parseReleases('[{"isDraft":"false"}]'), [{}]);
 });
 
-Deno.test("the pinned release field set is what the entry documents", () => {
+test("the pinned release field set is what the entry documents", () => {
   assertEquals(RELEASE_LIST_FIELDS.includes("tagName"), true);
   assertEquals(RELEASE_LIST_FIELDS.includes("isLatest"), true);
   assertEquals(RELEASE_LIST_FIELDS.length, 6);

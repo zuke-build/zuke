@@ -15,6 +15,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -48,11 +49,11 @@ runs:
 `;
 }
 
-Deno.test("the title is the one the released versions already carry", () => {
+test("the title is the one the released versions already carry", () => {
   assertEquals(actionReleaseTitle("v1.0.6"), "Zuke Build v1.0.6");
 });
 
-Deno.test("a pin bump is named, with the version beside it", () => {
+test("a pin bump is named, with the version beside it", () => {
   // What v1.0.4 actually was: harden-runner v2.21.0 to v2.21.1, nothing else.
   const notes = actionReleaseNotes({
     slug: SLUG,
@@ -81,7 +82,7 @@ Deno.test("a pin bump is named, with the version beside it", () => {
   );
 });
 
-Deno.test("a change the generator cannot name says so instead of inventing one", () => {
+test("a change the generator cannot name says so instead of inventing one", () => {
   // What v1.0.5 actually was: the `ref` input's *description* was rewritten.
   // No pin moved and no input changed, so there is nothing in the file to
   // name — and a confident summary here would be a fabricated one.
@@ -100,7 +101,7 @@ Deno.test("a change the generator cannot name says so instead of inventing one",
   assertStringIncludes(notes, "the same 2 inputs");
 });
 
-Deno.test("an added input is named, because it is what a caller can now pass", () => {
+test("an added input is named, because it is what a caller can now pass", () => {
   const notes = actionReleaseNotes({
     slug: SLUG,
     version: "v1.1.0",
@@ -118,7 +119,7 @@ Deno.test("an added input is named, because it is what a caller can now pass", (
   assertEquals(notes.includes("Nothing about the action's interface"), false);
 });
 
-Deno.test("a removed input carries the warning that GitHub will not fail", () => {
+test("a removed input carries the warning that GitHub will not fail", () => {
   // The one change describable here that breaks a caller who did nothing, and
   // it breaks them quietly: an undeclared input is a warning, not an error, so
   // the step simply runs without it.
@@ -138,7 +139,7 @@ Deno.test("a removed input carries the warning that GitHub will not fail", () =>
   assertStringIncludes(notes, "GitHub warns and carries on");
 });
 
-Deno.test("the first release has nothing to diff and says only what it is", () => {
+test("the first release has nothing to diff and says only what it is", () => {
   const notes = actionReleaseNotes({
     slug: SLUG,
     version: "v1.0.0",
@@ -153,7 +154,7 @@ Deno.test("the first release has nothing to diff and says only what it is", () =
   assertEquals(notes.includes("/compare/"), false);
 });
 
-Deno.test("a bumped pin with no version comment names the commit, not a guess", () => {
+test("a bumped pin with no version comment names the commit, not a guess", () => {
   // Dependabot maintains the `# vX.Y.Z` beside the SHA, but a hand-added pin
   // may carry none — and stating a version that is not written down would be
   // worse than naming the commit that is.
@@ -177,7 +178,7 @@ Deno.test("a bumped pin with no version comment names the commit, not a guess", 
   );
 });
 
-Deno.test("the same revisions always render the same body", () => {
+test("the same revisions always render the same body", () => {
   // The notes are written once, but the reconciliation reads them on every
   // run — so a body that varied would make an unchanged release look edited.
   const change = {
@@ -195,7 +196,7 @@ Deno.test("the same revisions always render the same body", () => {
   assertEquals(actionReleaseNotes(change), actionReleaseNotes(change));
 });
 
-Deno.test("only SHA pins are read, so a floating uses: is not mistaken for one", () => {
+test("only SHA pins are read, so a floating uses: is not mistaken for one", () => {
   // A floating `uses: actions/checkout@v4` is not a pin, and counting one
   // would let a reference this repository never generates pass for a value it
   // did.
@@ -208,7 +209,7 @@ Deno.test("only SHA pins are read, so a floating uses: is not mistaken for one",
   assertEquals(pins.get("actions/setup-node")?.version, "v5.0.0");
 });
 
-Deno.test("the real action.yml's pins are readable by the notes generator", () => {
+test("the real action.yml's pins are readable by the notes generator", () => {
   // Against the committed file rather than a fixture: the generator reads
   // whatever `action.yml` actually looks like, and a change to its formatting
   // that stopped the pins parsing would otherwise surface as notes that
@@ -222,7 +223,7 @@ Deno.test("the real action.yml's pins are readable by the notes generator", () =
   }
 });
 
-Deno.test("a comment that is not a version is not quoted as one", () => {
+test("a comment that is not a version is not quoted as one", () => {
   // The text after `#` on a `uses:` line is free-form, and it is rendered into
   // the body. Dependabot writes a version there and nothing else does, so
   // anything that is not one means the pin was hand-edited — and the SHA is

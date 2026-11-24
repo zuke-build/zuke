@@ -7,6 +7,7 @@
  * no error ever carries a credential.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -24,7 +25,7 @@ import { BASE, fakeFetch, vector } from "./_fetch.ts";
 /** An env reader over a record. */
 const env = (vars: Record<string, string>) => (name: string) => vars[name];
 
-Deno.test("a plaintext non-loopback URL carrying credentials is refused before anything is sent", async () => {
+test("a plaintext non-loopback URL carrying credentials is refused before anything is sent", async () => {
   const fetcher = fakeFetch(() => vector());
   const credentialed: Array<(s: PrometheusQuerySettings) => unknown> = [
     (s) => s.url("http://prom.example").bearerToken("test-token"),
@@ -57,7 +58,7 @@ Deno.test("a plaintext non-loopback URL carrying credentials is refused before a
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a plain header — a tenant id — leaves an in-cluster http URL usable", async () => {
+test("a plain header — a tenant id — leaves an in-cluster http URL usable", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url("http://mimir.monitoring.svc:8080/prometheus?tenant=a")
@@ -67,7 +68,7 @@ Deno.test("a plain header — a tenant id — leaves an in-cluster http URL usab
   assertEquals(fetcher.sent[0].headers.get("x-scope-orgid"), "team-a-tenant");
 });
 
-Deno.test("a credential source that never settles still times out, or is cancelled", async () => {
+test("a credential source that never settles still times out, or is cancelled", async () => {
   const fetcher = fakeFetch(() => vector());
   const hang = () => new Promise<Record<string, string>>(() => {});
   await assertRejects(
@@ -93,7 +94,7 @@ Deno.test("a credential source that never settles still times out, or is cancell
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a failure's reason has no runtime error-name prefix", async () => {
+test("a failure's reason has no runtime error-name prefix", async () => {
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
@@ -121,7 +122,7 @@ Deno.test("a failure's reason has no runtime error-name prefix", async () => {
   assertEquals(shape.message.includes("unexpected answer: Error"), false);
 });
 
-Deno.test("an unauthenticated plaintext URL is allowed — an in-cluster Prometheus", async () => {
+test("an unauthenticated plaintext URL is allowed — an in-cluster Prometheus", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url("http://prometheus.monitoring.svc:9090").readEnv(env({}))
@@ -134,7 +135,7 @@ Deno.test("an unauthenticated plaintext URL is allowed — an in-cluster Prometh
   assertEquals(fetcher.sent[0].headers.get("authorization"), null);
 });
 
-Deno.test("loopback plaintext with credentials is allowed, and the opt-out allows any plaintext", async () => {
+test("loopback plaintext with credentials is allowed, and the opt-out allows any plaintext", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url("http://localhost:9090").readEnv(env({})).fetch(fetcher).query("q")
@@ -150,7 +151,7 @@ Deno.test("loopback plaintext with credentials is allowed, and the opt-out allow
   ]);
 });
 
-Deno.test("a URL that is missing, malformed or not http(s) is refused", async () => {
+test("a URL that is missing, malformed or not http(s) is refused", async () => {
   const fetcher = fakeFetch(() => vector());
   const cases: Array<[string | undefined, string]> = [
     [undefined, "call s.url(...)"],
@@ -172,7 +173,7 @@ Deno.test("a URL that is missing, malformed or not http(s) is refused", async ()
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a GET's parameters are RFC 3986 encoded — %20, never + — so a signature matches", async () => {
+test("a GET's parameters are RFC 3986 encoded — %20, never + — so a signature matches", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fetcher).httpMethod("GET")
@@ -188,7 +189,7 @@ Deno.test("a GET's parameters are RFC 3986 encoded — %20, never + — so a sig
   );
 });
 
-Deno.test("the base URL's path and query are kept and its fragment dropped", async () => {
+test("the base URL's path and query are kept and its fragment dropped", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url("https://proxy.example/prom/?org=7#frag").fetch(fetcher)
@@ -200,7 +201,7 @@ Deno.test("the base URL's path and query are kept and its fragment dropped", asy
   assertEquals(sent.url.hash, "");
 });
 
-Deno.test("an error envelope becomes a PrometheusApiError with status, errorType and message", async () => {
+test("an error envelope becomes a PrometheusApiError with status, errorType and message", async () => {
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
@@ -227,7 +228,7 @@ Deno.test("an error envelope becomes a PrometheusApiError with status, errorType
   );
 });
 
-Deno.test("an error status on a 2xx and an HTTP error without an envelope are both refusals", async () => {
+test("an error status on a 2xx and an HTTP error without an envelope are both refusals", async () => {
   const cases: Array<[Response, number, string | undefined]> = [
     [Response.json({ status: "error", error: "x" }), 200, "x"],
     [Response.json({}, { status: 500 }), 500, undefined],
@@ -255,7 +256,7 @@ Deno.test("an error status on a 2xx and an HTTP error without an envelope are bo
   }
 });
 
-Deno.test("a 2xx that is not a Prometheus envelope is a request error, not a refusal", async () => {
+test("a 2xx that is not a Prometheus envelope is a request error, not a refusal", async () => {
   const cases: Array<[Response, string]> = [
     [
       new Response("<html>login</html>"),
@@ -279,7 +280,7 @@ Deno.test("a 2xx that is not a Prometheus envelope is a request error, not a ref
   }
 });
 
-Deno.test("a long server message is capped", async () => {
+test("a long server message is capped", async () => {
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
@@ -298,7 +299,7 @@ Deno.test("a long server message is capped", async () => {
   assertEquals(error.detail?.endsWith("…"), true);
 });
 
-Deno.test("an answer over maxResponseBytes fails instead of being buffered", async () => {
+test("an answer over maxResponseBytes fails instead of being buffered", async () => {
   await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
@@ -317,7 +318,7 @@ Deno.test("an answer over maxResponseBytes fails instead of being buffered", asy
   }
 });
 
-Deno.test("a request that outlives requestTimeout fails as a timeout", async () => {
+test("a request that outlives requestTimeout fails as a timeout", async () => {
   const fetcher = fakeFetch((request) =>
     new Promise((_resolve, reject) => {
       request.signal?.addEventListener("abort", () =>
@@ -334,7 +335,7 @@ Deno.test("a request that outlives requestTimeout fails as a timeout", async () 
   );
 });
 
-Deno.test("the caller's own cancellation is rethrown as itself, not as a failure", async () => {
+test("the caller's own cancellation is rethrown as itself, not as a failure", async () => {
   const stop = new AbortController();
   const reason = new Error("run cancelled");
   const fetcher = fakeFetch(() => {
@@ -351,7 +352,7 @@ Deno.test("the caller's own cancellation is rethrown as itself, not as a failure
   assertEquals(error, reason);
 });
 
-Deno.test("a signal that never fires leaves the call alone", async () => {
+test("a signal that never fires leaves the call alone", async () => {
   const fetcher = fakeFetch(() => vector([{}, "1"]));
   const response = await PrometheusTasks.query((s) =>
     s.url(BASE).query("q").signal(new AbortController().signal).fetch(fetcher)
@@ -360,7 +361,7 @@ Deno.test("a signal that never fires leaves the call alone", async () => {
   assertEquals(fetcher.sent[0].signal?.aborted, false);
 });
 
-Deno.test("credentials never reach an error: network failure, refusal and echo", async () => {
+test("credentials never reach an error: network failure, refusal and echo", async () => {
   const token = "test-token-value";
   const password = "test-password";
   const basic = btoa(`user:${password}`);
@@ -407,7 +408,7 @@ Deno.test("credentials never reach an error: network failure, refusal and echo",
   }
 });
 
-Deno.test("userinfo in the URL is sent as basic auth, never in the URL", async () => {
+test("userinfo in the URL is sent as basic auth, never in the URL", async () => {
   const fetcher = fakeFetch((r) => Promise.reject(new TypeError(r.url.href)));
   const error = await assertRejects(
     () =>
@@ -430,7 +431,7 @@ Deno.test("userinfo in the URL is sent as basic auth, never in the URL", async (
 
 // Regressions from the adversarial pass.
 
-Deno.test("malformed percent-encoding in the userinfo is named, without the value", async () => {
+test("malformed percent-encoding in the userinfo is named, without the value", async () => {
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
@@ -443,7 +444,7 @@ Deno.test("malformed percent-encoding in the userinfo is named, without the valu
   assertEquals(error.message.includes("%ZZ-x"), false);
 });
 
-Deno.test("a base URL parameter that collides with the call's own is refused", async () => {
+test("a base URL parameter that collides with the call's own is refused", async () => {
   const fetcher = fakeFetch(() => vector());
   for (const method of ["GET", "POST"] as const) {
     await assertRejects(
@@ -459,7 +460,7 @@ Deno.test("a base URL parameter that collides with the call's own is refused", a
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("a redirect is not followed, and says so", async () => {
+test("a redirect is not followed, and says so", async () => {
   const opaque = Object.defineProperty(new Response(null), "type", {
     value: "opaqueredirect",
   });
@@ -485,7 +486,7 @@ Deno.test("a redirect is not followed, and says so", async () => {
   }
 });
 
-Deno.test("a header value with a line break is refused without quoting it", async () => {
+test("a header value with a line break is refused without quoting it", async () => {
   const fetcher = fakeFetch(() => vector());
   const error = await assertRejects(
     () =>

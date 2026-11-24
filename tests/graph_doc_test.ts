@@ -8,6 +8,7 @@
  * without touching the real `docs/graph.md`.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { Build, discoverTargets, target } from "@zuke/core";
 import {
   assertEquals,
@@ -35,7 +36,7 @@ class Demo extends Build {
     .executes(() => {});
 }
 
-Deno.test("graphDocTargets extracts rows in declaration order with deps", () => {
+test("graphDocTargets extracts rows in declaration order with deps", () => {
   const rows = graphDocTargets(discoverTargets(new Demo()));
   assertEquals(rows.map((r) => r.name), ["lint", "test", "ci"]);
   assertEquals(rows[0].deps, []);
@@ -44,7 +45,7 @@ Deno.test("graphDocTargets extracts rows in declaration order with deps", () => 
   assertEquals(rows[1].description, "Run the test suite");
 });
 
-Deno.test("renderMermaid declares every node and edge with synthetic ids", () => {
+test("renderMermaid declares every node and edge with synthetic ids", () => {
   const mermaid = renderMermaid(graphDocTargets(discoverTargets(new Demo())));
   assertStringIncludes(mermaid, "flowchart TD");
   assertStringIncludes(mermaid, 't0["lint"]');
@@ -55,14 +56,14 @@ Deno.test("renderMermaid declares every node and edge with synthetic ids", () =>
   assertStringIncludes(mermaid, "t1 --> t2");
 });
 
-Deno.test("renderMermaid escapes Mermaid-reserved label characters", () => {
+test("renderMermaid escapes Mermaid-reserved label characters", () => {
   const mermaid = renderMermaid([
     { name: 'a"b#c', description: "", deps: [] },
   ]);
   assertStringIncludes(mermaid, 't0["a#quot;b#35;c"]');
 });
 
-Deno.test("renderMermaid skips an edge whose dependency names no row", () => {
+test("renderMermaid skips an edge whose dependency names no row", () => {
   const mermaid = renderMermaid([
     { name: "known", description: "", deps: ["missing"] },
   ]);
@@ -70,7 +71,7 @@ Deno.test("renderMermaid skips an edge whose dependency names no row", () => {
   assertEquals(mermaid.includes("undefined"), false);
 });
 
-Deno.test("renderGraphDoc renders the page with marker, diagram, and table", () => {
+test("renderGraphDoc renders the page with marker, diagram, and table", () => {
   const page = renderGraphDoc(discoverTargets(new Demo()));
   assertStringIncludes(page, "# Zuke's build graph");
   assertStringIncludes(
@@ -89,21 +90,21 @@ Deno.test("renderGraphDoc renders the page with marker, diagram, and table", () 
   );
 });
 
-Deno.test("renderGraphDoc is deterministic", () => {
+test("renderGraphDoc is deterministic", () => {
   assertEquals(
     renderGraphDoc(discoverTargets(new Demo())),
     renderGraphDoc(discoverTargets(new Demo())),
   );
 });
 
-Deno.test("renderGraphDoc handles a build with no targets", () => {
+test("renderGraphDoc handles a build with no targets", () => {
   const page = renderGraphDoc(new Map());
   assertStringIncludes(page, "0 target(s), 0 dependency edge(s).");
   assertStringIncludes(page, "No targets defined.");
   assertEquals(page.includes("```mermaid"), false);
 });
 
-Deno.test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", async () => {
+test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-graph-doc-" });
   const path = `${dir}/graph.md`;
   try {
@@ -127,7 +128,7 @@ Deno.test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", a
   }
 });
 
-Deno.test("the canonical page is formatter-clean", async () => {
+test("the canonical page is formatter-clean", async () => {
   // `docs/` is inside the formatter's scope, so a page the formatter would
   // rewrite puts `format` and `graphDocCheck` in contradiction: each one's fix
   // breaks the other, which is exactly how this surfaced. Formatting is
@@ -138,7 +139,7 @@ Deno.test("the canonical page is formatter-clean", async () => {
   assertEquals(await formatText(page, "md"), page);
 });
 
-Deno.test("an empty build still renders a formatter-clean page", async () => {
+test("an empty build still renders a formatter-clean page", async () => {
   // The no-targets branch takes a different path through the renderer, and it
   // is the one a fresh project hits first.
   const page = await canonicalGraphDoc(new Map());

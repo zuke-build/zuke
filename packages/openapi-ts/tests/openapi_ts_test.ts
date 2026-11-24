@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -12,11 +13,11 @@ import {
   OpenapiTsTasks,
 } from "../src/openapi_ts.ts";
 
-Deno.test("the default binary is openapi-ts", () => {
+test("the default binary is openapi-ts", () => {
   assertEquals(new OpenapiTsGenerateSettings().argv(), ["openapi-ts"]);
 });
 
-Deno.test("generate: every option renders", () => {
+test("generate: every option renders", () => {
   const argv = new OpenapiTsGenerateSettings()
     .input("openapi.yaml").output("src/client").client("@hey-api/client-fetch")
     .file("openapi-ts.config.ts").dryRun().watch().silent().argv();
@@ -36,7 +37,7 @@ Deno.test("generate: every option renders", () => {
   ]);
 });
 
-Deno.test("generate: minimal input and output", () => {
+test("generate: minimal input and output", () => {
   const argv = new OpenapiTsGenerateSettings()
     .input("openapi.yaml").output("src/client").argv();
   assertEquals(argv, [
@@ -48,14 +49,14 @@ Deno.test("generate: minimal input and output", () => {
   ]);
 });
 
-Deno.test("OpenapiTsTasks.generate reaches execution", async () => {
+test("OpenapiTsTasks.generate reaches execution", async () => {
   await assertRejects(
     () => OpenapiTsTasks.generate(missingTool),
     ToolNotFoundError,
   );
 });
 
-Deno.test("openapi-ts: resolves its binary from node_modules by default", async () => {
+test("openapi-ts: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(
     () => new OpenapiTsGenerateSettings(),
     "openapi-ts",

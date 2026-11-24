@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -15,11 +16,11 @@ import {
 import { type AzOutputFormat, AzSettings, AzTasks } from "../mod.ts";
 import { FakeAz } from "./_fake.ts";
 
-Deno.test("the default binary is az", () => {
+test("the default binary is az", () => {
   assertEquals(new AzSettings().argv(), ["az"]);
 });
 
-Deno.test("az: command, global options, then extra flags", () => {
+test("az: command, global options, then extra flags", () => {
   const argv = new AzSettings()
     .command("network", "front-door", "purge")
     .subscription("prod").output("jsonc").query("[].name")
@@ -44,7 +45,7 @@ Deno.test("az: command, global options, then extra flags", () => {
   ]);
 });
 
-Deno.test("az: a minimal command carries no global options", () => {
+test("az: a minimal command carries no global options", () => {
   assertEquals(new AzSettings().command("group", "list").argv(), [
     "az",
     "group",
@@ -52,7 +53,7 @@ Deno.test("az: a minimal command carries no global options", () => {
   ]);
 });
 
-Deno.test("az: every output format is typed", () => {
+test("az: every output format is typed", () => {
   const formats: AzOutputFormat[] = [
     "json",
     "jsonc",
@@ -70,7 +71,7 @@ Deno.test("az: every output format is typed", () => {
   }
 });
 
-Deno.test("az: conforms to the wrapper contract", async () => {
+test("az: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new AzSettings().command("account", "show"),
     "az",
@@ -78,14 +79,14 @@ Deno.test("az: conforms to the wrapper contract", async () => {
   );
 });
 
-Deno.test("AzTasks.run reaches execution", async () => {
+test("AzTasks.run reaches execution", async () => {
   await assertRejects(
     () => AzTasks.run((s) => missingTool(s.command("account", "show"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("prompts, extension installs and colour are off in the child's environment", async () => {
+test("prompts, extension installs and colour are off in the child's environment", async () => {
   // A real subprocess, but the running deno rather than az: the settings
   // carry the environment, so whatever they spawn sees it.
   const output = await new AzSettings()
@@ -101,7 +102,7 @@ Deno.test("prompts, extension installs and colour are off in the child's environ
   assertEquals(JSON.parse(output.stdout), ["no", "off", "true"]);
 });
 
-Deno.test("the environment defaults can be overridden", async () => {
+test("the environment defaults can be overridden", async () => {
   const output = await new AzSettings()
     .env({ AZURE_EXTENSION_USE_DYNAMIC_INSTALL: "yes_without_prompt" })
     .toolPath(Deno.execPath())
@@ -114,7 +115,7 @@ Deno.test("the environment defaults can be overridden", async () => {
   assertEquals(output.stdout.trim(), "yes_without_prompt");
 });
 
-Deno.test("a runner replaces the spawn and sees the full argv", async () => {
+test("a runner replaces the spawn and sees the full argv", async () => {
   const fake = new FakeAz("ok\n");
   const output = await AzTasks.run((s) =>
     s.command("group", "list").subscription("dev").runner(fake.run)
@@ -123,7 +124,7 @@ Deno.test("a runner replaces the spawn and sees the full argv", async () => {
   assertEquals(fake.calls, [["az", "group", "list", "--subscription=dev"]]);
 });
 
-Deno.test("a runner's failed exit throws a CommandError", async () => {
+test("a runner's failed exit throws a CommandError", async () => {
   const fake = new FakeAz(new CommandOutput(3, "", "AuthorizationFailed"));
   const error = await assertRejects(
     () => AzTasks.run((s) => s.command("group", "list").runner(fake.run)),
@@ -134,7 +135,7 @@ Deno.test("a runner's failed exit throws a CommandError", async () => {
   assertStringIncludes(error.message, "AuthorizationFailed");
 });
 
-Deno.test("a runner's failed exit is returned under noThrow", async () => {
+test("a runner's failed exit is returned under noThrow", async () => {
   const fake = new FakeAz(new CommandOutput(1, "", "nope"));
   const output = await AzTasks.run((s) =>
     s.command("group", "list").noThrow().runner(fake.run)
@@ -142,7 +143,7 @@ Deno.test("a runner's failed exit is returned under noThrow", async () => {
   assertEquals(output.code, 1);
 });
 
-Deno.test("az: --only-show-errors on its own", () => {
+test("az: --only-show-errors on its own", () => {
   assertEquals(new AzSettings().onlyShowErrors().argv(), [
     "az",
     "--only-show-errors",

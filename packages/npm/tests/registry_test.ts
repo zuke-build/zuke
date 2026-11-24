@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -18,7 +19,7 @@ import {
   NpmWhoamiSettings,
 } from "../mod.ts";
 
-Deno.test("view puts its fields after the spec, and refuses them without one", () => {
+test("view puts its fields after the spec, and refuses them without one", () => {
   assertEquals(
     new NpmViewSettings().spec("react").field("dist-tags.latest")
       .argv().slice(1),
@@ -32,7 +33,7 @@ Deno.test("view puts its fields after the spec, and refuses them without one", (
   );
 });
 
-Deno.test("ping and whoami are bare commands", () => {
+test("ping and whoami are bare commands", () => {
   assertEquals(new NpmPingSettings().argv().slice(1), ["ping"]);
   assertEquals(new NpmWhoamiSettings().argv().slice(1), ["whoami"]);
   assertEquals(
@@ -41,7 +42,7 @@ Deno.test("ping and whoami are bare commands", () => {
   );
 });
 
-Deno.test("access renders each of npm's forms", () => {
+test("access renders each of npm's forms", () => {
   assertEquals(new NpmAccessSettings().argv().slice(1), [
     "access",
     "get",
@@ -74,7 +75,7 @@ Deno.test("access renders each of npm's forms", () => {
   );
 });
 
-Deno.test("owner requires a subcommand and renders each", () => {
+test("owner requires a subcommand and renders each", () => {
   assertThrows(
     () => new NpmOwnerSettings().argv(),
     Error,
@@ -95,7 +96,7 @@ Deno.test("owner requires a subcommand and renders each", () => {
   ]);
 });
 
-Deno.test("token lists by default, and keeps create-only flags to create", () => {
+test("token lists by default, and keeps create-only flags to create", () => {
   assertEquals(new NpmTokenSettings().argv().slice(1), ["token", "list"]);
   assertEquals(
     new NpmTokenSettings().create().readOnly().cidr("10.0.0.0/8")
@@ -115,7 +116,7 @@ Deno.test("token lists by default, and keeps create-only flags to create", () =>
   );
 });
 
-Deno.test("whoamiName reports a missing login as undefined, not a failure", async () => {
+test("whoamiName reports a missing login as undefined, not a failure", async () => {
   // Hermetic: the running `deno` stands in for npm — it exits non-zero on a
   // subcommand it does not have, exactly as `npm whoami` does when logged out.
   const name = await NpmTasks.whoamiName((s) =>
@@ -124,7 +125,7 @@ Deno.test("whoamiName reports a missing login as undefined, not a failure", asyn
   assertEquals(name, undefined);
 });
 
-Deno.test("the registry tasks reach execution", async () => {
+test("the registry tasks reach execution", async () => {
   await assertRejects(() => NpmTasks.view(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.ping(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.whoami(missingTool), ToolNotFoundError);
@@ -140,7 +141,7 @@ Deno.test("the registry tasks reach execution", async () => {
   );
 });
 
-Deno.test("the access forms that take an optional package render it", () => {
+test("the access forms that take an optional package render it", () => {
   // Each form has a bare and a package-scoped shape; both reach npm's own
   // grammar, so both are asserted rather than assumed.
   assertEquals(
@@ -181,14 +182,14 @@ Deno.test("the access forms that take an optional package render it", () => {
   );
 });
 
-Deno.test("token.list is explicit as well as the default", () => {
+test("token.list is explicit as well as the default", () => {
   assertEquals(new NpmTokenSettings().list().argv().slice(1), [
     "token",
     "list",
   ]);
 });
 
-Deno.test("view lists a workspace's own package when given no spec", () => {
+test("view lists a workspace's own package when given no spec", () => {
   assertEquals(new NpmViewSettings().workspace("app").argv().slice(1), [
     "view",
     "--workspace=app",

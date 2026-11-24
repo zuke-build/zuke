@@ -7,6 +7,7 @@
  * here (no key is committed), PKCS#1 and PKCS#8 input, and the named failures.
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { signJwtEs256, signJwtRs256 } from "../mod.ts";
 
@@ -61,7 +62,7 @@ async function keys(): Promise<
   };
 }
 
-Deno.test("signJwtRs256 frames header and claims and signs them verifiably", async () => {
+test("signJwtRs256 frames header and claims and signs them verifiably", async () => {
   const { pkcs8, pkcs1, publicKey } = await keys();
   for (const key of [pkcs8, pkcs1]) {
     const jwt = await signJwtRs256(key, { iss: "me", iat: 1, exp: 2 }, "kid-1");
@@ -91,7 +92,7 @@ Deno.test("signJwtRs256 frames header and claims and signs them verifiably", asy
   );
 });
 
-Deno.test("signJwtRs256 names an empty, non-base64 or non-RSA key", async () => {
+test("signJwtRs256 names an empty, non-base64 or non-RSA key", async () => {
   const cases: Array<[string, string]> = [
     ["", "pass the PEM contents, not a path"],
     [armor("%%%%"), "not valid base64"],
@@ -124,7 +125,7 @@ async function ecKeys(): Promise<{ pkcs8: string; publicKey: CryptoKey }> {
   return { pkcs8: pem("PRIVATE KEY", der), publicKey: pair.publicKey };
 }
 
-Deno.test("signJwtEs256 frames header and claims and signs them verifiably", async () => {
+test("signJwtEs256 frames header and claims and signs them verifiably", async () => {
   const { pkcs8, publicKey } = await ecKeys();
   const jwt = await signJwtEs256(pkcs8, { iss: "me", iat: 1, exp: 2 }, "KEY1");
   const [header, claims, signature] = jwt.split(".");
@@ -153,7 +154,7 @@ Deno.test("signJwtEs256 frames header and claims and signs them verifiably", asy
   });
 });
 
-Deno.test("signJwtEs256 names an empty, non-base64 or non-P-256 key", async () => {
+test("signJwtEs256 names an empty, non-base64 or non-P-256 key", async () => {
   const { pkcs8: rsaKey } = await keys();
   const cases: Array<[string, string]> = [
     ["", "the private key is empty"],

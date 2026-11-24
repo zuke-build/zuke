@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("biome: the Checked line yields Files, and the Found lines the counts", () => {
+test("biome: the Checked line yields Files, and the Found lines the counts", () => {
   assertEquals(
     parseBiomeSummary(
       out(
@@ -37,7 +38,7 @@ Deno.test("biome: the Checked line yields Files, and the Found lines the counts"
   );
 });
 
-Deno.test("biome: a run that never printed the Checked line reports nothing", () => {
+test("biome: a run that never printed the Checked line reports nothing", () => {
   assertEquals(
     parseBiomeSummary(
       out(1, "", "× Biome exited because the configuration is invalid."),
@@ -60,7 +61,7 @@ class FormatProbe extends BiomeFormatSettings {
   }
 }
 
-Deno.test("biome: the hook on every subcommand reports the counts onto the running target", async () => {
+test("biome: the hook on every subcommand reports the counts onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(

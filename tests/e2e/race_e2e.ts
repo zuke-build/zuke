@@ -11,6 +11,7 @@
  * where Windows filesystem-lock semantics get real coverage.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -23,7 +24,7 @@ import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/gate_build.ts", import.meta.url);
 
-Deno.test("two real processes resume the same run; exactly one wins", async () => {
+test("two real processes resume the same run; exactly one wins", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   try {
     // Process 1: run to the gate and suspend, persisting the run.

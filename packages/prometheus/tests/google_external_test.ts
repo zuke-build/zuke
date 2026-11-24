@@ -8,6 +8,7 @@
  * sources, and the subject token kept out of every error.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { PrometheusGoogleSettings } from "../mod.ts";
 import { googleCredentials } from "../src/google.ts";
@@ -54,7 +55,7 @@ const sts = () =>
     expires_in: 3600,
   });
 
-Deno.test("a file subject token is exchanged at STS for the requested scope", async () => {
+test("a file subject token is exchanged at STS for the requested scope", async () => {
   const fetcher = routes({ [`POST ${STS}`]: sts });
   const sent = await headers(account({ file: "/var/run/oidc" }), {
     files: { "/var/run/oidc": "oidc-subject-token\n" },
@@ -71,7 +72,7 @@ Deno.test("a file subject token is exchanged at STS for the requested scope", as
   });
 });
 
-Deno.test("a url source in json format sends its headers and reads the named field", async () => {
+test("a url source in json format sends its headers and reads the named field", async () => {
   const fetcher = routes({
     "GET http://169.254.169.254/metadata/identity/oauth2/token": () =>
       Response.json({ access_token: "azure-subject-token" }),
@@ -104,7 +105,7 @@ Deno.test("a url source in json format sends its headers and reads the named fie
   );
 });
 
-Deno.test("impersonation exchanges the federated token for the service account's", async () => {
+test("impersonation exchanges the federated token for the service account's", async () => {
   const fetcher = routes({
     [`POST ${STS}`]: sts,
     [`POST ${IMPERSONATE}`]: () =>
@@ -157,7 +158,7 @@ Deno.test("impersonation exchanges the federated token for the service account's
   }
 });
 
-Deno.test("a workforce pool without impersonation names its user project", async () => {
+test("a workforce pool without impersonation names its user project", async () => {
   const fetcher = routes({ [`POST ${STS}`]: sts });
   await headers(
     account({ file: "/oidc" }, { workforce_pool_user_project: "wf-project" }),
@@ -169,7 +170,7 @@ Deno.test("a workforce pool without impersonation names its user project", async
   );
 });
 
-Deno.test("unsupported or malformed subject-token sources are refused by name", async () => {
+test("unsupported or malformed subject-token sources are refused by name", async () => {
   const cases: Array<[string, Record<string, string>, string]> = [
     [
       JSON.stringify({
@@ -242,7 +243,7 @@ Deno.test("unsupported or malformed subject-token sources are refused by name", 
   }
 });
 
-Deno.test("a refused exchange or impersonation names the step, never the tokens", async () => {
+test("a refused exchange or impersonation names the step, never the tokens", async () => {
   const refused = routes({
     [`POST ${STS}`]: (request) =>
       Response.json({

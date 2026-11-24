@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -31,7 +32,7 @@ async function onlyRunId(dir: string): Promise<string> {
   return runs[0].id;
 }
 
-Deno.test("a target reads its dependencies' outcomes, including a skipped one", async () => {
+test("a target reads its dependencies' outcomes, including a skipped one", async () => {
   const seen = new Map<string, TargetOutcomeView | undefined>();
 
   class Ci extends Build {
@@ -56,7 +57,7 @@ Deno.test("a target reads its dependencies' outcomes, including a skipped one", 
   assertEquals(seen.get("nonexistent"), undefined);
 });
 
-Deno.test("a dependency's outcome is current, not one state write behind", async () => {
+test("a dependency's outcome is current, not one state write behind", async () => {
   // The reason outcomes do not come from the run record: every
   // `markTargetSettled` is fire-and-forget through the writer's serialized
   // chain, so a record read taken right after a target settles still says
@@ -78,7 +79,7 @@ Deno.test("a dependency's outcome is current, not one state write behind", async
   });
 });
 
-Deno.test("outcomes carry across a resume, for targets this process never ran", async () => {
+test("outcomes carry across a resume, for targets this process never ran", async () => {
   // `first` succeeded in the process that suspended. The process that resumes
   // never executes it, and must still report what it did — which only the
   // durable record knows.
@@ -108,7 +109,7 @@ Deno.test("outcomes carry across a resume, for targets this process never ran", 
   });
 });
 
-Deno.test("outcomes work without a state store", async () => {
+test("outcomes work without a state store", async () => {
   // Nothing about reading the run's own results requires durability, so a plain
   // run answers the same as a state-backed one.
   const seen: string[] = [];
@@ -126,7 +127,7 @@ Deno.test("outcomes work without a state store", async () => {
   assertEquals(seen, ["succeeded"]);
 });
 
-Deno.test("outcomes() lists what has settled and nothing that has not", async () => {
+test("outcomes() lists what has settled and nothing that has not", async () => {
   let listed: string[] = [];
 
   class Ci extends Build {

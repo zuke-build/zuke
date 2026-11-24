@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -19,7 +20,7 @@ import {
   ClaudeUpdateSettings,
 } from "../src/claude.ts";
 
-Deno.test("run: the default binary is claude and --print carries the prompt", () => {
+test("run: the default binary is claude and --print carries the prompt", () => {
   assertEquals(new ClaudeRunSettings().prompt("hi").argv(), [
     "claude",
     "--print",
@@ -27,7 +28,7 @@ Deno.test("run: the default binary is claude and --print carries the prompt", ()
   ]);
 });
 
-Deno.test("run: a prompt is required", () => {
+test("run: a prompt is required", () => {
   assertThrows(
     () => new ClaudeRunSettings().argv(),
     Error,
@@ -35,7 +36,7 @@ Deno.test("run: a prompt is required", () => {
   );
 });
 
-Deno.test("run: every typed option renders in order", () => {
+test("run: every typed option renders in order", () => {
   const argv = new ClaudeRunSettings()
     .prompt("do it")
     .model("sonnet")
@@ -95,7 +96,7 @@ Deno.test("run: every typed option renders in order", () => {
   ]);
 });
 
-Deno.test("run: resume without a session id omits the trailing id", () => {
+test("run: resume without a session id omits the trailing id", () => {
   assertEquals(new ClaudeRunSettings().prompt("hi").resume().argv(), [
     "claude",
     "--print",
@@ -104,11 +105,11 @@ Deno.test("run: resume without a session id omits the trailing id", () => {
   ]);
 });
 
-Deno.test("mcp: minimal runs just the group", () => {
+test("mcp: minimal runs just the group", () => {
   assertEquals(new ClaudeMcpSettings().argv(), ["claude", "mcp"]);
 });
 
-Deno.test("mcp: command then flags", () => {
+test("mcp: command then flags", () => {
   const argv = new ClaudeMcpSettings()
     .command("add", "fs")
     .flag("transport", "stdio")
@@ -126,7 +127,7 @@ Deno.test("mcp: command then flags", () => {
   ]);
 });
 
-Deno.test("config: numeric operands and bare/valued flags", () => {
+test("config: numeric operands and bare/valued flags", () => {
   const argv = new ClaudeConfigSettings()
     .command("set", 1)
     .flag("global")
@@ -143,39 +144,39 @@ Deno.test("config: numeric operands and bare/valued flags", () => {
   ]);
 });
 
-Deno.test("update: builds the update subcommand", () => {
+test("update: builds the update subcommand", () => {
   assertEquals(new ClaudeUpdateSettings().argv(), ["claude", "update"]);
 });
 
-Deno.test("ClaudeTasks.run reaches execution", async () => {
+test("ClaudeTasks.run reaches execution", async () => {
   await assertRejects(
     () => ClaudeTasks.run((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("ClaudeTasks.mcp reaches execution", async () => {
+test("ClaudeTasks.mcp reaches execution", async () => {
   await assertRejects(
     () => ClaudeTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("ClaudeTasks.config reaches execution", async () => {
+test("ClaudeTasks.config reaches execution", async () => {
   await assertRejects(
     () => ClaudeTasks.config((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("ClaudeTasks.update reaches execution", async () => {
+test("ClaudeTasks.update reaches execution", async () => {
   await assertRejects(
     () => ClaudeTasks.update((s) => missingTool(s)),
     ToolNotFoundError,
   );
 });
 
-Deno.test("claude: conforms to the wrapper contract", async () => {
+test("claude: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new ClaudeRunSettings().prompt("hi"),
     "claude",

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -18,11 +19,11 @@ import {
   TofuValidateSettings,
 } from "../src/tofu.ts";
 
-Deno.test("the default binary is tofu", () => {
+test("the default binary is tofu", () => {
   assertEquals(new TofuInitSettings().argv()[0], "tofu");
 });
 
-Deno.test("init: bare and all flags", () => {
+test("init: bare and all flags", () => {
   assertEquals(new TofuInitSettings().argv().slice(1), ["init"]);
   assertEquals(
     new TofuInitSettings()
@@ -36,7 +37,7 @@ Deno.test("init: bare and all flags", () => {
   );
 });
 
-Deno.test("validate: bare and -json", () => {
+test("validate: bare and -json", () => {
   assertEquals(new TofuValidateSettings().argv().slice(1), ["validate"]);
   assertEquals(
     new TofuValidateSettings().json().argv().slice(1),
@@ -44,7 +45,7 @@ Deno.test("validate: bare and -json", () => {
   );
 });
 
-Deno.test("plan: out, vars, var-files, -destroy, -input=false", () => {
+test("plan: out, vars, var-files, -destroy, -input=false", () => {
   assertEquals(new TofuPlanSettings().argv().slice(1), ["plan"]);
   assertEquals(
     new TofuPlanSettings()
@@ -68,7 +69,7 @@ Deno.test("plan: out, vars, var-files, -destroy, -input=false", () => {
   );
 });
 
-Deno.test("apply: auto-approve, vars, var-files, -input=false, plan file", () => {
+test("apply: auto-approve, vars, var-files, -input=false, plan file", () => {
   assertEquals(new TofuApplySettings().argv().slice(1), ["apply"]);
   assertEquals(
     new TofuApplySettings()
@@ -90,7 +91,7 @@ Deno.test("apply: auto-approve, vars, var-files, -input=false, plan file", () =>
   );
 });
 
-Deno.test("destroy: auto-approve, vars, var-files", () => {
+test("destroy: auto-approve, vars, var-files", () => {
   assertEquals(new TofuDestroySettings().argv().slice(1), ["destroy"]);
   assertEquals(
     new TofuDestroySettings()
@@ -103,7 +104,7 @@ Deno.test("destroy: auto-approve, vars, var-files", () => {
   );
 });
 
-Deno.test("fmt: bare, -check, -recursive, -diff", () => {
+test("fmt: bare, -check, -recursive, -diff", () => {
   assertEquals(new TofuFmtSettings().argv().slice(1), ["fmt"]);
   assertEquals(
     new TofuFmtSettings().check().recursive().diff().argv().slice(1),
@@ -111,7 +112,7 @@ Deno.test("fmt: bare, -check, -recursive, -diff", () => {
   );
 });
 
-Deno.test("output: bare, -json, -raw, and a name", () => {
+test("output: bare, -json, -raw, and a name", () => {
   assertEquals(new TofuOutputSettings().argv().slice(1), ["output"]);
   assertEquals(
     new TofuOutputSettings().raw().name("ip").argv().slice(1),
@@ -123,7 +124,7 @@ Deno.test("output: bare, -json, -raw, and a name", () => {
   );
 });
 
-Deno.test("every TofuTasks function reaches execution", async () => {
+test("every TofuTasks function reaches execution", async () => {
   await assertRejects(() => TofuTasks.init(missingTool), ToolNotFoundError);
   await assertRejects(() => TofuTasks.validate(missingTool), ToolNotFoundError);
   await assertRejects(() => TofuTasks.plan(missingTool), ToolNotFoundError);
@@ -133,7 +134,7 @@ Deno.test("every TofuTasks function reaches execution", async () => {
   await assertRejects(() => TofuTasks.output(missingTool), ToolNotFoundError);
 });
 
-Deno.test("tofu: conforms to the wrapper contract", async () => {
+test("tofu: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new TofuInitSettings(), "tofu", {
     resolution: "path",
   });

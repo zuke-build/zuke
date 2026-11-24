@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -117,7 +118,7 @@ async function archive(...entries: string[]): Promise<Uint8Array> {
   })));
 }
 
-Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", async () => {
+test("archiveOutputs/restoreOutputs round-trip files and directories", async () => {
   const src = new MemFs();
   src.files.set("dist/app.js", enc("built"));
   src.dirs.set("dist", ["app.js", "assets"]);
@@ -136,7 +137,7 @@ Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", asyn
   assertEquals(dec(out.files.get("README.md") ?? enc("")), "readme");
 });
 
-Deno.test("archiveOutputs/restoreOutputs carry a file's permission bits", async () => {
+test("archiveOutputs/restoreOutputs carry a file's permission bits", async () => {
   const src = new MemFs();
   src.files.set("tools/bin", enc("ELF"));
   src.modes.set("tools/bin", 0o100755); // a stat mode, file type included
@@ -148,7 +149,7 @@ Deno.test("archiveOutputs/restoreOutputs carry a file's permission bits", async 
   assertEquals(out.modes.get("tools/readme"), 0o644); // the archive default
 });
 
-Deno.test("restoreOutputs refuses archive entries that escape the workspace", async () => {
+test("restoreOutputs refuses archive entries that escape the workspace", async () => {
   const out = new MemFs();
   // A ".." entry would land outside the current directory.
   const escaping = await gzip(tar([{ name: "../evil.sh", data: enc("x") }]));
@@ -164,7 +165,7 @@ Deno.test("restoreOutputs refuses archive entries that escape the workspace", as
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("archiveOutputs skips a declared output that is missing", async () => {
+test("archiveOutputs skips a declared output that is missing", async () => {
   const src = new MemFs();
   src.files.set("dist/app.js", enc("built"));
   src.dirs.set("dist", ["app.js"]);
@@ -174,7 +175,7 @@ Deno.test("archiveOutputs skips a declared output that is missing", async () => 
   assertEquals(written, ["dist/app.js"]);
 });
 
-Deno.test("remoteCacheKey sanitises the name and carries the fingerprint", () => {
+test("remoteCacheKey sanitises the name and carries the fingerprint", () => {
   assertEquals(
     remoteCacheKey("release.publish", "abc123"),
     "v2-release.publish-abc123",
@@ -185,7 +186,7 @@ Deno.test("remoteCacheKey sanitises the name and carries the fingerprint", () =>
   );
 });
 
-Deno.test("FileSystemCacheStore stores and retrieves artifacts", async () => {
+test("FileSystemCacheStore stores and retrieves artifacts", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(`${dir}/cache`);
     assertEquals(await store.get("missing"), null);
@@ -208,7 +209,7 @@ function fakeFetch(
   return { fetch: fetchFn, calls };
 }
 
-Deno.test("HttpCacheStore GET returns bytes, and null on 404", async () => {
+test("HttpCacheStore GET returns bytes, and null on 404", async () => {
   const hit = fakeFetch(() =>
     new Response(new Uint8Array([1, 2, 3]), { status: 200 })
   );
@@ -233,14 +234,14 @@ Deno.test("HttpCacheStore GET returns bytes, and null on 404", async () => {
   assertEquals(await missStore.get("nope"), null);
 });
 
-Deno.test("HttpCacheStore GET throws on a non-404 error status", async () => {
+test("HttpCacheStore GET throws on a non-404 error status", async () => {
   const { fetch } = fakeFetch(() => new Response("boom", { status: 500 }));
   const store = new HttpCacheStore({ url: "https://cache.test", fetch });
   const err = await assertRejects(() => store.get("k"));
   assertEquals(err instanceof HttpError, true);
 });
 
-Deno.test("HttpCacheStore PUT sends the artifact and throws on failure", async () => {
+test("HttpCacheStore PUT sends the artifact and throws on failure", async () => {
   const ok = fakeFetch(() => new Response(null, { status: 201 }));
   const store = new HttpCacheStore({
     url: "https://cache.test",
@@ -260,7 +261,7 @@ Deno.test("HttpCacheStore PUT sends the artifact and throws on failure", async (
   assertEquals(err instanceof HttpError, true);
 });
 
-Deno.test("HttpCacheStore sends extra headers and keeps a base URL's query", async () => {
+test("HttpCacheStore sends extra headers and keeps a base URL's query", async () => {
   const { fetch, calls } = fakeFetch(() => new Response(null, { status: 201 }));
   // An Azure Blob container's SAS URL: the key goes before the query.
   const store = new HttpCacheStore({
@@ -306,7 +307,7 @@ Deno.test("HttpCacheStore sends extra headers and keeps a base URL's query", asy
   assertEquals(put.get("x-ms-blob-type"), "BlockBlob");
 });
 
-Deno.test("envCacheStore selects an S3 store from the AWS variables", () => {
+test("envCacheStore selects an S3 store from the AWS variables", () => {
   const env =
     (vars: Record<string, string>) => (name: string): string | undefined =>
       Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
@@ -353,7 +354,7 @@ Deno.test("envCacheStore selects an S3 store from the AWS variables", () => {
   );
 });
 
-Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
+test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
   const env =
     (vars: Record<string, string>) => (name: string): string | undefined =>
       Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
@@ -389,7 +390,7 @@ Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
   assertEquals(envCacheStore(env({ ZUKE_REMOTE_CACHE_URL: "" })), undefined);
 });
 
-Deno.test("envCacheStore picks the Actions cache from the job's own credentials", () => {
+test("envCacheStore picks the Actions cache from the job's own credentials", () => {
   const env =
     (vars: Record<string, string>) => (name: string): string | undefined =>
       Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
@@ -422,7 +423,7 @@ Deno.test("envCacheStore picks the Actions cache from the job's own credentials"
   );
 });
 
-Deno.test("archiveOutputs ignores an entry whose file reads back as null", async () => {
+test("archiveOutputs ignores an entry whose file reads back as null", async () => {
   // A host that claims a file exists (stat) but yields no bytes (readFile null).
   const host: OutputHost = {
     stat: () => Promise.resolve({ isDirectory: false }),
@@ -436,7 +437,7 @@ Deno.test("archiveOutputs ignores an entry whose file reads back as null", async
   assertEquals(await restoreOutputs(artifact, out), []); // nothing archived
 });
 
-Deno.test("FileSystemCacheStore.get propagates a non-NotFound read error", async () => {
+test("FileSystemCacheStore.get propagates a non-NotFound read error", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(dir);
     // Make the artifact path a directory so reading it fails (not NotFound).
@@ -446,7 +447,7 @@ Deno.test("FileSystemCacheStore.get propagates a non-NotFound read error", async
   });
 });
 
-Deno.test("resolveRemoteStore honours option, then declared, then env", () => {
+test("resolveRemoteStore honours option, then declared, then env", () => {
   const explicit: RemoteCacheStore = {
     get: () => Promise.resolve(null),
     put: () => Promise.resolve(),
@@ -472,7 +473,7 @@ Deno.test("resolveRemoteStore honours option, then declared, then env", () => {
   );
 });
 
-Deno.test("restoreOutputs confines entries to the target's declared outputs", async () => {
+test("restoreOutputs confines entries to the target's declared outputs", async () => {
   const out = new MemFs();
   // A poisoned archive stored under a legitimate key: the name is relative and
   // has no `..`, so the older checks pass — but `deno.json` is not what this
@@ -495,7 +496,7 @@ Deno.test("restoreOutputs confines entries to the target's declared outputs", as
   assertEquals(written, ["dist/app.js", "deno.json"]);
 });
 
-Deno.test("restoreOutputs matches a declared output by path segment, not prefix", async () => {
+test("restoreOutputs matches a declared output by path segment, not prefix", async () => {
   const out = new MemFs();
   const sibling = await gzip(tar([{ name: "dist-evil/x.js", data: enc("x") }]));
   const err = await assertRejects(() => restoreOutputs(sibling, out, ["dist"]));
@@ -509,7 +510,7 @@ Deno.test("restoreOutputs matches a declared output by path segment, not prefix"
   );
 });
 
-Deno.test("restoreOutputs refuses protected paths whatever the outputs declare", async () => {
+test("restoreOutputs refuses protected paths whatever the outputs declare", async () => {
   const out = new MemFs();
   // A restored git hook runs on the developer's next ordinary git command, so
   // `.git` is refused even by a target that declares the workspace root.
@@ -544,7 +545,7 @@ Deno.test("restoreOutputs refuses protected paths whatever the outputs declare",
   }
 });
 
-Deno.test("a .git inside .zuke/tools round-trips, and only there", async () => {
+test("a .git inside .zuke/tools round-trips, and only there", async () => {
   // An SDK such as Flutter's is a git checkout that runs git on itself.
   const src = new MemFs();
   src.dirs.set(".zuke/tools", ["flutter"]);
@@ -576,7 +577,7 @@ Deno.test("a .git inside .zuke/tools round-trips, and only there", async () => {
   }
 });
 
-Deno.test("envCacheStore passes ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES to the store", () => {
+test("envCacheStore passes ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES to the store", () => {
   const env =
     (vars: Record<string, string>) => (name: string): string | undefined =>
       Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
@@ -616,7 +617,7 @@ Deno.test("envCacheStore passes ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES to the stor
   }
 });
 
-Deno.test("restoreOutputs refuses a bound that is not a positive whole number", async () => {
+test("restoreOutputs refuses a bound that is not a positive whole number", async () => {
   const artifact = await gzip(tar([{ name: "dist/a", data: enc("x") }]));
   for (const bound of [NaN, 0, -1, 1.5]) {
     const err = await assertRejects(() =>
@@ -626,7 +627,7 @@ Deno.test("restoreOutputs refuses a bound that is not a positive whole number", 
   }
 });
 
-Deno.test("restoreOutputs refuses a .git spelled with a trailing dot or space", async () => {
+test("restoreOutputs refuses a .git spelled with a trailing dot or space", async () => {
   // Windows drops both, so either would land in the workspace's real `.git`.
   for (const name of [".git./hooks/pre-commit", ".git /config", ".zuke. /x"]) {
     const artifact = await gzip(tar([{ name, data: enc("x") }]));
@@ -637,7 +638,7 @@ Deno.test("restoreOutputs refuses a .git spelled with a trailing dot or space", 
   }
 });
 
-Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
+test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
   const out = new MemFs();
   const dir = await gzip(tar([{ name: "dist/sub/", data: new Uint8Array(0) }]));
   const dirErr = await assertRejects(() => restoreOutputs(dir, out, ["dist"]));
@@ -645,7 +646,7 @@ Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", as
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("restoreOutputs without declared outputs keeps the older confinement", async () => {
+test("restoreOutputs without declared outputs keeps the older confinement", async () => {
   const out = new MemFs();
   const artifact = await gzip(tar([{ name: "anywhere/x.js", data: enc("x") }]));
   assertEquals(await restoreOutputs(artifact, out), ["anywhere/x.js"]);
@@ -655,7 +656,7 @@ Deno.test("restoreOutputs without declared outputs keeps the older confinement",
   assertStringIncludes(err.message, "protected path");
 });
 
-Deno.test("archiveOutputs never archives what restore would refuse", async () => {
+test("archiveOutputs never archives what restore would refuse", async () => {
   const src = new MemFs();
   src.dirs.set("dist", ["app.js", ".git"]);
   src.files.set("dist/app.js", enc("built"));
@@ -673,7 +674,7 @@ Deno.test("archiveOutputs never archives what restore would refuse", async () =>
   );
 });
 
-Deno.test("restoreOutputs refuses to write over a symlink at a declared output", async () => {
+test("restoreOutputs refuses to write over a symlink at a declared output", async () => {
   // The archive itself cannot carry a link — `assertPlainFileEntry` refuses one
   // — so the link has to already be in the workspace. That is the whole finding:
   // `writeFile` follows it, and every other check is lexical.
@@ -698,7 +699,7 @@ Deno.test("restoreOutputs refuses to write over a symlink at a declared output",
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("restoreOutputs refuses to write through a symlinked ancestor", async () => {
+test("restoreOutputs refuses to write through a symlinked ancestor", async () => {
   // `dist` itself is the link, so the leaf check would never see it — the
   // ancestor walk is what catches this one.
   const src = new MemFs();
@@ -720,7 +721,7 @@ Deno.test("restoreOutputs refuses to write through a symlinked ancestor", async 
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("restoreOutputs restores normally when the path holds a real file", async () => {
+test("restoreOutputs restores normally when the path holds a real file", async () => {
   // The guard must not refuse an ordinary overwrite of a previous build's
   // output, which is the common case.
   const src = new MemFs();
@@ -736,7 +737,7 @@ Deno.test("restoreOutputs restores normally when the path holds a real file", as
   assertEquals(dec(out.files.get("dist/app.js") ?? new Uint8Array()), "built");
 });
 
-Deno.test("restoreOutputs refuses an artifact that decompresses past the cap", async () => {
+test("restoreOutputs refuses an artifact that decompresses past the cap", async () => {
   const src = new MemFs();
   src.files.set("dist/app.js", enc("x".repeat(4096)));
   src.dirs.set("dist", ["app.js"]);
@@ -750,7 +751,7 @@ Deno.test("restoreOutputs refuses an artifact that decompresses past the cap", a
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("HttpCacheStore.get refuses a body that exceeds the artifact cap", async () => {
+test("HttpCacheStore.get refuses a body that exceeds the artifact cap", async () => {
   // Streamed in chunks with no content-length, which is the shape a cap has to
   // survive: there is nothing to read the size from up front.
   let cancelled = false;
@@ -778,7 +779,7 @@ Deno.test("HttpCacheStore.get refuses a body that exceeds the artifact cap", asy
   assertEquals(cancelled, true);
 });
 
-Deno.test("HttpCacheStore.get returns an artifact within the cap", async () => {
+test("HttpCacheStore.get returns an artifact within the cap", async () => {
   const store = new HttpCacheStore({
     url: "https://cache.example",
     maxArtifactBytes: 256,
@@ -787,7 +788,7 @@ Deno.test("HttpCacheStore.get returns an artifact within the cap", async () => {
   assertEquals(dec((await store.get("k")) ?? new Uint8Array()), "small");
 });
 
-Deno.test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", async () => {
+test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const src = new MemFs();
@@ -820,7 +821,7 @@ Deno.test("restoreOutputs refuses a real on-disk symlink through defaultCacheHos
   });
 });
 
-Deno.test("restoreOutputs writes the path it validated, not the raw entry name", async () => {
+test("restoreOutputs writes the path it validated, not the raw entry name", async () => {
   // A backslash is a legal filename character on POSIX, and `normalize` treats
   // it as a separator. So an entry named `dist\evil` is *checked* as
   // "dist/evil" — forbidden paths, declared outputs and the symlink guard all
@@ -839,7 +840,7 @@ Deno.test("restoreOutputs writes the path it validated, not the raw entry name",
   assertEquals(out.files.has("dist\\evil"), false); // never written at the link
 });
 
-Deno.test("restoreOutputs normalises a leading ./ in an entry name", async () => {
+test("restoreOutputs normalises a leading ./ in an entry name", async () => {
   const artifact = await gzip(
     tar([{ name: "./dist/app.js", data: enc("built") }]),
   );
@@ -847,7 +848,7 @@ Deno.test("restoreOutputs normalises a leading ./ in an entry name", async () =>
   assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/app.js"]);
 });
 
-Deno.test("the inflated bound is not tied to the on-the-wire bound", async () => {
+test("the inflated bound is not tied to the on-the-wire bound", async () => {
   // Build outputs compress, so an archive well under a store's wire cap can
   // legitimately inflate far past it. Restoring must not refuse that — the two
   // bounds exist for the same reason but cannot share a number.
@@ -863,7 +864,7 @@ Deno.test("the inflated bound is not tied to the on-the-wire bound", async () =>
   assertEquals(out.files.get("dist/big.bin")?.byteLength, 4 * 1024 * 1024);
 });
 
-Deno.test("archiveOutputs/restoreOutputs keep a relative link inside its output", async () => {
+test("archiveOutputs/restoreOutputs keep a relative link inside its output", async () => {
   const src = new LinkFs();
   src.dirs.set("node_modules", [".bin", "vitest"]);
   src.dirs.set("node_modules/.bin", ["vitest"]);
@@ -894,7 +895,7 @@ Deno.test("archiveOutputs/restoreOutputs keep a relative link inside its output"
   assertEquals(out.linkTypes.get("node_modules/.bin/vitest"), "file");
 });
 
-Deno.test("archiveOutputs copies a link that leaves its output, as before", async () => {
+test("archiveOutputs copies a link that leaves its output, as before", async () => {
   const src = new LinkFs();
   src.dirs.set("dist", ["out", "abs", "up"]);
   // \`stat\` follows a link, so each reads back as the file it names.
@@ -921,7 +922,7 @@ Deno.test("archiveOutputs copies a link that leaves its output, as before", asyn
   );
 });
 
-Deno.test("archiveOutputs copies a link into a protected path rather than linking it", async () => {
+test("archiveOutputs copies a link into a protected path rather than linking it", async () => {
   const src = new LinkFs();
   src.dirs.set("out", ["hook"]);
   src.symlinks.add("out/hook");
@@ -933,7 +934,7 @@ Deno.test("archiveOutputs copies a link into a protected path rather than linkin
   assertEquals(out.files.has("out/hook"), true);
 });
 
-Deno.test("restoreOutputs types a link to a directory as one", async () => {
+test("restoreOutputs types a link to a directory as one", async () => {
   const out = new LinkFs();
   out.dirs.set("node_modules/.pnpm/a@1", []);
   await restoreOutputs(
@@ -944,7 +945,7 @@ Deno.test("restoreOutputs types a link to a directory as one", async () => {
   assertEquals(out.linkTypes.get("node_modules/a"), "dir");
 });
 
-Deno.test("restoreOutputs accepts a workspace-relative link with no declared outputs", async () => {
+test("restoreOutputs accepts a workspace-relative link with no declared outputs", async () => {
   const out = new LinkFs();
   assertEquals(
     await restoreOutputs(await archive("bin/tool -> ../lib/t"), out),
@@ -954,7 +955,7 @@ Deno.test("restoreOutputs accepts a workspace-relative link with no declared out
   );
 });
 
-Deno.test("restoreOutputs refuses a link that leaves its output or reaches a protected path", async () => {
+test("restoreOutputs refuses a link that leaves its output or reaches a protected path", async () => {
   const cases: [string, string][] = [
     ["dist/l -> /etc/passwd", "absolute path"],
     ["dist/l -> C:/Windows", "absolute path"],
@@ -975,14 +976,14 @@ Deno.test("restoreOutputs refuses a link that leaves its output or reaches a pro
   }
 });
 
-Deno.test("restoreOutputs refuses a link outside every declared output", async () => {
+test("restoreOutputs refuses a link outside every declared output", async () => {
   const err = await assertRejects(async () =>
     restoreOutputs(await archive("dist/l -> x"), new LinkFs(), ["other"])
   );
   assertStringIncludes(err.message, "outside the target's declared outputs");
 });
 
-Deno.test("restoreOutputs refuses an entry under, or on top of, a link from the archive", async () => {
+test("restoreOutputs refuses an entry under, or on top of, a link from the archive", async () => {
   const cases: [string[], string][] = [
     [["dist/l -> sub", "dist/l/x.js"], 'under the symlink "dist/l"'],
     [["dist/l -> sub", "dist/l -> other"], "twice"],
@@ -1000,7 +1001,7 @@ Deno.test("restoreOutputs refuses an entry under, or on top of, a link from the 
   }
 });
 
-Deno.test("restoreOutputs refuses links on a host that cannot create them", async () => {
+test("restoreOutputs refuses links on a host that cannot create them", async () => {
   const out = new MemFs();
   const err = await assertRejects(async () =>
     restoreOutputs(await archive("dist/a.js", "dist/l -> a.js"), out, ["dist"])
@@ -1009,7 +1010,7 @@ Deno.test("restoreOutputs refuses links on a host that cannot create them", asyn
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("defaultCacheHost round-trips a node_modules .bin link on the real filesystem", async () => {
+test("defaultCacheHost round-trips a node_modules .bin link on the real filesystem", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const cwd = Deno.cwd();
@@ -1050,7 +1051,7 @@ Deno.test("defaultCacheHost round-trips a node_modules .bin link on the real fil
   });
 });
 
-Deno.test("archiveOutputs copies an output that is itself a link, never links it", async () => {
+test("archiveOutputs copies an output that is itself a link, never links it", async () => {
   // \`dist -> build\` resolves to "build", outside the output "dist": keeping it
   // as a link would let a restore point a declared output anywhere.
   const src = new LinkFs();
@@ -1072,7 +1073,7 @@ Deno.test("archiveOutputs copies an output that is itself a link, never links it
   assertStringIncludes(err.message, "is the output itself");
 });
 
-Deno.test("archiveOutputs keeps one entry for a link reached through nested outputs", async () => {
+test("archiveOutputs keeps one entry for a link reached through nested outputs", async () => {
   const src = new LinkFs();
   src.dirs.set("node_modules", [".bin", "tool.js"]);
   src.dirs.set("node_modules/.bin", ["tool"]);
@@ -1095,7 +1096,7 @@ Deno.test("archiveOutputs keeps one entry for a link reached through nested outp
   }
 });
 
-Deno.test("restoreOutputs counts a link's depth the way the filesystem does", async () => {
+test("restoreOutputs counts a link's depth the way the filesystem does", async () => {
   // The filesystem collapses empty and `.` segments, so `dist///x` is
   // `dist/x`: counting it three levels deep would let `../..` leave the
   // workspace, and a second entry would then be created through it.
@@ -1124,7 +1125,7 @@ Deno.test("restoreOutputs counts a link's depth the way the filesystem does", as
   assertStringIncludes(err.message, 'under the symlink "dist/x"');
 });
 
-Deno.test("archiveOutputs names entries canonically for a trailing-slash or `.` output", async () => {
+test("archiveOutputs names entries canonically for a trailing-slash or `.` output", async () => {
   const src = new LinkFs();
   src.dirs.set("out", ["k"]);
   src.dirs.set(".", ["out"]);
@@ -1161,7 +1162,7 @@ class CaseFoldingFs extends LinkFs {
   }
 }
 
-Deno.test("restoreOutputs re-checks the live filesystem before each link", async () => {
+test("restoreOutputs re-checks the live filesystem before each link", async () => {
   // `out/s/h` is not under `out/S` by name, but on a case-insensitive
   // filesystem it is: once `out/S -> .` exists, `../x` from `out/s` climbs out.
   const out = new CaseFoldingFs();
@@ -1175,7 +1176,7 @@ Deno.test("restoreOutputs re-checks the live filesystem before each link", async
   assertEquals(out.links.has("out/s/h"), false);
 });
 
-Deno.test("archiveOutputs does not re-enter a directory a link loops back to", async () => {
+test("archiveOutputs does not re-enter a directory a link loops back to", async () => {
   // `dist/loop` and `dist/again` are both copied links back to `dist`; real
   // paths tell the walk it is already inside it.
   const src = new LinkFs();
@@ -1196,7 +1197,7 @@ Deno.test("archiveOutputs does not re-enter a directory a link loops back to", a
   );
 });
 
-Deno.test("archiveOutputs still copies two links to one directory outside the walk", async () => {
+test("archiveOutputs still copies two links to one directory outside the walk", async () => {
   const src = new LinkFs();
   src.realPaths.set("dist/a", "/w/shared");
   src.realPaths.set("dist/b", "/w/shared");
@@ -1215,7 +1216,7 @@ Deno.test("archiveOutputs still copies two links to one directory outside the wa
   );
 });
 
-Deno.test("defaultCacheHost archives an output holding a looping directory link", async () => {
+test("defaultCacheHost archives an output holding a looping directory link", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const cwd = Deno.cwd();
@@ -1243,7 +1244,7 @@ Deno.test("defaultCacheHost archives an output holding a looping directory link"
   });
 });
 
-Deno.test("restoreOutputs writes nothing when a late entry is refused", async () => {
+test("restoreOutputs writes nothing when a late entry is refused", async () => {
   // Restore streams the archive twice; the refusal comes from the first pass,
   // after valid entries have already been read, and still nothing is written.
   const out = new LinkFs();
@@ -1258,7 +1259,7 @@ Deno.test("restoreOutputs writes nothing when a late entry is refused", async ()
   assertEquals(out.files.size + out.links.size, 0);
 });
 
-Deno.test("restoreOutputs writes each file from the second pass, in order", async () => {
+test("restoreOutputs writes each file from the second pass, in order", async () => {
   const src = new MemFs();
   src.dirs.set("dist", ["a.js", "big.bin"]);
   src.files.set("dist/a.js", enc("a"));
@@ -1273,7 +1274,7 @@ Deno.test("restoreOutputs writes each file from the second pass, in order", asyn
   assertEquals(out.files.get("dist/big.bin"), big);
 });
 
-Deno.test("restoreOutputs refuses a corrupt size field rather than hanging", async () => {
+test("restoreOutputs refuses a corrupt size field rather than hanging", async () => {
   const archive = tar([{ name: "dist/a.js", data: enc("0123456789") }]);
   archive.set(enc(" -1750\0\0\0\0\0\0"), 124); // octal -1000
   sealHeader(archive.subarray(0, 512)); // a valid checksum, so the size is read
@@ -1285,7 +1286,7 @@ Deno.test("restoreOutputs refuses a corrupt size field rather than hanging", asy
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("FileSystemCacheStore streams an archive in and out", async () => {
+test("FileSystemCacheStore streams an archive in and out", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(`${dir}/cache`);
     assertEquals(await store.getStream("missing"), null);
@@ -1304,7 +1305,7 @@ Deno.test("FileSystemCacheStore streams an archive in and out", async () => {
   });
 });
 
-Deno.test("FileSystemCacheStore leaves nothing behind when a streamed upload fails", async () => {
+test("FileSystemCacheStore leaves nothing behind when a streamed upload fails", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(`${dir}/cache`);
     const failing = new ReadableStream<Uint8Array<ArrayBuffer>>({
@@ -1322,7 +1323,7 @@ Deno.test("FileSystemCacheStore leaves nothing behind when a streamed upload fai
   });
 });
 
-Deno.test("FileSystemCacheStore.getStream reports an error other than a miss", async () => {
+test("FileSystemCacheStore.getStream reports an error other than a miss", async () => {
   // Windows reports a path through a file as not found, which is a miss.
   if (Deno.build.os === "windows") return;
   await withTemp(async (dir) => {
@@ -1334,7 +1335,7 @@ Deno.test("FileSystemCacheStore.getStream reports an error other than a miss", a
   });
 });
 
-Deno.test("HttpCacheStore.getStream bounds the body as it is read", async () => {
+test("HttpCacheStore.getStream bounds the body as it is read", async () => {
   const { fetch } = fakeFetch(() => new Response(new Uint8Array(1024)));
   const store = new HttpCacheStore({
     url: "https://cache.example",
@@ -1356,7 +1357,7 @@ Deno.test("HttpCacheStore.getStream bounds the body as it is read", async () => 
   assertEquals(await miss.getStream("k"), null);
 });
 
-Deno.test("HttpCacheStore reads a body-less success as an empty artifact", async () => {
+test("HttpCacheStore reads a body-less success as an empty artifact", async () => {
   const store = new HttpCacheStore({
     url: "https://cache.example",
     fetch: fakeFetch(() => new Response(null, { status: 200 })).fetch,
@@ -1364,7 +1365,7 @@ Deno.test("HttpCacheStore reads a body-less success as an empty artifact", async
   assertEquals(await store.get("k"), new Uint8Array(0));
 });
 
-Deno.test("HttpCacheStore's size-cap refusal masks a SAS query in the URL", async () => {
+test("HttpCacheStore's size-cap refusal masks a SAS query in the URL", async () => {
   const store = new HttpCacheStore({
     url: "https://acct.blob.core.windows.net/c/?sv=2024&sig=abc",
     maxArtifactBytes: 16,
@@ -1377,7 +1378,7 @@ Deno.test("HttpCacheStore's size-cap refusal masks a SAS query in the URL", asyn
   assertEquals(message.includes("sig=abc"), false);
 });
 
-Deno.test("restoreOutputs refuses an install marker riding in an artifact", async () => {
+test("restoreOutputs refuses an install marker riding in an artifact", async () => {
   const out = new MemFs();
   for (
     const name of [
@@ -1402,7 +1403,7 @@ Deno.test("restoreOutputs refuses an install marker riding in an artifact", asyn
 
 // On NTFS `name::$DATA` writes `name` itself, so a stream suffix would carry a
 // marker past the name checks.
-Deno.test("restoreOutputs refuses an entry naming an alternate data stream", async () => {
+test("restoreOutputs refuses an entry naming an alternate data stream", async () => {
   const out = new MemFs();
   for (
     const name of [
@@ -1420,7 +1421,7 @@ Deno.test("restoreOutputs refuses an entry naming an alternate data stream", asy
   assertEquals(out.files.size, 0);
 });
 
-Deno.test("archiveOutputs leaves install markers out of the archive", async () => {
+test("archiveOutputs leaves install markers out of the archive", async () => {
   const fs = new MemFs();
   fs.dirs.set(".zuke/tools", ["helm", "helm.install.json", "sdk.tree.json"]);
   fs.files.set(".zuke/tools/helm", enc("ELF"));
@@ -1435,7 +1436,7 @@ Deno.test("archiveOutputs leaves install markers out of the archive", async () =
   );
 });
 
-Deno.test("FileSystemCacheStore refuses an entry other users could have written", async () => {
+test("FileSystemCacheStore refuses an entry other users could have written", async () => {
   if (Deno.build.os === "windows") return; // no owner or mode bits to check
   await withTemp(async (dir) => {
     const own = Deno.uid();
@@ -1462,7 +1463,7 @@ Deno.test("FileSystemCacheStore refuses an entry other users could have written"
   });
 });
 
-Deno.test("FileSystemCacheStore skips the owner and mode checks where there is no uid", async () => {
+test("FileSystemCacheStore skips the owner and mode checks where there is no uid", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(dir, { uid: () => null });
     await store.put("k", enc("payload"));

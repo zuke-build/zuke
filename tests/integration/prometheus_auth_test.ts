@@ -11,6 +11,7 @@
  * printed.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -120,7 +121,7 @@ class Managed extends Build {
   );
 }
 
-Deno.test("a build queries all three managed services with built-in credentials", async () => {
+test("a build queries all three managed services with built-in credentials", async () => {
   azureRefuses = false;
   net = server();
   values.length = 0;
@@ -143,7 +144,7 @@ Deno.test("a build queries all three managed services with built-in credentials"
   );
 });
 
-Deno.test("a token endpoint echoing the client secret never gets it printed", async () => {
+test("a token endpoint echoing the client secret never gets it printed", async () => {
   azureRefuses = true;
   net = server();
   const { code, out, err } = await runCli(Managed, ["azure"]);
@@ -170,7 +171,7 @@ class TwoQueries extends Build {
   });
 }
 
-Deno.test("concurrent queries share one token request that fails at once", async () => {
+test("concurrent queries share one token request that fails at once", async () => {
   azureRefuses = true;
   net = server();
   const { code, out, err } = await runCli(TwoQueries, ["both"]);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -30,11 +31,11 @@ import {
   DockerTasks,
 } from "../mod.ts";
 
-Deno.test("the default binary is docker", () => {
+test("the default binary is docker", () => {
   assertEquals(new DockerPsSettings().argv()[0], "docker");
 });
 
-Deno.test("build: tags, file, target, platform, build-arg, flags, context", () => {
+test("build: tags, file, target, platform, build-arg, flags, context", () => {
   const argv = new DockerBuildSettings()
     .tag("app:1").tag("app:latest").file("Dockerfile").target("prod")
     .platform("linux/amd64").buildArg("VER", "1").noCache().pull().push()
@@ -61,11 +62,11 @@ Deno.test("build: tags, file, target, platform, build-arg, flags, context", () =
   ]);
 });
 
-Deno.test("build: bare uses the default context", () => {
+test("build: bare uses the default context", () => {
   assertEquals(new DockerBuildSettings().argv(), ["docker", "build", "."]);
 });
 
-Deno.test("run: flags, env/publish/volume, network, and command", () => {
+test("run: flags, env/publish/volume, network, and command", () => {
   const argv = new DockerRunSettings()
     .image("app:1").name("c").rm().detach().interactive().tty()
     .envVar("K", "v").publish(8080, 80).volume("/h", "/c").network("net")
@@ -93,7 +94,7 @@ Deno.test("run: flags, env/publish/volume, network, and command", () => {
   ]);
 });
 
-Deno.test("run: minimal is just the image", () => {
+test("run: minimal is just the image", () => {
   assertEquals(new DockerRunSettings().image("app").argv(), [
     "docker",
     "run",
@@ -101,7 +102,7 @@ Deno.test("run: minimal is just the image", () => {
   ]);
 });
 
-Deno.test("exec: flags, env, workdir, and command", () => {
+test("exec: flags, env, workdir, and command", () => {
   const argv = new DockerExecSettings()
     .container("c").interactive().tty().envVar("K", "v").workdir("/app")
     .commandArgs("sh", "-c", "echo hi").argv();
@@ -121,7 +122,7 @@ Deno.test("exec: flags, env, workdir, and command", () => {
   ]);
 });
 
-Deno.test("exec: minimal is just the container", () => {
+test("exec: minimal is just the container", () => {
   assertEquals(new DockerExecSettings().container("c").argv(), [
     "docker",
     "exec",
@@ -129,7 +130,7 @@ Deno.test("exec: minimal is just the container", () => {
   ]);
 });
 
-Deno.test("push/pull/tag build their argv", () => {
+test("push/pull/tag build their argv", () => {
   assertEquals(new DockerPushSettings().image("a:1").allTags().argv(), [
     "docker",
     "push",
@@ -159,7 +160,7 @@ Deno.test("push/pull/tag build their argv", () => {
   ]);
 });
 
-Deno.test("login renders credentials and registry", () => {
+test("login renders credentials and registry", () => {
   assertEquals(
     new DockerLoginSettings().username("u").passwordStdin("tok").registry(
       "ghcr.io",
@@ -175,7 +176,7 @@ Deno.test("login renders credentials and registry", () => {
   assertEquals(new DockerLoginSettings().argv(), ["docker", "login"]);
 });
 
-Deno.test("images/ps support all, quiet, filter", () => {
+test("images/ps support all, quiet, filter", () => {
   assertEquals(
     new DockerImagesSettings().all().quietOutput().filter("dangling=true")
       .repository("app").argv(),
@@ -189,7 +190,7 @@ Deno.test("images/ps support all, quiet, filter", () => {
   assertEquals(new DockerPsSettings().argv(), ["docker", "ps"]);
 });
 
-Deno.test("stop/start/rm/rmi take targets and flags", () => {
+test("stop/start/rm/rmi take targets and flags", () => {
   assertEquals(new DockerStopSettings().containers("a", "b").time(5).argv(), [
     "docker",
     "stop",
@@ -232,7 +233,7 @@ Deno.test("stop/start/rm/rmi take targets and flags", () => {
   ]);
 });
 
-Deno.test("save/load build their argv", () => {
+test("save/load build their argv", () => {
   assertEquals(
     new DockerSaveSettings().images("a", "b").output("o.tar").argv(),
     [
@@ -259,7 +260,7 @@ Deno.test("save/load build their argv", () => {
   assertEquals(new DockerLoadSettings().argv(), ["docker", "load"]);
 });
 
-Deno.test("subcommands with required arguments validate them", () => {
+test("subcommands with required arguments validate them", () => {
   assertThrows(
     () => new DockerRunSettings().argv(),
     Error,
@@ -308,7 +309,7 @@ Deno.test("subcommands with required arguments validate them", () => {
   );
 });
 
-Deno.test("every DockerTasks function reaches execution", async () => {
+test("every DockerTasks function reaches execution", async () => {
   const calls: Array<() => Promise<unknown>> = [
     () => DockerTasks.build(missingTool),
     () => DockerTasks.run((s) => missingTool(s).image("x")),
@@ -331,7 +332,7 @@ Deno.test("every DockerTasks function reaches execution", async () => {
   }
 });
 
-Deno.test("docker: conforms to the wrapper contract", async () => {
+test("docker: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new DockerBuildSettings(), "docker", {
     resolution: "path",
   });

@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -30,7 +31,7 @@ async function onlyRunId(dir: string): Promise<string> {
   return runs[0].id;
 }
 
-Deno.test("a run holds a lease while it runs, and releases it when it settles", async () => {
+test("a run holds a lease while it runs, and releases it when it settles", async () => {
   // The pairing a reaping sweep depends on: a record that says `running` always
   // has a live holder, and the claim goes the moment the run stops being this
   // process's to work on.
@@ -56,7 +57,7 @@ Deno.test("a run holds a lease while it runs, and releases it when it settles", 
   });
 });
 
-Deno.test("a resume refuses a run whose previous holder is still live", async () => {
+test("a resume refuses a run whose previous holder is still live", async () => {
   // A lease outlives the process that took it, so a run whose owner has not let
   // go is not available — the refusal is what stops two processes working the
   // same run when one of them merely looks dead.
@@ -83,7 +84,7 @@ Deno.test("a resume refuses a run whose previous holder is still live", async ()
   });
 });
 
-Deno.test("a resume gives the lease back even when the run fails", async () => {
+test("a resume gives the lease back even when the run fails", async () => {
   // The acquirer releases, on every path out. A claim left held by nobody would
   // make a run that has demonstrably stopped look like one still being worked
   // on, which is the one thing the lease exists to distinguish.

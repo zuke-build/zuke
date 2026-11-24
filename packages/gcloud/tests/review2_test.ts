@@ -9,6 +9,7 @@
  * runner or `fetch` ignores what it is handed and would answer "success".
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -68,7 +69,7 @@ function dist(minute: number, count: number, mean: number) {
 
 // H1 ------------------------------------------------------------------------
 
-Deno.test("H1: the candidate lookup runs in the analysis's project, and the lambda may override it", async () => {
+test("H1: the candidate lookup runs in the analysis's project, and the lambda may override it", async () => {
   const gcloud = recording("api-00002\n");
   const fake = pages({ timeSeries: [series([0])] });
   await cloudMonitoring((m) =>
@@ -97,7 +98,7 @@ Deno.test("H1: the candidate lookup runs in the analysis's project, and the lamb
 
 // H2 ------------------------------------------------------------------------
 
-Deno.test("H2: an average of distributions is weighted by their counts", async () => {
+test("H2: an average of distributions is weighted by their counts", async () => {
   const body = {
     timeSeries: [
       { valueType: "DISTRIBUTION", points: [dist(10, 1000, 100)] },
@@ -110,7 +111,7 @@ Deno.test("H2: an average of distributions is weighted by their counts", async (
   assertEquals(average, (1000 * 100 + 5000) / 1001);
 });
 
-Deno.test("H2: latest and sum refuse to add distribution means together", async () => {
+test("H2: latest and sum refuse to add distribution means together", async () => {
   const body = {
     timeSeries: [
       { valueType: "DISTRIBUTION", points: [dist(10, 5, 100)] },
@@ -143,7 +144,7 @@ Deno.test("H2: latest and sum refuse to add distribution means together", async 
 
 // H3 ------------------------------------------------------------------------
 
-Deno.test("H3: latest sums each series' own newest point", async () => {
+test("H3: latest sums each series' own newest point", async () => {
   const gauge = (minute: number, value: number) => ({
     metricKind: "GAUGE",
     points: [point(minute, { doubleValue: value })],
@@ -157,7 +158,7 @@ Deno.test("H3: latest sums each series' own newest point", async () => {
 
 // H4 ------------------------------------------------------------------------
 
-Deno.test("H4: an unaligned CUMULATIVE series is refused, with the aligner to add", async () => {
+test("H4: an unaligned CUMULATIVE series is refused, with the aligner to add", async () => {
   const running = {
     timeSeries: [{
       metricKind: "CUMULATIVE",
@@ -195,14 +196,14 @@ Deno.test("H4: an unaligned CUMULATIVE series is refused, with the aligner to ad
 
 // H5 ------------------------------------------------------------------------
 
-Deno.test("H5: freshness is an explicit timestamp bound, never left to gcloud", () => {
+test("H5: freshness is an explicit timestamp bound, never left to gcloud", () => {
   const argv = new GcloudLoggingReadSettings().filter("jsonPayload.timestamp:x")
     .freshness("10m").order("asc").argv();
   assertStringIncludes(argv[3], 'timestamp>="');
   assertEquals(argv.some((t) => t.startsWith("--freshness")), false);
 });
 
-Deno.test("H5: a log count always has a lower time bound", async () => {
+test("H5: a log count always has a lower time bound", async () => {
   const gcloud = recording("[]");
   await GcloudTasks.logEntryCount((s) =>
     s.filter("jsonPayload.timestamp:x").runner(gcloud.run)
@@ -212,7 +213,7 @@ Deno.test("H5: a log count always has a lower time bound", async () => {
 
 // H6 ------------------------------------------------------------------------
 
-Deno.test("H6: the canary's window ends two minutes back, for the ingestion delay", async () => {
+test("H6: the canary's window ends two minutes back, for the ingestion delay", async () => {
   const fake = pages({ timeSeries: [series([0])] });
   await cloudMonitoring((m) =>
     base(m, fake.fetch).alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
@@ -227,7 +228,7 @@ Deno.test("H6: the canary's window ends two minutes back, for the ingestion dela
 
 // M1 ------------------------------------------------------------------------
 
-Deno.test("M1: an aborted check stops before reading", async () => {
+test("M1: an aborted check stops before reading", async () => {
   const fetch = ignoringFetch();
   const controller = new AbortController();
   controller.abort();
@@ -240,7 +241,7 @@ Deno.test("M1: an aborted check stops before reading", async () => {
   assertEquals(fetch.state.calls, 0);
 });
 
-Deno.test("M1: the signal reaches the request", async () => {
+test("M1: the signal reaches the request", async () => {
   const seen: Array<AbortSignal | null | undefined> = [];
   const fetch: typeof globalThis.fetch = (_input, init) => {
     seen.push(init?.signal);
@@ -255,7 +256,7 @@ Deno.test("M1: the signal reaches the request", async () => {
 
 // M2 ------------------------------------------------------------------------
 
-Deno.test("M2: the count reader refuses a caller's own --limit or --format", async () => {
+test("M2: the count reader refuses a caller's own --limit or --format", async () => {
   const extras: Array<<S extends GcloudSettings>(s: S) => S> = [
     (s) => s.flag("limit", "1"),
     (s) => s.flag("format", "json"),
@@ -276,7 +277,7 @@ Deno.test("M2: the count reader refuses a caller's own --limit or --format", asy
 
 // L1 ------------------------------------------------------------------------
 
-Deno.test("L1: a NaN point is refused wherever it sits", async () => {
+test("L1: a NaN point is refused wherever it sits", async () => {
   const body = {
     timeSeries: [{
       points: [
@@ -299,7 +300,7 @@ Deno.test("L1: a NaN point is refused wherever it sits", async () => {
 
 // L2 ------------------------------------------------------------------------
 
-Deno.test("L2: a failed token command is an error, even after noThrow", async () => {
+test("L2: a failed token command is an error, even after noThrow", async () => {
   const fetch = ignoringFetch();
   await assertRejects(
     () =>
@@ -312,7 +313,7 @@ Deno.test("L2: a failed token command is an error, even after noThrow", async ()
   assertEquals(fetch.state.calls, 0);
 });
 
-Deno.test("L2: an empty token, or one ending in a control character, is refused", async () => {
+test("L2: an empty token, or one ending in a control character, is refused", async () => {
   const fetch = ignoringFetch();
   for (const token of ["", "  \n", "aaaaaaaa\v", "\faaaaaaaa"]) {
     const error = await assertRejects(
@@ -329,7 +330,7 @@ Deno.test("L2: an empty token, or one ending in a control character, is refused"
 
 // L3 ------------------------------------------------------------------------
 
-Deno.test("L3: a body that is not JSON is refused without quoting it", async () => {
+test("L3: a body that is not JSON is refused without quoting it", async () => {
   const error = await assertRejects(
     () =>
       CloudMonitoringTasks.timeSeriesList((s) =>
@@ -342,7 +343,7 @@ Deno.test("L3: a body that is not JSON is refused without quoting it", async () 
 
 // L4 ------------------------------------------------------------------------
 
-Deno.test("L4: log mode refuses settings only a metric read uses", async () => {
+test("L4: log mode refuses settings only a metric read uses", async () => {
   const metricOnly: Array<
     (m: CloudMonitoringTimeSeriesSettings) => CloudMonitoringTimeSeriesSettings
   > = [
@@ -374,7 +375,7 @@ Deno.test("L4: log mode refuses settings only a metric read uses", async () => {
 
 // L5 ------------------------------------------------------------------------
 
-Deno.test("L5: the no-data message names the interval actually read", async () => {
+test("L5: the no-data message names the interval actually read", async () => {
   const start = new Date(Date.UTC(2026, 9, 7, 9));
   const end = new Date(Date.UTC(2026, 9, 7, 10));
   await assertRejects(
@@ -389,7 +390,7 @@ Deno.test("L5: the no-data message names the interval actually read", async () =
 
 // L6 ------------------------------------------------------------------------
 
-Deno.test("L6: minSeverity refuses a value that is not a severity", () => {
+test("L6: minSeverity refuses a value that is not a severity", () => {
   assertThrows(
     () =>
       // @ts-expect-error: a JavaScript caller can pass any string; the
@@ -402,7 +403,7 @@ Deno.test("L6: minSeverity refuses a value that is not a severity", () => {
 
 // L7 ------------------------------------------------------------------------
 
-Deno.test("L7: a list whose first value starts with '^' is refused", () => {
+test("L7: a list whose first value starts with '^' is refused", () => {
   assertThrows(
     () =>
       new GcloudLoggingReadSettings().resourceNames("^;^projects/a;projects/b")
@@ -414,7 +415,7 @@ Deno.test("L7: a list whose first value starts with '^' is refused", () => {
 
 // L8 ------------------------------------------------------------------------
 
-Deno.test("L8: a project that is not a project id is refused before any request", async () => {
+test("L8: a project that is not a project id is refused before any request", async () => {
   const fetch = ignoringFetch();
   for (const project of ["..", ".", "a/b", ""]) {
     await assertRejects(
@@ -439,7 +440,7 @@ Deno.test("L8: a project that is not a project id is refused before any request"
 
 // L9 ------------------------------------------------------------------------
 
-Deno.test("L9: an int64 sent as a JSON number keeps a decimal raw string", async () => {
+test("L9: an int64 sent as a JSON number keeps a decimal raw string", async () => {
   const [one] = await CloudMonitoringTasks.timeSeriesList((s) =>
     base(
       s,
@@ -456,7 +457,7 @@ Deno.test("L9: an int64 sent as a JSON number keeps a decimal raw string", async
 
 // R3 ------------------------------------------------------------------------
 
-Deno.test("R3: a failed Cloud Run canary command is a CommandError", async () => {
+test("R3: a failed Cloud Run canary command is a CommandError", async () => {
   const silent = cloudRunCanary((r) =>
     r.service("api").image("i").runner(() =>
       Promise.resolve(new CommandOutput(2, "", "denied"))
@@ -475,7 +476,7 @@ Deno.test("R3: a failed Cloud Run canary command is a CommandError", async () =>
 
 // R5 ------------------------------------------------------------------------
 
-Deno.test("R5: the canary's log read names the analysis in its refusals", async () => {
+test("R5: the canary's log read names the analysis in its refusals", async () => {
   const error = await assertRejects(
     () =>
       cloudMonitoring((m) =>
@@ -490,7 +491,7 @@ Deno.test("R5: the canary's log read names the analysis in its refusals", async 
 
 // H6, R6 (new API) ------------------------------------------------------------
 
-Deno.test("H6: .delay(...) moves the window end back, for a read too", async () => {
+test("H6: .delay(...) moves the window end back, for a read too", async () => {
   const fake = pages({});
   await CloudMonitoringTasks.timeSeriesList((s) =>
     base(s, fake.fetch).delay("90s")
@@ -508,7 +509,7 @@ Deno.test("H6: .delay(...) moves the window end back, for a read too", async () 
   );
 });
 
-Deno.test("R6: unusable reader output is a GcloudOutputError naming the reader", async () => {
+test("R6: unusable reader output is a GcloudOutputError naming the reader", async () => {
   const error = await assertRejects(
     () => GcloudTasks.logEntryCount((s) => s.runner(recording("{}").run)),
     GcloudOutputError,
@@ -533,7 +534,7 @@ Deno.test("R6: unusable reader output is a GcloudOutputError naming the reader",
   );
 });
 
-Deno.test("H3: latest skips a series with no points and finds the newest in any order", async () => {
+test("H3: latest skips a series with no points and finds the newest in any order", async () => {
   const body = {
     timeSeries: [
       { valueType: "DISTRIBUTION", points: [dist(10, 0, 0)] },
@@ -549,7 +550,7 @@ Deno.test("H3: latest skips a series with no points and finds the newest in any 
   );
 });
 
-Deno.test("M1: an aborted check stops the log count before gcloud runs", async () => {
+test("M1: an aborted check stops the log count before gcloud runs", async () => {
   const controller = new AbortController();
   controller.abort();
   const gcloud = recording("[]");

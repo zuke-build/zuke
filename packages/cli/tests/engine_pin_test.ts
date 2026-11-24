@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -113,7 +114,7 @@ const ON_DENO = {
   "zuke.ps1": launcherPwsh({ bootstrapDeno: true }),
 };
 
-Deno.test("parseEnginePinFlags reads a version and --dry-run, and refuses the rest", () => {
+test("parseEnginePinFlags reads a version and --dry-run, and refuses the rest", () => {
   assertEquals(parseEnginePinFlags([]), { dryRun: false });
   assertEquals(parseEnginePinFlags(["2.4.0", "--dry-run"]), {
     version: "2.4.0",
@@ -132,7 +133,7 @@ Deno.test("parseEnginePinFlags reads a version and --dry-run, and refuses the re
   );
 });
 
-Deno.test("zuke upgrade --engine moves a project off Deno to the latest zuke and its engine", async () => {
+test("zuke upgrade --engine moves a project off Deno to the latest zuke and its engine", async () => {
   const files = filesHost(ON_DENO);
   const { code, log } = await pin(
     [],
@@ -160,7 +161,7 @@ Deno.test("zuke upgrade --engine moves a project off Deno to the latest zuke and
   });
 });
 
-Deno.test("zuke upgrade --engine keeps a plain launcher plain, and a project without launchers without", async () => {
+test("zuke upgrade --engine keeps a plain launcher plain, and a project without launchers without", async () => {
   const plain = filesHost({
     "zuke.json": PINNED,
     "zuke": launcherBash({ bootstrapDeno: false }),
@@ -180,7 +181,7 @@ Deno.test("zuke upgrade --engine keeps a plain launcher plain, and a project wit
   assertEquals([...bare.written.keys()], ["zuke.json"]);
 });
 
-Deno.test("zuke upgrade --engine leaves what is not a launcher it wrote, and says so", async () => {
+test("zuke upgrade --engine leaves what is not a launcher it wrote, and says so", async () => {
   // A zuke/ directory (why --launcher-name exists), a zuke.ps1 linked to a
   // launcher shared across repositories, and a zuke script of the user's own.
   const files = filesHost({
@@ -205,7 +206,7 @@ Deno.test("zuke upgrade --engine leaves what is not a launcher it wrote, and say
   assertEquals(own.written.has("zuke"), false);
 });
 
-Deno.test("zuke upgrade --engine moves an MCP server off Deno, and leaves any other", async () => {
+test("zuke upgrade --engine moves an MCP server off Deno, and leaves any other", async () => {
   const onDeno = JSON.stringify({
     mcpServers: {
       other: { command: "x", args: [] },
@@ -237,7 +238,7 @@ Deno.test("zuke upgrade --engine moves an MCP server off Deno, and leaves any ot
   }
 });
 
-Deno.test("zuke upgrade --engine refuses a zuke.json it would write through", async () => {
+test("zuke upgrade --engine refuses a zuke.json it would write through", async () => {
   const { code, log } = await pin(
     [],
     projectAt(["zuke.json"], PINNED),
@@ -247,7 +248,7 @@ Deno.test("zuke upgrade --engine refuses a zuke.json it would write through", as
   assertStringIncludes(log, "zuke.json is not a regular file");
 });
 
-Deno.test("zuke upgrade --engine notes a deno.lock nothing reads any more", async () => {
+test("zuke upgrade --engine notes a deno.lock nothing reads any more", async () => {
   const { code, log } = await pin(
     [],
     projectAt(["zuke.json", "deno.lock"], PINNED),
@@ -266,7 +267,7 @@ Deno.test("zuke upgrade --engine notes a deno.lock nothing reads any more", asyn
   assertEquals(unlocked.log.includes("deno.lock"), false);
 });
 
-Deno.test("zuke upgrade --engine <version> moves to that release, and --dry-run only says so", async () => {
+test("zuke upgrade --engine <version> moves to that release, and --dry-run only says so", async () => {
   const files = filesHost(ON_DENO);
   const probe = projectAt(["zuke.json"], PINNED);
   const dry = await pin(["2.3.0", "--dry-run"], probe, files);
@@ -284,7 +285,7 @@ Deno.test("zuke upgrade --engine <version> moves to that release, and --dry-run 
   assertEquals(changed.written.get("zuke.json"), '{\n  "engine": "1.3.0"\n}\n');
 });
 
-Deno.test("zuke upgrade --engine=<version> is the inline spelling of the same move", async () => {
+test("zuke upgrade --engine=<version> is the inline spelling of the same move", async () => {
   const files = filesHost(ON_DENO);
   const host = new FakeHost();
   const code = await main(
@@ -303,7 +304,7 @@ Deno.test("zuke upgrade --engine=<version> is the inline spelling of the same mo
   assertEquals(files.written.size, 0);
 });
 
-Deno.test("zuke upgrade --engine says when the project is already there, and writes nothing", async () => {
+test("zuke upgrade --engine says when the project is already there, and writes nothing", async () => {
   const latest = testPin("2.4.0", "1.4.0");
   const config = '{"engine": "1.4.0"}';
   const files = filesHost({
@@ -324,7 +325,7 @@ Deno.test("zuke upgrade --engine says when the project is already there, and wri
   assertEquals(files.written.size, 0);
 });
 
-Deno.test("zuke upgrade --engine refuses what it cannot move, naming the fix", async () => {
+test("zuke upgrade --engine refuses what it cannot move, naming the fix", async () => {
   const cases: Array<
     [string[], BuildProbe, readonly BinaryPin[] | Error, string]
   > = [

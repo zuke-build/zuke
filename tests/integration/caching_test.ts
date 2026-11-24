@@ -10,6 +10,7 @@
  * function), with an injected changed-files list instead of a real git repo.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -33,7 +34,7 @@ import { gzip, tar } from "../../packages/core/src/compression.ts";
 /** Encode test fixture text as archive bytes. */
 const enc = (text: string) => new TextEncoder().encode(text);
 
-Deno.test("a target with unchanged inputs is skipped as cached, and reruns when the input changes", async () => {
+test("a target with unchanged inputs is skipped as cached, and reruns when the input changes", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       await Deno.writeTextFile(`${dir}/input.txt`, "v1");
@@ -61,7 +62,7 @@ Deno.test("a target with unchanged inputs is skipped as cached, and reruns when 
   });
 });
 
-Deno.test("a custom cacheKey controls freshness independent of file inputs", async () => {
+test("a custom cacheKey controls freshness independent of file inputs", async () => {
   await withStateDir(async () => {
     await withTempCwd(async () => {
       let key = "v1";
@@ -88,7 +89,7 @@ Deno.test("a custom cacheKey controls freshness independent of file inputs", asy
   });
 });
 
-Deno.test("always() still runs after a build-wide failure, but is not exempt from the incremental cache", async () => {
+test("always() still runs after a build-wide failure, but is not exempt from the incremental cache", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const log: string[] = [];
@@ -133,7 +134,7 @@ Deno.test("always() still runs after a build-wide failure, but is not exempt fro
   });
 });
 
-Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh checkout", async () => {
+test("a FileSystemCacheStore (env-configured) restores outputs on a fresh checkout", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
@@ -189,7 +190,7 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
   });
 });
 
-Deno.test("a node_modules output restores its .bin links as links, so tools still resolve", async () => {
+test("a node_modules output restores its .bin links as links, so tools still resolve", async () => {
   if (Deno.build.os === "windows") return; // npm writes .cmd shims there, not links
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
@@ -237,7 +238,7 @@ Deno.test("a node_modules output restores its .bin links as links, so tools stil
   });
 });
 
-Deno.test("an output with a looping directory link uploads and restores", async () => {
+test("an output with a looping directory link uploads and restores", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
@@ -283,7 +284,7 @@ Deno.test("an output with a looping directory link uploads and restores", async 
   });
 });
 
-Deno.test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
+test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
@@ -347,7 +348,7 @@ Deno.test("an SDK under .zuke/tools caches with its .git and long paths, within 
   });
 });
 
-Deno.test("a remote restore onto a symlinked output is refused, and rebuilds", async () => {
+test("a remote restore onto a symlinked output is refused, and rebuilds", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
@@ -411,7 +412,7 @@ Deno.test("a remote restore onto a symlinked output is refused, and rebuilds", a
   });
 });
 
-Deno.test("affectedTargets selects only the targets a changed file can reach, with no real git", async () => {
+test("affectedTargets selects only the targets a changed file can reach, with no real git", async () => {
   const shared = target().inputs("packages/shared");
   const api = target().inputs("packages/api").dependsOn(shared);
   const web = target().inputs("packages/web").dependsOn(shared);
@@ -438,7 +439,7 @@ Deno.test("affectedTargets selects only the targets a changed file can reach, wi
   assertEquals(affectedViaShared.has(web), true); // dirtied by its dependency
 });
 
-Deno.test("a cancelled run does not leave its targets recorded as up to date", async () => {
+test("a cancelled run does not leave its targets recorded as up to date", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       await Deno.writeTextFile(`${dir}/input.txt`, "v1");
@@ -482,7 +483,7 @@ Deno.test("a cancelled run does not leave its targets recorded as up to date", a
   });
 });
 
-Deno.test("with a signing key, a store writer's swapped artifact is rebuilt, not restored", async () => {
+test("with a signing key, a store writer's swapped artifact is rebuilt, not restored", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-signed-" });
@@ -550,7 +551,7 @@ Deno.test("with a signing key, a store writer's swapped artifact is rebuilt, not
   });
 });
 
-Deno.test("a signed output larger than one stream slice restores byte for byte", async () => {
+test("a signed output larger than one stream slice restores byte for byte", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-large-" });

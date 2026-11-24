@@ -3,19 +3,20 @@
 
 /** Tests for the Reed–Solomon generator and remainder over GF(2⁸). */
 
+import { test } from "../../core/tests/_testing.ts";
 import { generator, remainder } from "../src/reed_solomon.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 
-Deno.test("generator(2) is the textbook (x + α⁰)(x + α¹) polynomial", () => {
+test("generator(2) is the textbook (x + α⁰)(x + α¹) polynomial", () => {
   // (x + 1)(x + 2) = x² + 3x + 2 over GF(2⁸).
   assertEquals(generator(2), [3, 2]);
 });
 
-Deno.test("generator(7) matches the specification's degree-7 polynomial", () => {
+test("generator(7) matches the specification's degree-7 polynomial", () => {
   assertEquals(generator(7), [127, 122, 154, 164, 11, 68, 117]);
 });
 
-Deno.test("remainder yields the error-correction codewords of a version 1-H block", () => {
+test("remainder yields the error-correction codewords of a version 1-H block", () => {
   // The 9 data codewords of the single byte "a" at version 1, level H (checked
   // against an independent encoder).
   const data = [64, 22, 16, 236, 17, 236, 17, 236, 17];
@@ -40,6 +41,6 @@ Deno.test("remainder yields the error-correction codewords of a version 1-H bloc
   ]);
 });
 
-Deno.test("remainder of the zero message is zero", () => {
+test("remainder of the zero message is zero", () => {
   assertEquals(remainder([0, 0, 0], generator(4)), [0, 0, 0, 0]);
 });

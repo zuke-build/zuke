@@ -6,6 +6,7 @@
  * mask selection, checked against golden symbols from an independent encoder.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   choosePlacement,
   dataCodewords,
@@ -44,7 +45,7 @@ function encodeAt(text: string, level: ErrorCorrectionLevel): QrCode {
   );
 }
 
-Deno.test("buildSymbol reproduces the golden version 1 symbol", () => {
+test("buildSymbol reproduces the golden version 1 symbol", () => {
   const code = encode("zuke", "L");
   assertEquals(code.version, 1);
   assertEquals(code.size, 21);
@@ -53,7 +54,7 @@ Deno.test("buildSymbol reproduces the golden version 1 symbol", () => {
   assertEquals(toRows(code.modules), ZUKE_L);
 });
 
-Deno.test("buildSymbol reproduces the golden version 2 symbol with an alignment pattern", () => {
+test("buildSymbol reproduces the golden version 2 symbol with an alignment pattern", () => {
   const code = encode("https://zuke.build", "M");
   assertEquals(code.version, 2);
   assertEquals(code.errorCorrection, "Q");
@@ -61,7 +62,7 @@ Deno.test("buildSymbol reproduces the golden version 2 symbol with an alignment 
   assertEquals(toRows(code.modules), ZUKE_BUILD_M);
 });
 
-Deno.test("a version 7 symbol carries the version information blocks", () => {
+test("a version 7 symbol carries the version information blocks", () => {
   // 60 bytes at H needs version 7 (version 6 holds 44 at H, version 7 64).
   const code = encode("v".repeat(60), "H");
   assertEquals(code.version, 7);
@@ -78,7 +79,7 @@ Deno.test("a version 7 symbol carries the version information blocks", () => {
   }
 });
 
-Deno.test("every finder pattern has its dark centre and separator", () => {
+test("every finder pattern has its dark centre and separator", () => {
   const code = encode("finders", "M");
   const size = code.size;
   for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) {
@@ -91,7 +92,7 @@ Deno.test("every finder pattern has its dark centre and separator", () => {
   assertEquals(code.modules[size - 8][8], true);
 });
 
-Deno.test("the timing patterns alternate along row and column 6", () => {
+test("the timing patterns alternate along row and column 6", () => {
   const code = encode("timing", "L");
   for (let i = 8; i < code.size - 8; i++) {
     assertEquals(code.modules[6][i], i % 2 === 0);
@@ -99,7 +100,7 @@ Deno.test("the timing patterns alternate along row and column 6", () => {
   }
 });
 
-Deno.test("every mask pattern reproduces its golden symbol", () => {
+test("every mask pattern reproduces its golden symbol", () => {
   // Boosting off so the level stays L and the penalty score alone picks the
   // mask; the golden pins both the formula and the choice.
   for (const golden of ONE_PER_MASK) {
@@ -110,13 +111,13 @@ Deno.test("every mask pattern reproduces its golden symbol", () => {
   assertEquals(ONE_PER_MASK.map((g) => g.mask), [0, 1, 2, 3, 4, 5, 6, 7]);
 });
 
-Deno.test("the dark-ratio penalty decides the mask when the others tie closely", () => {
+test("the dark-ratio penalty decides the mask when the others tie closely", () => {
   const code = encodeAt("n394", "L");
   assertEquals(code.mask, 2);
   assertEquals(toRows(code.modules), DARK_RATIO_DECIDES);
 });
 
-Deno.test("mask selection covers every pattern across a range of inputs", () => {
+test("mask selection covers every pattern across a range of inputs", () => {
   // The penalty-minimising mask depends on the data; over enough inputs each
   // of the eight patterns wins at least once, so a broken mask formula would
   // surface as one that is never (or always) chosen.

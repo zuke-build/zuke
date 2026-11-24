@@ -22,6 +22,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { isRecord, jobsOf, readWorkflow, stepsOf } from "./_workflow.ts";
 
@@ -42,7 +43,7 @@ function jobs(path: string): Map<string, Record<string, unknown>> {
   return jobsOf(readWorkflow(path));
 }
 
-Deno.test("only the gate job in ci.yml holds secrets", async (t) => {
+test("only the gate job in ci.yml holds secrets", async (t) => {
   const found = new Map(
     [...jobs(CI)].map(([id, job]) => [id, secretsOf(job)]),
   );
@@ -64,7 +65,7 @@ Deno.test("only the gate job in ci.yml holds secrets", async (t) => {
   });
 });
 
-Deno.test("the ai-review jobs hold only what posting a review needs", () => {
+test("the ai-review jobs hold only what posting a review needs", () => {
   // The reviewers' key, the workflow token, and the zuke-build App's
   // credentials — the last because GitHub refuses the Actions token the
   // mutation that resolves a review thread (#631), so the job that answers a
@@ -85,7 +86,7 @@ Deno.test("the ai-review jobs hold only what posting a review needs", () => {
   }
 });
 
-Deno.test("no workflow triggers on pull_request_target", async () => {
+test("no workflow triggers on pull_request_target", async () => {
   // The trigger that would run a fork's code with this repository's secrets.
   // Nothing here uses it, and nothing should start to without the change being
   // argued for.
@@ -103,7 +104,7 @@ Deno.test("no workflow triggers on pull_request_target", async () => {
   }
 });
 
-Deno.test("only the gate persists credentials, and only it needs to", () => {
+test("only the gate persists credentials, and only it needs to", () => {
   // A persisted token is what lets the fixer push. Any other job keeping one in
   // git config would be holding a push capability it never uses.
   for (const [id, job] of jobs(CI)) {
@@ -118,7 +119,7 @@ Deno.test("only the gate persists credentials, and only it needs to", () => {
   }
 });
 
-Deno.test("the gate and both review jobs block egress", () => {
+test("the gate and both review jobs block egress", () => {
   // `docs/assurance-case.md` claims blocking for every job that holds a
   // credential a compromised dependency could send somewhere. The review jobs
   // hold the App key, so they block like the gate, to the launcher's

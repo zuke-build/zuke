@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { type DownloadFn, installTree } from "../src/install.ts";
 import { gzip, tar, type TarEntry } from "../src/compression.ts";
@@ -52,7 +53,7 @@ function nodeTarball(): Promise<Uint8Array> {
   return gzip(tar(entries));
 }
 
-Deno.test("installTree unpacks a runtime tree, strips, and returns the root", async () => {
+test("installTree unpacks a runtime tree, strips, and returns the root", async () => {
   await withTemp(async (dir) => {
     const root = await installTree({
       name: "node",
@@ -87,7 +88,7 @@ Deno.test("installTree unpacks a runtime tree, strips, and returns the root", as
   });
 });
 
-Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's Linux form)", async () => {
+test("installTree unpacks a GNU tarball with @LongLink long paths (Node's Linux form)", async () => {
   // The consumer-reported crash: Node's Linux tarball is GNU format, so a
   // >100-byte path arrives as a @LongLink pseudo-entry plus a truncated header.
   // One name here truncates exactly at a "/", which used to make the extractor
@@ -127,7 +128,7 @@ Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's L
   });
 });
 
-Deno.test("installTree verifies the archive checksum and reuses a cached tree", async () => {
+test("installTree verifies the archive checksum and reuses a cached tree", async () => {
   await withTemp(async (dir) => {
     const bytes = await nodeTarball();
     const counter = { calls: 0 };
@@ -148,7 +149,7 @@ Deno.test("installTree verifies the archive checksum and reuses a cached tree", 
   });
 });
 
-Deno.test("installTree rejects a checksum mismatch and installs nothing", async () => {
+test("installTree rejects a checksum mismatch and installs nothing", async () => {
   await withTemp(async (dir) => {
     const err = await assertRejects(() =>
       installTree({
@@ -165,7 +166,7 @@ Deno.test("installTree rejects a checksum mismatch and installs nothing", async 
   });
 });
 
-Deno.test("installTree re-installs on a missing bin or a corrupt marker", async () => {
+test("installTree re-installs on a missing bin or a corrupt marker", async () => {
   await withTemp(async (dir) => {
     const bytes = await nodeTarball();
     const counter = { calls: 0 };
@@ -191,7 +192,7 @@ Deno.test("installTree re-installs on a missing bin or a corrupt marker", async 
   });
 });
 
-Deno.test("installTree re-installs when the pinned checksum changes", async () => {
+test("installTree re-installs when the pinned checksum changes", async () => {
   await withTemp(async (dir) => {
     const v1 = await nodeTarball();
     // A second, distinct tarball (different bin contents → a different checksum).
@@ -227,7 +228,7 @@ Deno.test("installTree re-installs when the pinned checksum changes", async () =
   });
 });
 
-Deno.test("installTree unpacks a zip tree and skips chmod for a windows target", async () => {
+test("installTree unpacks a zip tree and skips chmod for a windows target", async () => {
   await withTemp(async (dir) => {
     // Windows Node ships a .zip of real .exe/.cmd files (no symlinks). A windows
     // target skips chmod — which exercises that branch on a POSIX CI runner too.
@@ -250,7 +251,7 @@ Deno.test("installTree unpacks a zip tree and skips chmod for a windows target",
   });
 });
 
-Deno.test("installTree without a checksum downloads every time and writes no marker", async () => {
+test("installTree without a checksum downloads every time and writes no marker", async () => {
   await withTemp(async (dir) => {
     const counter = { calls: 0 };
     const spec = {
@@ -274,7 +275,7 @@ Deno.test("installTree without a checksum downloads every time and writes no mar
   });
 });
 
-Deno.test("installTree (tar.xz) verifies the checksum, strips, marks bins and keeps symlinks", async () => {
+test("installTree (tar.xz) verifies the checksum, strips, marks bins and keeps symlinks", async () => {
   await withTemp(async (dir) => {
     const bytes = fixture(FLUTTER_TAR_XZ);
     const counter = { calls: 0 };
@@ -320,7 +321,7 @@ Deno.test("installTree (tar.xz) verifies the checksum, strips, marks bins and ke
   });
 });
 
-Deno.test("installTree (tar.xz) refuses an archive with a path-traversal entry", async () => {
+test("installTree (tar.xz) refuses an archive with a path-traversal entry", async () => {
   await withTemp(async (dir) => {
     await assertRejects(
       () =>

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,14 +10,14 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { CodecovTasks, CodecovUploadSettings } from "../src/codecov.ts";
 
-Deno.test("default tool is codecovcli, subcommand upload-process", () => {
+test("default tool is codecovcli, subcommand upload-process", () => {
   assertEquals(new CodecovUploadSettings().argv(), [
     "codecovcli",
     "upload-process",
   ]);
 });
 
-Deno.test("codecov: every setting renders in a deterministic order", () => {
+test("codecov: every setting renders in a deterministic order", () => {
   const argv = new CodecovUploadSettings()
     .token("t0ken")
     .slug("acme/app")
@@ -76,7 +77,7 @@ Deno.test("codecov: every setting renders in a deterministic order", () => {
   ]);
 });
 
-Deno.test("codecov: pullRequest accepts a string too", () => {
+test("codecov: pullRequest accepts a string too", () => {
   assertEquals(new CodecovUploadSettings().pullRequest("99").argv(), [
     "codecovcli",
     "upload-process",
@@ -85,14 +86,14 @@ Deno.test("codecov: pullRequest accepts a string too", () => {
   ]);
 });
 
-Deno.test("CodecovTasks.upload reaches execution", async () => {
+test("CodecovTasks.upload reaches execution", async () => {
   await assertRejects(
     () => CodecovTasks.upload((s) => missingTool(s.files("cov.lcov"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("codecov: conforms to the wrapper contract", async () => {
+test("codecov: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new CodecovUploadSettings(),
     "codecovcli",
@@ -102,7 +103,7 @@ Deno.test("codecov: conforms to the wrapper contract", async () => {
   );
 });
 
-Deno.test("the upload token never reaches the command line", () => {
+test("the upload token never reaches the command line", () => {
   // A child's argv is world-readable — `ps`, `/proc/<pid>/cmdline` — so the
   // token travels in CODECOV_TOKEN, which the CLI documents and which another
   // process cannot read the same way.

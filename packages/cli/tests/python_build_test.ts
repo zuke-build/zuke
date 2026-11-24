@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -12,7 +13,7 @@ import {
 } from "../src/python_build.ts";
 import { starterPythonBuild } from "../src/starter.ts";
 
-Deno.test("toPythonIdentifier produces snake_case field names", () => {
+test("toPythonIdentifier produces snake_case field names", () => {
   assertEquals(toPythonIdentifier("lint"), "lint");
   assertEquals(toPythonIdentifier("test-watch"), "test_watch");
   assertEquals(toPythonIdentifier("lint:fix"), "lint_fix");
@@ -23,7 +24,7 @@ Deno.test("toPythonIdentifier produces snake_case field names", () => {
   assertEquals(toPythonIdentifier("café"), "caf");
 });
 
-Deno.test("generatePythonBuild renders the starter's shape, as ruff formats it", () => {
+test("generatePythonBuild renders the starter's shape, as ruff formats it", () => {
   const out = generatePythonBuild(
     "MyBuild",
     parsePyproject(`
@@ -82,7 +83,7 @@ run(MyBuild)
   assertStringIncludes(starter, "from zuke import Build, run, target");
 });
 
-Deno.test("generatePythonBuild declares a dependency above its dependent", () => {
+test("generatePythonBuild declares a dependency above its dependent", () => {
   const out = generatePythonBuild("B", [
     { name: "ci", steps: [], deps: ["build"] },
     { name: "build", steps: [{ argv: ["make"] }], deps: [] },
@@ -94,7 +95,7 @@ Deno.test("generatePythonBuild declares a dependency above its dependent", () =>
   );
 });
 
-Deno.test("generatePythonBuild wraps what does not fit in 88 columns", () => {
+test("generatePythonBuild wraps what does not fit in 88 columns", () => {
   const long =
     "a_task_name_long_enough_that_nothing_about_it_fits_on_one_line_x";
   const out = generatePythonBuild("B", [
@@ -130,7 +131,7 @@ Deno.test("generatePythonBuild wraps what does not fit in 88 columns", () => {
   );
 });
 
-Deno.test("generatePythonBuild keeps names valid, distinct and clear of Build's own", () => {
+test("generatePythonBuild keeps names valid, distinct and clear of Build's own", () => {
   const out = generatePythonBuild("B", [
     { name: "import", steps: [], deps: [] },
     { name: "target", steps: [], deps: [] },
@@ -149,7 +150,7 @@ Deno.test("generatePythonBuild keeps names valid, distinct and clear of Build's 
   );
 });
 
-Deno.test("generatePythonBuild escapes every string and comment it emits", () => {
+test("generatePythonBuild escapes every string and comment it emits", () => {
   const nasty = 'a"b\\c\n"""\u2028\u0000)';
   const out = generatePythonBuild("B", [
     {
@@ -175,7 +176,7 @@ Deno.test("generatePythonBuild escapes every string and comment it emits", () =>
   }
 });
 
-Deno.test("generatePythonBuild notes a dropped cycle edge instead of a forward reference", () => {
+test("generatePythonBuild notes a dropped cycle edge instead of a forward reference", () => {
   const out = generatePythonBuild("B", [
     { name: "a", steps: [], deps: ["b"] },
     { name: "b", steps: [], deps: ["a"] },
@@ -195,7 +196,7 @@ Deno.test("generatePythonBuild notes a dropped cycle edge instead of a forward r
   );
 });
 
-Deno.test("generatePythonBuild renders an empty task list without a Context import", () => {
+test("generatePythonBuild renders an empty task list without a Context import", () => {
   const out = generatePythonBuild("Empty", []);
   assertStringIncludes(out, "from zuke import Build, run, target\n");
   assertStringIncludes(

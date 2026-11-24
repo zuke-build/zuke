@@ -10,6 +10,7 @@
  * how a settlement is really lost.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -45,7 +46,7 @@ class LosesDeploySettlement extends FileSystemStateStore {
   }
 }
 
-Deno.test("a resume refuses a degraded record and proceeds with --resume-degraded", async () => {
+test("a resume refuses a degraded record and proceeds with --resume-degraded", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     const store = new LosesDeploySettlement(`${dir}/runs`, defaultStateHost);

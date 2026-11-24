@@ -9,6 +9,7 @@
  * no duplicate dependency edges accumulate in a long-lived process.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -34,7 +35,7 @@ class Batch extends Build {
   );
 }
 
-Deno.test("a fan-out over shared stage builders is identical on every run", async () => {
+test("a fan-out over shared stage builders is identical on every run", async () => {
   const runs: string[][] = [];
   for (const _ of [1, 2]) {
     log.length = 0;

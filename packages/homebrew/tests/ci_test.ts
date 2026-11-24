@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -25,7 +26,7 @@ class Release extends Build {
   });
 }
 
-Deno.test("verify job: a macOS + Linux matrix running the target", () => {
+test("verify job: a macOS + Linux matrix running the target", () => {
   const build = new Release();
   const job = HomebrewTasks.verifyJob((s) => s.target(build.verifyFormula));
   assertEquals(job, {
@@ -41,7 +42,7 @@ Deno.test("verify job: a macOS + Linux matrix running the target", () => {
   });
 });
 
-Deno.test("verify job: the runners are configurable, and each job owns its steps", () => {
+test("verify job: the runners are configurable, and each job owns its steps", () => {
   const build = new Release();
   const job = HomebrewTasks.verifyJob((s) =>
     s.target(build.verifyFormula).runners("macos-15", "macos-15-intel")
@@ -53,7 +54,7 @@ Deno.test("verify job: the runners are configurable, and each job owns its steps
   assertEquals(next.before?.length, 1);
 });
 
-Deno.test("verify job: it renders as a matrix job in a generated workflow", () => {
+test("verify job: it renders as a matrix job in a generated workflow", () => {
   const build = new Release();
   const targets = new Map([["verifyFormula", build.verifyFormula]]);
   const yaml = generateCi(build.releaseWorkflow.pipelineFor(targets), "github");
@@ -66,7 +67,7 @@ Deno.test("verify job: it renders as a matrix job in a generated workflow", () =
   assertStringIncludes(yaml, "run: ./zuke verifyFormula");
 });
 
-Deno.test("verify job: a target and at least one runner are required", () => {
+test("verify job: a target and at least one runner are required", () => {
   assertThrows(
     () => HomebrewTasks.verifyJob((s) => s),
     Error,

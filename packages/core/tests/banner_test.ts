@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { type BannerFacts, bannerLines } from "../src/banner.ts";
 import { ZUKE_LOGO } from "../src/logo.ts";
@@ -32,13 +33,13 @@ const ART_LINES = ZUKE_LOGO.split("\n").length;
 /** The art's printable width; below it the wordmark wraps. */
 const ART_WIDTH = Math.max(...ZUKE_LOGO.split("\n").map((l) => l.length));
 
-Deno.test("banner: off CI it opens with the wordmark", () => {
+test("banner: off CI it opens with the wordmark", () => {
   const lines = bannerLines(facts(), false);
   assertEquals(lines.length, ART_LINES + 2);
   assertEquals(lines.slice(0, ART_LINES), ZUKE_LOGO.split("\n"));
 });
 
-Deno.test("banner: the standalone binary names no Deno, whose runtime is compiled in", () => {
+test("banner: the standalone binary names no Deno, whose runtime is compiled in", () => {
   const [first] = bannerLines(
     facts({ ci: true, host: "github", runtime: undefined }),
     false,
@@ -46,7 +47,7 @@ Deno.test("banner: the standalone binary names no Deno, whose runtime is compile
   assertEquals(first, "zuke 1.56.0 · darwin-aarch64 · github");
 });
 
-Deno.test("banner: on CI the art is dropped and the host named", () => {
+test("banner: on CI the art is dropped and the host named", () => {
   // The identity is worth more in a runner log than anywhere else; the six
   // lines of ASCII are worth less.
   const lines = bannerLines(facts({ ci: true, host: "github" }), false);
@@ -54,27 +55,27 @@ Deno.test("banner: on CI the art is dropped and the host named", () => {
   assertEquals(lines[0], "zuke 1.56.0 · deno 2.8.3 · darwin-aarch64 · github");
 });
 
-Deno.test("banner: every non-local host is named", () => {
+test("banner: every non-local host is named", () => {
   for (const host of ["github", "gitlab", "azure", "bitbucket"] as const) {
     const [first] = bannerLines(facts({ ci: true, host }), false);
     assertStringIncludes(first, ` · ${host}`);
   }
 });
 
-Deno.test("banner: local is never printed as a host", () => {
+test("banner: local is never printed as a host", () => {
   // "local" is the absence of a CI host, not one worth naming.
   const lines = bannerLines(facts(), false);
   assertEquals(lines[ART_LINES], "zuke 1.56.0 · deno 2.8.3 · darwin-aarch64");
   assertEquals(lines.some((l) => l.includes("local")), false);
 });
 
-Deno.test("banner: the run id is printed whole, for `zuke runs show`", () => {
+test("banner: the run id is printed whole, for `zuke runs show`", () => {
   const id = "7cbd70fd-3ebc-410f-b479-1978469f6928";
   const lines = bannerLines(facts({ ci: true, host: "github" }), false);
   assertEquals(lines[1], `run ${id} · /Users/me/work/zuke-demo`);
 });
 
-Deno.test("banner: without colour no escape codes are emitted", () => {
+test("banner: without colour no escape codes are emitted", () => {
   for (const host of ["local", "github"] as const) {
     for (const line of bannerLines(facts({ ci: true, host }), false)) {
       assertEquals(line.includes("\x1b["), false, line);
@@ -82,7 +83,7 @@ Deno.test("banner: without colour no escape codes are emitted", () => {
   }
 });
 
-Deno.test("banner: with colour the text survives intact under the codes", () => {
+test("banner: with colour the text survives intact under the codes", () => {
   const plain = bannerLines(facts({ ci: true, host: "github" }), false);
   const painted = bannerLines(facts({ ci: true, host: "github" }), true);
   assertEquals(painted.length, plain.length);
@@ -92,7 +93,7 @@ Deno.test("banner: with colour the text survives intact under the codes", () => 
   assertEquals(painted[0].includes("\x1b["), true);
 });
 
-Deno.test("banner: the facts are reported verbatim", () => {
+test("banner: the facts are reported verbatim", () => {
   const [line] = bannerLines(
     facts({
       ci: true,
@@ -106,7 +107,7 @@ Deno.test("banner: the facts are reported verbatim", () => {
   assertEquals(line, "zuke 9.9.9 · deno 3.0.0 · windows-x86_64 · gitlab");
 });
 
-Deno.test("banner: a CI system with no Zuke name still drops the art", () => {
+test("banner: a CI system with no Zuke name still drops the art", () => {
   // Jenkins, CircleBuild, Buildkite, Travis, TeamCity and a bare CI marker all
   // leave `host` at "local". Deriving the art from the host put the wordmark
   // in exactly the runner logs this feature exists to keep clean.
@@ -118,7 +119,7 @@ Deno.test("banner: a CI system with no Zuke name still drops the art", () => {
   );
 });
 
-Deno.test("banner: an unnamed CI is still announced as ci", () => {
+test("banner: an unnamed CI is still announced as ci", () => {
   // Naming it is what explains the missing art to whoever reads the log.
   const [first] = bannerLines(facts({ ci: true, host: "local" }), false);
   assertEquals(
@@ -127,13 +128,13 @@ Deno.test("banner: an unnamed CI is still announced as ci", () => {
   );
 });
 
-Deno.test("banner: a named host is preferred over the generic marker", () => {
+test("banner: a named host is preferred over the generic marker", () => {
   const [first] = bannerLines(facts({ ci: true, host: "gitlab" }), false);
   assertEquals(first.endsWith(" \u00b7 gitlab"), true, first);
   assertEquals(first.includes(" \u00b7 ci"), false, first);
 });
 
-Deno.test("banner: the art is dropped in a terminal too narrow for it", () => {
+test("banner: the art is dropped in a terminal too narrow for it", () => {
   // Below the art's own width it is not the wordmark, it is six wrapped lines
   // of broken blocks.
   const narrow = bannerLines(facts({ width: 20 }), false);

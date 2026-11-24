@@ -10,6 +10,7 @@
  * executing the suite (the wrapper's default binary), so it stays hermetic.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -56,7 +57,7 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-Deno.test("the test target's row carries the run's counts and the body's own note", async () => {
+test("the test target's row carries the run's counts and the body's own note", async () => {
   const r = await runCli(CI, ["pack"]);
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
@@ -66,7 +67,7 @@ Deno.test("the test target's row carries the run's counts and the body's own not
   assertEquals(row(r.out, "pack").includes("//"), false);
 });
 
-Deno.test("a failed test target's row says how many tests failed", async () => {
+test("a failed test target's row says how many tests failed", async () => {
   const r = await runCli(Broken, ["test"]);
   assertEquals(r.code, 1);
   const line = row(r.out, "test");

@@ -24,6 +24,7 @@
  * Python project's CI job takes.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -279,7 +280,7 @@ async function runsHostedBuild(): Promise<void> {
   }, { prefix: "zuke-embedded-engine-" });
 }
 
-Deno.test({
+test({
   name:
     "the zuke binary runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,

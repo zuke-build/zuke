@@ -16,6 +16,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -82,7 +83,7 @@ function release(deno: string, printed: string[], failOn = "-") {
   };
 }
 
-Deno.test({
+test({
   name: "deno deploy: the token rides the environment, not the argv",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -100,7 +101,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "deno deploy: a failed command fails the run with the secret masked",
   ignore: Deno.build.os === "windows",
   fn: async () => {

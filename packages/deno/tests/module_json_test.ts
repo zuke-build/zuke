@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -10,7 +11,7 @@ import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { DenoTasks, parseCacheInfo, parseModuleGraph } from "../mod.ts";
 
-Deno.test("parseModuleGraph: roots, modules, dependencies and redirects", () => {
+test("parseModuleGraph: roots, modules, dependencies and redirects", () => {
   const graph = parseModuleGraph(JSON.stringify({
     roots: ["file:///a/mod.ts", 7],
     modules: [
@@ -48,7 +49,7 @@ Deno.test("parseModuleGraph: roots, modules, dependencies and redirects", () => 
   assertEquals(graph.redirects, { "https://x/a": "https://x/b" });
 });
 
-Deno.test("parseModuleGraph: an error entry keeps its specifier and reason", () => {
+test("parseModuleGraph: an error entry keeps its specifier and reason", () => {
   const graph = parseModuleGraph(JSON.stringify({
     roots: [],
     modules: [{ specifier: "file:///gone.ts", error: "Module not found" }],
@@ -58,12 +59,12 @@ Deno.test("parseModuleGraph: an error entry keeps its specifier and reason", () 
   assertEquals(graph.redirects, {});
 });
 
-Deno.test("parseModuleGraph: a report with no modules is empty, not a failure", () => {
+test("parseModuleGraph: a report with no modules is empty, not a failure", () => {
   const graph = parseModuleGraph(JSON.stringify({}));
   assertEquals(graph, { roots: [], modules: [], redirects: {} });
 });
 
-Deno.test("parseModuleGraph: non-JSON and non-object reports name the task", () => {
+test("parseModuleGraph: non-JSON and non-object reports name the task", () => {
   const notJson = assertThrows(
     () => parseModuleGraph("deno: not found"),
     Error,
@@ -77,7 +78,7 @@ Deno.test("parseModuleGraph: non-JSON and non-object reports name the task", () 
   assertEquals(scalar.message.includes("number"), true);
 });
 
-Deno.test("parseCacheInfo: every documented location, and missing ones", () => {
+test("parseCacheInfo: every documented location, and missing ones", () => {
   const info = parseCacheInfo(JSON.stringify({
     version: 1,
     denoVersion: "2.8.3",
@@ -96,12 +97,12 @@ Deno.test("parseCacheInfo: every documented location, and missing ones", () => {
   assertEquals(parseCacheInfo("{}").denoDir, undefined);
 });
 
-Deno.test("parseCacheInfo: a non-object report names its own task", () => {
+test("parseCacheInfo: a non-object report names its own task", () => {
   const error = assertThrows(() => parseCacheInfo("null"), Error);
   assertEquals(error.message.includes("DenoTasks.cacheInfo"), true);
 });
 
-Deno.test("moduleGraph: a module is required, cacheInfo refuses one", async () => {
+test("moduleGraph: a module is required, cacheInfo refuses one", async () => {
   const missing = await assertRejects(
     () => DenoTasks.moduleGraph(missingTool),
     Error,
@@ -115,7 +116,7 @@ Deno.test("moduleGraph: a module is required, cacheInfo refuses one", async () =
   assertEquals(extra.message.includes("DenoTasks.moduleGraph()"), true);
 });
 
-Deno.test("the readers fail loudly when deno is missing", async () => {
+test("the readers fail loudly when deno is missing", async () => {
   await assertRejects(
     () => DenoTasks.moduleGraph((s) => missingTool(s).path("mod.ts")),
     ToolNotFoundError,
@@ -126,7 +127,7 @@ Deno.test("the readers fail loudly when deno is missing", async () => {
   );
 });
 
-Deno.test("moduleGraph: the real deno info reports a self-contained module", async () => {
+test("moduleGraph: the real deno info reports a self-contained module", async () => {
   // Hermetic: the settings class defaults to Deno.execPath(), so this drives
   // the deno already running the suite, and the fixture imports nothing, so
   // building its graph needs no network. The fixture is addressed by file URL
@@ -147,7 +148,7 @@ Deno.test("moduleGraph: the real deno info reports a self-contained module", asy
   assertEquals(graph.modules[0].dependencies, []);
 });
 
-Deno.test("moduleGraph: a module deno cannot load comes back as an error entry", async () => {
+test("moduleGraph: a module deno cannot load comes back as an error entry", async () => {
   // deno info exits 0 for a module it could not resolve and reports the
   // failure as data, so the reader must surface it rather than the run
   // throwing — a build reading the graph needs to see which module is broken.
@@ -159,7 +160,7 @@ Deno.test("moduleGraph: a module deno cannot load comes back as an error entry",
   assertEquals(typeof graph.modules[0].error, "string");
 });
 
-Deno.test("cacheInfo: the real deno info reports its cache directories", async () => {
+test("cacheInfo: the real deno info reports its cache directories", async () => {
   const info = await DenoTasks.cacheInfo();
   assertEquals(typeof info.denoDir, "string");
   assertEquals(info.denoDir !== "", true);

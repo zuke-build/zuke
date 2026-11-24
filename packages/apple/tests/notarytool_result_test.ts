@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -15,7 +16,7 @@ import {
 
 const ID = "2efe2717-52ef-43a5-96dc-0797e4ca1041";
 
-Deno.test("parseSubmission reads an accepted result", () => {
+test("parseSubmission reads an accepted result", () => {
   assertEquals(
     parseSubmission(
       JSON.stringify({
@@ -37,14 +38,14 @@ Deno.test("parseSubmission reads an accepted result", () => {
   );
 });
 
-Deno.test("parseSubmission finds the JSON after progress lines", () => {
+test("parseSubmission finds the JSON after progress lines", () => {
   const out = "Conducting pre-submission checks...\n" +
     "Submission ID received\n" +
     JSON.stringify({ id: ID, status: "Invalid", message: "done" });
   assertEquals(parseSubmission(out, "submit").status, "Invalid");
 });
 
-Deno.test("parseSubmission reads wrong-typed fields as absent", () => {
+test("parseSubmission reads wrong-typed fields as absent", () => {
   assertEquals(
     parseSubmission(
       JSON.stringify({ id: ID, status: 4000, message: null, name: ["x"] }),
@@ -54,7 +55,7 @@ Deno.test("parseSubmission reads wrong-typed fields as absent", () => {
   );
 });
 
-Deno.test("parseSubmission refuses output with no JSON object, keeping the raw text", () => {
+test("parseSubmission refuses output with no JSON object, keeping the raw text", () => {
   for (const out of ["", "Error: HTTP 401", "[1,2]", "null", '"text"']) {
     const error = assertThrows(
       () => parseSubmission(out, "submit"),
@@ -65,7 +66,7 @@ Deno.test("parseSubmission refuses output with no JSON object, keeping the raw t
   }
 });
 
-Deno.test("parseSubmission refuses a result without an id", () => {
+test("parseSubmission refuses a result without an id", () => {
   for (const out of ['{"status":"Accepted"}', '{"id":""}', '{"id":7}']) {
     assertThrows(
       () => parseSubmission(out, "info"),
@@ -75,7 +76,7 @@ Deno.test("parseSubmission refuses a result without an id", () => {
   }
 });
 
-Deno.test("parseHistory keeps the entries with an id", () => {
+test("parseHistory keeps the entries with an id", () => {
   assertEquals(
     parseHistory(JSON.stringify({
       history: [
@@ -92,7 +93,7 @@ Deno.test("parseHistory keeps the entries with an id", () => {
   assertThrows(() => parseHistory("nope"), NotarytoolOutputError, "history");
 });
 
-Deno.test("parseLog reads the summary and every issue object", () => {
+test("parseLog reads the summary and every issue object", () => {
   const text = JSON.stringify({
     jobId: ID,
     status: "Invalid",

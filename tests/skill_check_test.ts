@@ -15,6 +15,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -31,7 +32,7 @@ function doc(name: string, description = "Does a thing."): string {
   return `---\nname: ${name}\ndescription: ${description}\n---\n\n# Body\n`;
 }
 
-Deno.test("frontmatter parses single-line fields and rejects non-frontmatter", () => {
+test("frontmatter parses single-line fields and rejects non-frontmatter", () => {
   assertEquals(parseFrontmatter(doc("a-skill")), {
     fields: { name: "a-skill", description: "Does a thing." },
     duplicates: [],
@@ -50,7 +51,7 @@ Deno.test("frontmatter parses single-line fields and rejects non-frontmatter", (
   });
 });
 
-Deno.test("the parser mirrors what a real YAML loader would resolve", () => {
+test("the parser mirrors what a real YAML loader would resolve", () => {
   // Loaders strip a leading BOM before looking for the fence.
   assertEquals(parseFrontmatter("﻿---\nname: x\n---\n")?.fields, {
     name: "x",
@@ -76,18 +77,18 @@ Deno.test("the parser mirrors what a real YAML loader would resolve", () => {
   );
 });
 
-Deno.test("a conforming document has no problems", () => {
+test("a conforming document has no problems", () => {
   assertEquals(checkSkillDoc("a-skill", doc("a-skill")), []);
 });
 
-Deno.test("a name/directory mismatch is the headline failure", () => {
+test("a name/directory mismatch is the headline failure", () => {
   const problems = checkSkillDoc("a-skill", doc("other-name"));
   assertEquals(problems.length, 1);
   assertStringIncludes(problems[0], '"other-name"');
   assertStringIncludes(problems[0], '"a-skill"');
 });
 
-Deno.test("missing frontmatter, name, and description are each reported", () => {
+test("missing frontmatter, name, and description are each reported", () => {
   assertStringIncludes(checkSkillDoc("x", "# no frontmatter\n")[0], "no YAML");
   assertStringIncludes(
     checkSkillDoc("x", "---\ndescription: d\n---\n").join("\n"),
@@ -104,7 +105,7 @@ Deno.test("missing frontmatter, name, and description are each reported", () => 
   );
 });
 
-Deno.test("YAML the validator cannot resolve is a finding, not a pass", () => {
+test("YAML the validator cannot resolve is a finding, not a pass", () => {
   // A block-scalar description resolves to kilobytes in a real loader; the
   // naive value is the one-char indicator, which must not sail through the
   // presence and length checks.
@@ -125,7 +126,7 @@ Deno.test("YAML the validator cannot resolve is a finding, not a pass", () => {
   );
 });
 
-Deno.test("the spec's name shape and length limits are enforced", () => {
+test("the spec's name shape and length limits are enforced", () => {
   // Uppercase, underscores, and hyphen misuse are all out of shape.
   for (const bad of ["Bad", "has_underscore", "-lead", "trail-", "a--b"]) {
     const problems = checkSkillDoc(bad, doc(bad));
@@ -137,7 +138,7 @@ Deno.test("the spec's name shape and length limits are enforced", () => {
   assertStringIncludes(checkSkillDoc("x", wordy).join("\n"), "max 1024");
 });
 
-Deno.test("a tree reports missing SKILL.md files and prefixes paths", async () => {
+test("a tree reports missing SKILL.md files and prefixes paths", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/good`);
     await Deno.writeTextFile(`${dir}/good/SKILL.md`, doc("good"));
@@ -159,7 +160,7 @@ Deno.test("a tree reports missing SKILL.md files and prefixes paths", async () =
   });
 });
 
-Deno.test({
+test({
   name: "a symlinked skill folder is validated, not skipped",
   // Creating symlinks on Windows needs a privilege the CI runner may lack.
   ignore: Deno.build.os === "windows",
@@ -180,14 +181,14 @@ Deno.test({
   },
 });
 
-Deno.test("a missing skills root is a finding, not a crash", async () => {
+test("a missing skills root is a finding, not a crash", async () => {
   // The gate should say what is wrong, not die on an unhandled NotFound.
   const problems = await checkSkillTree("no-such-directory");
   assertEquals(problems.length, 1);
   assertStringIncludes(problems[0], "no-such-directory: missing");
 });
 
-Deno.test("the repo's real skills/ tree conforms to the spec", async () => {
+test("the repo's real skills/ tree conforms to the spec", async () => {
   // The actual gate condition: what this repo serves to Claude Code, Codex,
   // and Gemini CLI is valid under the standard they all consume.
   assertEquals(await checkSkillTree(), []);

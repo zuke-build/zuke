@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("npm: the closing line yields Added, Removed and Changed, plus Vulnerabilities when audited", () => {
+test("npm: the closing line yields Added, Removed and Changed, plus Vulnerabilities when audited", () => {
   assertEquals(parseNpmSummary(out(0, "\nadded 1 package in 441ms\n")), {
     Added: 1,
     Removed: 0,
@@ -51,7 +52,7 @@ Deno.test("npm: the closing line yields Added, Removed and Changed, plus Vulnera
   );
 });
 
-Deno.test("npm: a run without the closing line reports nothing", () => {
+test("npm: a run without the closing line reports nothing", () => {
   assertEquals(parseNpmSummary(out(0)), undefined);
   assertEquals(parseNpmSummary(out(1, "", "npm error code ENOENT")), undefined);
 });
@@ -69,7 +70,7 @@ class CiProbe extends NpmCiSettings {
   }
 }
 
-Deno.test("npm: the hook on every dependency command reports onto the running target", async () => {
+test("npm: the hook on every dependency command reports onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "added 3 packages in 1s\n"));

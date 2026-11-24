@@ -15,6 +15,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
@@ -26,7 +27,7 @@ import { runCli } from "./_harness.ts";
 /** A tool path that cannot exist, so resolution fails before any process runs. */
 const ABSENT = "/nonexistent/zuke-test-gcloud";
 
-Deno.test("a settings refusal fails the target and names the fix", async () => {
+test("a settings refusal fails the target and names the fix", async () => {
   class RefusalBuild extends Build {
     // gcloud: "At most one of --config | --pack | --tag can be specified."
     submit = target().executes(async () => {
@@ -52,7 +53,7 @@ Deno.test("a settings refusal fails the target and names the fix", async () => {
   assertEquals(deploy.err.includes("publicly invokable"), true);
 });
 
-Deno.test("run services update amends without deploy's create-and-reset", async () => {
+test("run services update amends without deploy's create-and-reset", async () => {
   // The two commands are not interchangeable: `run deploy` creates a missing
   // service and resets what it does not name, `run services update` only
   // amends. A build that reached for the wrong one would find out in
@@ -102,7 +103,7 @@ Deno.test("run services update amends without deploy's create-and-reset", async 
   assertEquals(conflicting.err.includes(".updateEnvVars()"), true);
 });
 
-Deno.test("the value readers fail on an absent gcloud rather than returning empty", async () => {
+test("the value readers fail on an absent gcloud rather than returning empty", async () => {
   // These return strings a build interpolates into a URL, an Authorization
   // header, or a secret. An empty one that looked like an answer would fail far
   // from the cause, so resolution has to surface here.
@@ -138,7 +139,7 @@ Deno.test("the value readers fail on an absent gcloud rather than returning empt
   assertEquals(produced, []);
 });
 
-Deno.test("a deploy pipeline runs its targets in dependency order", async () => {
+test("a deploy pipeline runs its targets in dependency order", async () => {
   const order: string[] = [];
   class PipelineBuild extends Build {
     authenticate = target().description("activate the service account")

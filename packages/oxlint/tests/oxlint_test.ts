@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -9,11 +10,11 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { OxlintSettings, OxlintTasks } from "../src/oxlint.ts";
 
-Deno.test("the default binary is oxlint", () => {
+test("the default binary is oxlint", () => {
   assertEquals(new OxlintSettings().argv(), ["oxlint"]);
 });
 
-Deno.test("oxlint: every option renders, paths last", () => {
+test("oxlint: every option renders, paths last", () => {
   const argv = new OxlintSettings()
     .config(".oxlintrc.json").tsconfig("tsconfig.json").fix().fixSuggestions()
     .deny("no-debugger").warn("eqeqeq").allow("no-console")
@@ -51,15 +52,15 @@ Deno.test("oxlint: every option renders, paths last", () => {
   ]);
 });
 
-Deno.test("oxlint: minimal lints just the given path", () => {
+test("oxlint: minimal lints just the given path", () => {
   assertEquals(new OxlintSettings().paths("src").argv(), ["oxlint", "src"]);
 });
 
-Deno.test("OxlintTasks.lint reaches execution", async () => {
+test("OxlintTasks.lint reaches execution", async () => {
   await assertRejects(() => OxlintTasks.lint(missingTool), ToolNotFoundError);
 });
 
-Deno.test("oxlint: resolves its binary from node_modules by default", async () => {
+test("oxlint: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new OxlintSettings(), "oxlint", {
     resolution: "node_modules",
   });

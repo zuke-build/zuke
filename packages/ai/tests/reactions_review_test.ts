@@ -8,6 +8,7 @@
  * pull request, which is the point of it, so tests must not share one.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { AiReviewError, type Reviewer, securityReviewer } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
@@ -94,7 +95,7 @@ async function review(
   };
 }
 
-Deno.test("a clean review shows 👀 while it runs, then 👍", async () => {
+test("a clean review shows 👀 while it runs, then 👍", async () => {
   const { reactions, threw } = await review(
     101,
     claude({ score: 0, severity: "none", findings: [] }),
@@ -103,7 +104,7 @@ Deno.test("a clean review shows 👀 while it runs, then 👍", async () => {
   assertEquals(reactions, ["+eyes", "++1", "-eyes"]);
 });
 
-Deno.test("findings under the failing threshold show 🤏 (😕 on GitHub)", async () => {
+test("findings under the failing threshold show 🤏 (😕 on GitHub)", async () => {
   const { reactions, threw } = await review(
     102,
     claude({
@@ -116,7 +117,7 @@ Deno.test("findings under the failing threshold show 🤏 (😕 on GitHub)", asy
   assertEquals(reactions, ["+eyes", "+confused", "-eyes"]);
 });
 
-Deno.test("a review that trips the gate shows 👎 and still fails the build", async () => {
+test("a review that trips the gate shows 👎 and still fails the build", async () => {
   const { reactions, threw } = await review(
     103,
     claude({
@@ -129,7 +130,7 @@ Deno.test("a review that trips the gate shows 👎 and still fails the build", a
   assertEquals(reactions, ["+eyes", "+-1", "-eyes"]);
 });
 
-Deno.test("an error under onError('fail') is a 👎; under 'warn' it is a skip, 👀 withdrawn", async () => {
+test("an error under onError('fail') is a 👎; under 'warn' it is a skip, 👀 withdrawn", async () => {
   const failed = await review(104, "{}", (r) => r.retry({ attempts: 1 }), 500);
   assertEquals(failed.threw instanceof AiReviewError, true);
   assertEquals(failed.reactions, ["+eyes", "+-1", "-eyes"]);
@@ -143,7 +144,7 @@ Deno.test("an error under onError('fail') is a 👎; under 'warn' it is a skip, 
   assertEquals(warned.reactions, ["+eyes", "-eyes"]);
 });
 
-Deno.test("reactions(false) or quiet() leaves the pull request alone", async () => {
+test("reactions(false) or quiet() leaves the pull request alone", async () => {
   const clean = claude({ score: 0, severity: "none", findings: [] });
   assertEquals(
     (await review(106, clean, (r) => r.reactions(false))).reactions,
@@ -152,7 +153,7 @@ Deno.test("reactions(false) or quiet() leaves the pull request alone", async () 
   assertEquals((await review(107, clean, (r) => r.quiet())).reactions, []);
 });
 
-Deno.test("a token that cannot be minted skips the reactions, not the review", async () => {
+test("a token that cannot be minted skips the reactions, not the review", async () => {
   const { reactions, threw, lines } = await review(
     108,
     claude({ score: 0, severity: "none", findings: [] }),
@@ -177,7 +178,7 @@ Deno.test("a token that cannot be minted skips the reactions, not the review", a
   );
 });
 
-Deno.test("a stale verdict is cleared, and a pass after a 👎 is 🎉", async () => {
+test("a stale verdict is cleared, and a pass after a 👎 is 🎉", async () => {
   const { reactions, left } = await review(
     109,
     claude({ score: 0, severity: "none", findings: [] }),
@@ -189,7 +190,7 @@ Deno.test("a stale verdict is cleared, and a pass after a 👎 is 🎉", async (
   assertEquals(left, ["hooray"]);
 });
 
-Deno.test("a review skipped for want of a key still withdraws the last run's verdict", async () => {
+test("a review skipped for want of a key still withdraws the last run's verdict", async () => {
   const { reactions, left } = await review(
     110,
     "{}",
@@ -255,7 +256,7 @@ const offline = (argv: string[]) =>
     ? Promise.reject(new Error("no merge ref"))
     : Promise.resolve("");
 
-Deno.test("a commanded review that cannot fetch the pull request answers 👍 then 😕, and 👎", async () => {
+test("a commanded review that cannot fetch the pull request answers 👍 then 😕, and 👎", async () => {
   const { command, description } = await commanded(
     111,
     (r) => r.apiKey("k").exec(offline),
@@ -264,7 +265,7 @@ Deno.test("a commanded review that cannot fetch the pull request answers 👍 th
   assertEquals(description, ["-1"]);
 });
 
-Deno.test("a commanded review skipped under onError('warn') answers 😕, with no verdict", async () => {
+test("a commanded review skipped under onError('warn') answers 😕, with no verdict", async () => {
   const { command, description } = await commanded(
     112,
     (r) => r.apiKey("k").exec(offline).onError("warn"),
@@ -273,7 +274,7 @@ Deno.test("a commanded review skipped under onError('warn') answers 😕, with n
   assertEquals(description, []);
 });
 
-Deno.test("a commanded review with no key never starts: 😕 alone", async () => {
+test("a commanded review with no key never starts: 😕 alone", async () => {
   const { command } = await commanded(
     113,
     (r) => r.apiKey("").skipIfKeyMissing(),

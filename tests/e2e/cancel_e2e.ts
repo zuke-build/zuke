@@ -12,6 +12,7 @@
  * `integration` target on the OS matrix.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -25,7 +26,7 @@ import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/cancel_build.ts", import.meta.url);
 
-Deno.test("a separate process cancels a suspended run and runs its compensation", async () => {
+test("a separate process cancels a suspended run and runs its compensation", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   try {
     // Process 1: run to the gate and suspend, persisting the run.
@@ -96,7 +97,7 @@ async function spawnUntil(
   return { child, out: () => text };
 }
 
-Deno.test({
+test({
   name: "a signalled run hands its lease back instead of holding it to the TTL",
   // Windows has no graceful stop to deliver. `installCancelSignals` installs
   // only SIGINT there (SIGTERM is unsupported), and Deno cannot send a child a

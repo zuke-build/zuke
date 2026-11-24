@@ -93,6 +93,8 @@ export interface WorkflowTargets {
   scorecard: TargetBuilder;
   /** The subprocess e2e suite, on an OS matrix. */
   integration: TargetBuilder;
+  /** The ported test files on Node, with Vitest. */
+  nodeTest: TargetBuilder;
 }
 
 /**
@@ -939,6 +941,17 @@ export function githubWorkflows(
         steps: [{
           name: "Run the subprocess e2e suite",
           run: "deno run -A --frozen build.ts integration",
+        }],
+      }, {
+        // The suite on Node, for the files already ported (#993): one OS is
+        // enough until the gate itself moves to Node and runs on all three.
+        target: targets.nodeTest,
+        id: "node",
+        name: "Tests on Node",
+        bootstrap: { denoVersion: "v2.8.3", nodeVersion: NODE_PIN.version },
+        steps: [{
+          name: "Run the ported tests on Node",
+          run: "deno run -A --frozen build.ts nodeTest",
         }],
       }],
     }),

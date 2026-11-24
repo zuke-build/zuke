@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   SignPathApiError,
@@ -11,7 +12,7 @@ import {
 } from "../mod.ts";
 import { REQUEST, WEB_URL } from "./_fetch.ts";
 
-Deno.test("errors: each names what failed and how to find it", () => {
+test("errors: each names what failed and how to find it", () => {
   const api = new SignPathApiError("GET", "/v1/o/x", 401, undefined);
   assertEquals(api.message, "SignPath GET /v1/o/x failed: HTTP 401");
   assertEquals(api.name, "SignPathApiError");

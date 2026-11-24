@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -31,7 +32,7 @@ function submit(): NotarytoolSubmitSettings {
   return new NotarytoolSubmitSettings().key("AuthKey_ABC.p8").keyId("ABC");
 }
 
-Deno.test("notarytool submit: archive, wait, timeout, json, then the API key", () => {
+test("notarytool submit: archive, wait, timeout, json, then the API key", () => {
   assertEquals(
     submit().issuer("ISSUER").file("dist/a.zip").wait().timeout("30m").argv(),
     [
@@ -51,7 +52,7 @@ Deno.test("notarytool submit: archive, wait, timeout, json, then the API key", (
   );
 });
 
-Deno.test("notarytool submit: the json output format is always pinned", () => {
+test("notarytool submit: the json output format is always pinned", () => {
   assertEquals(submit().file("a.zip").argv().slice(1), [
     "notarytool",
     "submit",
@@ -62,11 +63,11 @@ Deno.test("notarytool submit: the json output format is always pinned", () => {
   ]);
 });
 
-Deno.test("notarytool submit: an archive named like a flag stays an operand", () => {
+test("notarytool submit: an archive named like a flag stays an operand", () => {
   assertEquals(submit().file("--wait").argv()[3], "./--wait");
 });
 
-Deno.test("notarytool submit: no archive, or a timeout without wait, is refused", () => {
+test("notarytool submit: no archive, or a timeout without wait, is refused", () => {
   assertThrows(() => submit().argv(), Error, "no archive");
   assertThrows(
     () => submit().file("a.zip").timeout("1h").argv(),
@@ -75,7 +76,7 @@ Deno.test("notarytool submit: no archive, or a timeout without wait, is refused"
   );
 });
 
-Deno.test("notarytool: a keychain profile authenticates, optionally from a keychain", () => {
+test("notarytool: a keychain profile authenticates, optionally from a keychain", () => {
   assertEquals(
     new NotarytoolHistorySettings().keychainProfile("ci").argv().slice(1),
     [
@@ -94,7 +95,7 @@ Deno.test("notarytool: a keychain profile authenticates, optionally from a keych
   );
 });
 
-Deno.test("notarytool: an Apple ID needs its password and team", () => {
+test("notarytool: an Apple ID needs its password and team", () => {
   assertEquals(
     new NotarytoolHistorySettings().appleId("me@example.com").password("pw")
       .teamId("TEAM").argv().slice(5),
@@ -107,7 +108,7 @@ Deno.test("notarytool: an Apple ID needs its password and team", () => {
   );
 });
 
-Deno.test("notarytool: credentials must be exactly one route", () => {
+test("notarytool: credentials must be exactly one route", () => {
   assertThrows(
     () => new NotarytoolHistorySettings().argv(),
     Error,
@@ -131,7 +132,7 @@ Deno.test("notarytool: credentials must be exactly one route", () => {
   );
 });
 
-Deno.test("notarytool info and log: the submission id is required and cannot be a flag", () => {
+test("notarytool info and log: the submission id is required and cannot be a flag", () => {
   assertEquals(
     new NotarytoolInfoSettings().keychainProfile("p").submissionId(ID).argv()
       .slice(1),
@@ -171,7 +172,7 @@ Deno.test("notarytool info and log: the submission id is required and cannot be 
   );
 });
 
-Deno.test("logFor carries the credentials, binary, env and cwd", () => {
+test("logFor carries the credentials, binary, env and cwd", () => {
   const log = submit().issuer("I").toolPath("/opt/xcrun").cwd("/w")
     .env({ DEVELOPER_DIR: "/x" }).file("a.zip").logFor(ID);
   assertEquals(log.argv(), [
@@ -185,12 +186,12 @@ Deno.test("logFor carries the credentials, binary, env and cwd", () => {
   ]);
 });
 
-Deno.test("submit waits only when asked", () => {
+test("submit waits only when asked", () => {
   assertEquals(submit().waits, false);
   assertEquals(submit().wait().waits, true);
 });
 
-Deno.test("NotarytoolTasks reach execution", async () => {
+test("NotarytoolTasks reach execution", async () => {
   await assertRejects(
     () =>
       NotarytoolTasks.submit((s) =>
@@ -218,7 +219,7 @@ Deno.test("NotarytoolTasks reach execution", async () => {
   );
 });
 
-Deno.test("notarytool wrappers resolve xcrun from PATH", async () => {
+test("notarytool wrappers resolve xcrun from PATH", async () => {
   const makers = [
     () => submit().file("a.zip"),
     () => new NotarytoolInfoSettings().keychainProfile("p").submissionId(ID),
@@ -265,7 +266,7 @@ const LOG = JSON.stringify({
   }],
 });
 
-Deno.test("submit with wait returns an accepted submission", async () => {
+test("submit with wait returns an accepted submission", async () => {
   await withFake(
     { submit: { stdout: ACCEPTED, needs: ["--wait"] } },
     async (dir) => {
@@ -282,7 +283,7 @@ Deno.test("submit with wait returns an accepted submission", async () => {
   );
 });
 
-Deno.test("submit without wait returns the upload, which has no status", async () => {
+test("submit without wait returns the upload, which has no status", async () => {
   const uploaded = JSON.stringify({
     id: ID,
     path: "/w/a.zip",
@@ -298,7 +299,7 @@ Deno.test("submit without wait returns the upload, which has no status", async (
   });
 });
 
-Deno.test("a rejected submission fetches its log with the same credentials and throws", async () => {
+test("a rejected submission fetches its log with the same credentials and throws", async () => {
   await withFake({
     // notarytool exits non-zero for an invalid submission; the JSON still wins.
     submit: { stdout: INVALID, code: 1 },
@@ -326,7 +327,7 @@ Deno.test("a rejected submission fetches its log with the same credentials and t
   });
 });
 
-Deno.test("a rejected submission still throws when its log cannot be fetched", async () => {
+test("a rejected submission still throws when its log cannot be fetched", async () => {
   await withFake({
     submit: { stdout: INVALID },
     log: { stderr: "boom", code: 1 },
@@ -344,7 +345,7 @@ Deno.test("a rejected submission still throws when its log cannot be fetched", a
   });
 });
 
-Deno.test("noThrow returns a rejected submission for the caller to inspect", async () => {
+test("noThrow returns a rejected submission for the caller to inspect", async () => {
   await withFake({ submit: { stdout: INVALID, code: 1 } }, async (dir) => {
     const result = await NotarytoolTasks.submit((s) =>
       s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
@@ -354,7 +355,7 @@ Deno.test("noThrow returns a rejected submission for the caller to inspect", asy
   });
 });
 
-Deno.test("submit output that is not a result is refused, with the raw text on the error", async () => {
+test("submit output that is not a result is refused, with the raw text on the error", async () => {
   await withFake(
     { submit: { stdout: "Error: something odd" } },
     async (dir) => {
@@ -371,7 +372,7 @@ Deno.test("submit output that is not a result is refused, with the raw text on t
   );
 });
 
-Deno.test("a failed submit with no result is a CommandError with the password masked", async () => {
+test("a failed submit with no result is a CommandError with the password masked", async () => {
   const password = "app-specific-password-one";
   await withFake({
     submit: { stderr: `HTTP 401 for password ${password}`, code: 2 },
@@ -391,7 +392,7 @@ Deno.test("a failed submit with no result is a CommandError with the password ma
   });
 });
 
-Deno.test("a failed info run is a CommandError with the password masked", async () => {
+test("a failed info run is a CommandError with the password masked", async () => {
   const password = "app-specific-password-two";
   await withFake({ info: { code: 1 } }, async (dir) => {
     const error = await rejection(
@@ -406,7 +407,7 @@ Deno.test("a failed info run is a CommandError with the password masked", async 
   });
 });
 
-Deno.test("info, log and history parse their JSON", async () => {
+test("info, log and history parse their JSON", async () => {
   const info = JSON.stringify({
     id: ID,
     status: "In Progress",
@@ -444,7 +445,7 @@ Deno.test("info, log and history parse their JSON", async () => {
   });
 });
 
-Deno.test("with wait, every status but exactly Accepted is a NotarizationError", async () => {
+test("with wait, every status but exactly Accepted is a NotarizationError", async () => {
   // Regression (finding 2): the check must fail closed — a status it does not
   // know, a missing one, or a differently cased "accepted" is not acceptance.
   const results = [
@@ -471,7 +472,7 @@ Deno.test("with wait, every status but exactly Accepted is a NotarizationError",
   }
 });
 
-Deno.test("a non-zero exit fails the submit even when it printed a result", async () => {
+test("a non-zero exit fails the submit even when it printed a result", async () => {
   // Regression (finding 3): an upload that failed after its id was issued, and
   // an accepted result from a run that still failed, used to pass.
   const failedUpload = JSON.stringify({

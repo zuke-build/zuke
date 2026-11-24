@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
@@ -42,7 +43,7 @@ function recordingReporter(): { reporter: Reporter; lines: string[] } {
   };
 }
 
-Deno.test("a fresh parameter is an optional string", () => {
+test("a fresh parameter is an optional string", () => {
   const p = parameter("desc");
   p.resolve_(undefined);
   assertEquals(p.value, undefined);
@@ -50,7 +51,7 @@ Deno.test("a fresh parameter is an optional string", () => {
   assertEquals(p.value, "hello");
 });
 
-Deno.test("reading a value before resolution throws", () => {
+test("reading a value before resolution throws", () => {
   assertThrows(
     () => parameter("x").value,
     ParameterError,
@@ -58,7 +59,7 @@ Deno.test("reading a value before resolution throws", () => {
   );
 });
 
-Deno.test("default makes the value definite", () => {
+test("default makes the value definite", () => {
   const p = parameter("desc").default("Debug");
   p.resolve_(undefined);
   assertEquals(p.value, "Debug");
@@ -68,14 +69,14 @@ Deno.test("default makes the value definite", () => {
   assertEquals(p.hasFallback_, true);
 });
 
-Deno.test("required has no fallback and stays unresolved without input", () => {
+test("required has no fallback and stays unresolved without input", () => {
   const p = parameter("desc").required();
   assertEquals([p.required_, p.hasFallback_], [true, false]);
   p.resolve_(undefined);
   assertThrows(() => p.value, ParameterError);
 });
 
-Deno.test("number parses and rejects non-numbers", () => {
+test("number parses and rejects non-numbers", () => {
   const p = parameter().number().default(1);
   p.resolve_("42");
   assertEquals(p.value, 42);
@@ -83,7 +84,7 @@ Deno.test("number parses and rejects non-numbers", () => {
   assertThrows(() => p.resolve_(""), ParameterError, "expected a number");
 });
 
-Deno.test("boolean parses truthy/falsy spellings and defaults to false", () => {
+test("boolean parses truthy/falsy spellings and defaults to false", () => {
   const flag = parameter().boolean();
   flag.resolve_(undefined);
   assertEquals(flag.value, false);
@@ -104,7 +105,7 @@ Deno.test("boolean parses truthy/falsy spellings and defaults to false", () => {
   );
 });
 
-Deno.test("options restrict a string to a fixed set", () => {
+test("options restrict a string to a fixed set", () => {
   const p = parameter("env").options("dev", "prod");
   assertEquals(p.options_, ["dev", "prod"]);
   p.resolve_("dev");
@@ -112,12 +113,12 @@ Deno.test("options restrict a string to a fixed set", () => {
   assertThrows(() => p.resolve_("staging"), ParameterError, "expected one of");
 });
 
-Deno.test("env overrides the environment variable name", () => {
+test("env overrides the environment variable name", () => {
   const p = parameter("token").env("CI_TOKEN");
   assertEquals(p.envName_, "CI_TOKEN");
 });
 
-Deno.test("secret survives chaining and stringValue exposes the value", () => {
+test("secret survives chaining and stringValue exposes the value", () => {
   const before = parameter("token").secret().required();
   const after = parameter("token").required().secret();
   assertEquals(before.secret_, true);
@@ -129,7 +130,7 @@ Deno.test("secret survives chaining and stringValue exposes the value", () => {
   assertEquals(parameter("x").stringValue_(), undefined); // unresolved
 });
 
-Deno.test("array parses a comma-separated list and defaults to []", () => {
+test("array parses a comma-separated list and defaults to []", () => {
   const p = parameter("tags").array();
   assertEquals(p.array_, true);
   p.resolve_(undefined);
@@ -141,12 +142,12 @@ Deno.test("array parses a comma-separated list and defaults to []", () => {
   assertEquals(p.value, ["a", "b"]);
 });
 
-Deno.test("array preserves env override and secret flags", () => {
+test("array preserves env override and secret flags", () => {
   const p = parameter("tags").array().env("TAGS").secret();
   assertEquals([p.array_, p.envName_, p.secret_], [true, "TAGS", true]);
 });
 
-Deno.test("array parameters resolve through the CLI map (repeated flag joined)", async () => {
+test("array parameters resolve through the CLI map (repeated flag joined)", async () => {
   class B extends Build {
     tags = parameter("Tags").array();
   }
@@ -162,7 +163,7 @@ Deno.test("array parameters resolve through the CLI map (repeated flag joined)",
   if (p instanceof Parameter) assertEquals(p.value, ["x", "y"]);
 });
 
-Deno.test("required().array() is a required list, not an []-default one", () => {
+test("required().array() is a required list, not an []-default one", () => {
   // Regression: `.array()` used to hardcode required:false, so a
   // `.required().array()` list silently resolved to [] when unsupplied instead
   // of being reported missing. It must carry the required flag through.
@@ -174,7 +175,7 @@ Deno.test("required().array() is a required list, not an []-default one", () => 
   assertEquals(p.value, ["a", "b", "c"]); // supplied, parses per element
 });
 
-Deno.test("required().array() composes with a kind and options", () => {
+test("required().array() composes with a kind and options", () => {
   // The canonical order is kind/options → .required() → .array() (last).
   const nums = parameter("workers").number().required().array();
   assertEquals([nums.required_, nums.hasFallback_], [true, false]);
@@ -189,7 +190,7 @@ Deno.test("required().array() composes with a kind and options", () => {
   assertThrows(() => opts.resolve_("db"), ParameterError, "expected one of");
 });
 
-Deno.test("resolveParameters reports a missing required array parameter", async () => {
+test("resolveParameters reports a missing required array parameter", async () => {
   class B extends Build {
     repos = parameter("repos").required().array();
   }
@@ -209,7 +210,7 @@ Deno.test("resolveParameters reports a missing required array parameter", async 
   if (p instanceof Parameter) assertEquals(p.value, ["a", "b"]);
 });
 
-Deno.test("resolveParameters prompts for a missing required value", async () => {
+test("resolveParameters prompts for a missing required value", async () => {
   class B extends Build {
     token = parameter("API token").required();
   }
@@ -229,7 +230,7 @@ Deno.test("resolveParameters prompts for a missing required value", async () => 
   if (p instanceof Parameter) assertEquals(p.value, "from-prompt");
 });
 
-Deno.test("flagName and envVarName convert camelCase and dotted paths", () => {
+test("flagName and envVarName convert camelCase and dotted paths", () => {
   assertEquals(flagName("environment"), "environment");
   assertEquals(flagName("targetEnv"), "target-env");
   assertEquals(flagName("release.token"), "release-token");
@@ -238,7 +239,7 @@ Deno.test("flagName and envVarName convert camelCase and dotted paths", () => {
   assertEquals(envVarName("release.token"), "RELEASE_TOKEN");
 });
 
-Deno.test("discoverParameters recurses into component bundles", () => {
+test("discoverParameters recurses into component bundles", () => {
   const component = () => ({ token: parameter("Token").required() });
   class B extends Build {
     release = component();
@@ -255,13 +256,13 @@ class Demo extends Build {
   verbose = parameter("Verbose logging").boolean();
 }
 
-Deno.test("discoverParameters names and collects parameters", () => {
+test("discoverParameters names and collects parameters", () => {
   const params = discoverParameters(new Demo());
   assertEquals([...params.keys()], ["environment", "workers", "verbose"]);
   assertEquals(params.get("environment")?.name_, "environment");
 });
 
-Deno.test("resolveParameters: CLI beats env beats default", async () => {
+test("resolveParameters: CLI beats env beats default", async () => {
   const params = discoverParameters(new Demo());
   const env = (name: string) => (name === "WORKERS" ? "8" : undefined);
   const errors = await resolveParameters(params, { environment: "prod" }, env);
@@ -280,7 +281,7 @@ Deno.test("resolveParameters: CLI beats env beats default", async () => {
   if (verbose instanceof Parameter) assertEquals(verbose.value, false); // default
 });
 
-Deno.test("resolveParameters reports missing required and invalid values", async () => {
+test("resolveParameters reports missing required and invalid values", async () => {
   const params = discoverParameters(new Demo());
   const errors = await resolveParameters(
     params,
@@ -298,7 +299,7 @@ Deno.test("resolveParameters reports missing required and invalid values", async
   );
 });
 
-Deno.test("execute resolves parameters from the params map before running", async () => {
+test("execute resolves parameters from the params map before running", async () => {
   const seen: string[] = [];
   class Deploy extends Build {
     environment = parameter("env").required();
@@ -316,7 +317,7 @@ Deno.test("execute resolves parameters from the params map before running", asyn
   assertEquals(seen, ["production"]);
 });
 
-Deno.test("execute resolves parameters from the environment", async () => {
+test("execute resolves parameters from the environment", async () => {
   const seen: string[] = [];
   class Deploy extends Build {
     environment = parameter("env").required();
@@ -333,7 +334,7 @@ Deno.test("execute resolves parameters from the environment", async () => {
   assertEquals(seen, ["staging"]);
 });
 
-Deno.test("execute fails before running when a required parameter is missing", async () => {
+test("execute fails before running when a required parameter is missing", async () => {
   let ran = false;
   class Deploy extends Build {
     environment = parameter("env").required();
@@ -351,7 +352,7 @@ Deno.test("execute fails before running when a required parameter is missing", a
   assertEquals(result.error instanceof ParameterError, true);
 });
 
-Deno.test("a secret source resolves the value when no flag/env supplied one", async () => {
+test("a secret source resolves the value when no flag/env supplied one", async () => {
   class B extends Build {
     token = parameter("Token").secret().from(fixedSource("from-source"));
   }
@@ -362,7 +363,7 @@ Deno.test("a secret source resolves the value when no flag/env supplied one", as
   if (p instanceof Parameter) assertEquals(p.value, "from-source");
 });
 
-Deno.test("a flag and env both beat a secret source", async () => {
+test("a flag and env both beat a secret source", async () => {
   class B extends Build {
     token = parameter("Token").secret().from(fixedSource("from-source"));
   }
@@ -382,7 +383,7 @@ Deno.test("a flag and env both beat a secret source", async () => {
   if (env instanceof Parameter) assertEquals(env.value, "from-env");
 });
 
-Deno.test("a failing secret source is reported as a parameter error", async () => {
+test("a failing secret source is reported as a parameter error", async () => {
   class B extends Build {
     token = parameter("Token").secret().from(failingSource("vault is sealed"));
   }
@@ -392,7 +393,7 @@ Deno.test("a failing secret source is reported as a parameter error", async () =
   assertStringIncludes(errors[0], "--token: vault is sealed");
 });
 
-Deno.test("from() preserves the source across further configuration", async () => {
+test("from() preserves the source across further configuration", async () => {
   // Order-independent: whether .secret() or .from() comes first, and after a
   // kind change, the source survives.
   class B extends Build {
@@ -407,7 +408,7 @@ Deno.test("from() preserves the source across further configuration", async () =
   if (b instanceof Parameter) assertEquals(b.value, "later");
 });
 
-Deno.test("resolveParameters registers a secret's raw value with the redactor", async () => {
+test("resolveParameters registers a secret's raw value with the redactor", async () => {
   class B extends Build {
     token = parameter("Token").secret().from(fixedSource("top-secret"));
     visible = parameter("Visible").default("visible");
@@ -422,7 +423,7 @@ Deno.test("resolveParameters registers a secret's raw value with the redactor", 
   );
 });
 
-Deno.test("execute redacts a secret leaked in a target's failure message", async () => {
+test("execute redacts a secret leaked in a target's failure message", async () => {
   const { reporter, lines } = recordingReporter();
   class Deploy extends Build {
     token = parameter("Token").secret().from(fixedSource("hunter2xyz"));
@@ -451,7 +452,7 @@ Deno.test("execute redacts a secret leaked in a target's failure message", async
   assertEquals(joined.includes("hunter2xyz"), false);
 });
 
-Deno.test("execute redacts a secret's invalid value from the parameter error", async () => {
+test("execute redacts a secret's invalid value from the parameter error", async () => {
   const { reporter, lines } = recordingReporter();
   class Deploy extends Build {
     // A source that yields a non-numeric value fails to parse; the error must
@@ -474,7 +475,7 @@ Deno.test("execute redacts a secret's invalid value from the parameter error", a
   assertStringIncludes(joined, REDACTED);
 });
 
-Deno.test("a custom reporter is never handed the raw secret via ::add-mask::", async () => {
+test("a custom reporter is never handed the raw secret via ::add-mask::", async () => {
   const { reporter, lines } = recordingReporter();
   class Deploy extends Build {
     token = parameter("Token").secret().from(fixedSource("real-value-123"));
@@ -496,7 +497,7 @@ Deno.test("a custom reporter is never handed the raw secret via ::add-mask::", a
   assertEquals(lines.some((l) => l.startsWith("::add-mask::")), false);
 });
 
-Deno.test("discoverParameters rejects a reserved MCP control name", () => {
+test("discoverParameters rejects a reserved MCP control name", () => {
   // A parameter field named after a run-tool control key would be shadowed by
   // that key in the MCP input schema, so discovery refuses it.
   class BadDryRun extends Build {
@@ -524,7 +525,7 @@ Deno.test("discoverParameters rejects a reserved MCP control name", () => {
   }
 });
 
-Deno.test("discoverParameters rejects a parameter that renders as a built-in flag", () => {
+test("discoverParameters rejects a parameter that renders as a built-in flag", () => {
   // `parseArgs` matches a built-in ahead of a declared parameter of the same
   // name, so `actor = parameter()` is not merely shadowed: `--actor=x` sets
   // the run's attribution and the parameter never sees the value.
@@ -553,7 +554,7 @@ Deno.test("discoverParameters rejects a parameter that renders as a built-in fla
   }
 });
 
-Deno.test("the built-in flag refusal covers every flag the parser knows", () => {
+test("the built-in flag refusal covers every flag the parser knows", () => {
   // Derived from the same list `parseArgs` matches against, so a flag added to
   // the CLI is reserved without anyone remembering to add it here too.
   for (const flag of BUILTIN_FLAG_NAMES) {
@@ -574,7 +575,7 @@ Deno.test("the built-in flag refusal covers every flag the parser knows", () => 
   }
 });
 
-Deno.test("a parameter merely near a built-in flag is accepted", () => {
+test("a parameter merely near a built-in flag is accepted", () => {
   // The check is on the rendered flag, not on a substring of the field, so a
   // longer name and a nested one both stay usable.
   class Fine extends Build {
@@ -588,7 +589,7 @@ Deno.test("a parameter merely near a built-in flag is accepted", () => {
   );
 });
 
-Deno.test("a parameter exposes its default as a display string", () => {
+test("a parameter exposes its default as a display string", () => {
   const withDefault = parameter().default("eu");
   assertEquals(withDefault.default_, "eu");
   const bool = parameter().boolean();
@@ -600,7 +601,7 @@ Deno.test("a parameter exposes its default as a display string", () => {
   assertEquals(parameter().default_, undefined);
 });
 
-Deno.test("a declared flag replaces the one the name would derive", () => {
+test("a declared flag replaces the one the name would derive", () => {
   class B extends Build {
     // The digit ends the run of capitals, so the derived flag would be
     // `--skip-e2-e`. This is the case `.flag()` exists for.
@@ -613,7 +614,7 @@ Deno.test("a declared flag replaces the one the name would derive", () => {
   assertEquals(flagOf("ordinary", params.get("ordinary")!), "ordinary");
 });
 
-Deno.test("the leading dashes are optional when declaring a flag", () => {
+test("the leading dashes are optional when declaring a flag", () => {
   // Two builds, not two fields of one: a single build declaring the same flag
   // twice is refused, which is its own test below.
   class WithDashes extends Build {
@@ -628,7 +629,7 @@ Deno.test("the leading dashes are optional when declaring a flag", () => {
   assertEquals(new Without().a.flagName_, "skip-e2e");
 });
 
-Deno.test("a declared flag that is not a valid flag name is refused", () => {
+test("a declared flag that is not a valid flag name is refused", () => {
   for (const bad of ["skip e2e", "-skip", "skip=e2e", "2fast", "Skip", ""]) {
     class B extends Build {
       thing = parameter("bad").flag(bad);
@@ -641,7 +642,7 @@ Deno.test("a declared flag that is not a valid flag name is refused", () => {
   }
 });
 
-Deno.test("a declared flag naming a built-in is refused, naming the declaration", () => {
+test("a declared flag naming a built-in is refused, naming the declaration", () => {
   class B extends Build {
     message = parameter("would hijack attribution").flag("--actor");
   }
@@ -655,7 +656,7 @@ Deno.test("a declared flag naming a built-in is refused, naming the declaration"
   assertStringIncludes(String(error), "declares the flag");
 });
 
-Deno.test("two parameters claiming one flag are refused, naming both", () => {
+test("two parameters claiming one flag are refused, naming both", () => {
   class B extends Build {
     // Field names deliberately absent from the rendered flag, so the message
     // has to name them rather than merely echo `--stage`.

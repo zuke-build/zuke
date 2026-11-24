@@ -10,6 +10,7 @@
  * the same temp `ZUKE_STATE_DIR` the harness set.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -40,7 +41,7 @@ async function loadRun(dir: string, id: string): Promise<RunRecord> {
   return got.record;
 }
 
-Deno.test("zuke cancel stops a suspended run and runs its compensations", async () => {
+test("zuke cancel stops a suspended run and runs its compensations", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class CD extends Build {
@@ -93,7 +94,7 @@ Deno.test("zuke cancel stops a suspended run and runs its compensations", async 
   });
 });
 
-Deno.test("zuke cancel runs each fan-out item's own onCancel compensation", async () => {
+test("zuke cancel runs each fan-out item's own onCancel compensation", async () => {
   await withStateDir(async (dir) => {
     const undone: string[] = [];
     class CD extends Build {
@@ -140,7 +141,7 @@ Deno.test("zuke cancel runs each fan-out item's own onCancel compensation", asyn
   });
 });
 
-Deno.test("zuke cancel compensates a declared target reused as a fan-out stage", async () => {
+test("zuke cancel compensates a declared target reused as a fan-out stage", async () => {
   await withStateDir(async (dir) => {
     const undone: string[] = [];
     class CD extends Build {
@@ -177,7 +178,7 @@ Deno.test("zuke cancel compensates a declared target reused as a fan-out stage",
   });
 });
 
-Deno.test("zuke cancel of a finished run is a no-op", async () => {
+test("zuke cancel of a finished run is a no-op", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class B extends Build {
@@ -198,7 +199,7 @@ Deno.test("zuke cancel of a finished run is a no-op", async () => {
   });
 });
 
-Deno.test("zuke cancel with a missing run id fails with usage", async () => {
+test("zuke cancel with a missing run id fails with usage", async () => {
   await withStateDir(async () => {
     class B extends Build {
       go = target().executes(() => {});
@@ -209,7 +210,7 @@ Deno.test("zuke cancel with a missing run id fails with usage", async () => {
   });
 });
 
-Deno.test("a compensation's context reads its target's meta, and nothing else's", async () => {
+test("a compensation's context reads its target's meta, and nothing else's", async () => {
   // Pins the contract documented in docs/orchestration.md. The trap it exists
   // to stop: `ctx.state` holds the COMPENSATED target's meta while `ctx.target`
   // names the compensation, and asking for that same target through `stateOf`
@@ -268,7 +269,7 @@ Deno.test("a compensation's context reads its target's meta, and nothing else's"
   });
 });
 
-Deno.test("a compensation that is also a graph target is in the run's plan", async () => {
+test("a compensation that is also a graph target is in the run's plan", async () => {
   // The companion to the test above, whose fixture declares its compensation
   // off the graph. `ctx.plan()` is the whole run's plan and nothing filters a
   // compensation out of it, so "a compensation is not in the plan" would be a
@@ -299,7 +300,7 @@ Deno.test("a compensation that is also a graph target is in the run's plan", asy
   });
 });
 
-Deno.test("a timed-out wait's compensation target compensates itself", async () => {
+test("a timed-out wait's compensation target compensates itself", async () => {
   // The other way a compensation is reached. `.onTimeout(() => this.cleanup)`
   // builds the step FOR `cleanup`, so `ctx.state` is cleanup's own meta — not
   // the deployed target's. A rollback written for the `.onCancel` shape, going

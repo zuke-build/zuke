@@ -8,6 +8,7 @@
  * calls it, so a resolver that forgets the check fails here.
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import {
   ALLOW_INSECURE_ENV,
@@ -38,7 +39,7 @@ const unusedHost: StateHost = {
   now: () => 0,
 };
 
-Deno.test("assertSecureBackendUrl accepts https and rejects plaintext", () => {
+test("assertSecureBackendUrl accepts https and rejects plaintext", () => {
   assertSecureBackendUrl(
     "https://state.example/api",
     "ZUKE_STATE_URL",
@@ -58,7 +59,7 @@ Deno.test("assertSecureBackendUrl accepts https and rejects plaintext", () => {
   assertEquals(error.message.includes(ALLOW_INSECURE_ENV), true);
 });
 
-Deno.test("assertSecureBackendUrl refuses plaintext even with no token configured", () => {
+test("assertSecureBackendUrl refuses plaintext even with no token configured", () => {
   // Integrity, not just confidentiality: an on-path attacker choosing the
   // *answer* needs no credential to steal, so the guard cannot be conditional
   // on one being set.
@@ -73,7 +74,7 @@ Deno.test("assertSecureBackendUrl refuses plaintext even with no token configure
   );
 });
 
-Deno.test("assertSecureBackendUrl exempts loopback and honours the opt-out", () => {
+test("assertSecureBackendUrl exempts loopback and honours the opt-out", () => {
   for (
     const url of [
       "http://localhost:8000",
@@ -101,7 +102,7 @@ Deno.test("assertSecureBackendUrl exempts loopback and honours the opt-out", () 
   );
 });
 
-Deno.test("assertSecureBackendUrl redacts credentials in its message", () => {
+test("assertSecureBackendUrl redacts credentials in its message", () => {
   const error = assertThrows(
     () =>
       assertSecureBackendUrl(
@@ -115,12 +116,12 @@ Deno.test("assertSecureBackendUrl redacts credentials in its message", () => {
   assertEquals(error.message.includes("abcd"), false);
 });
 
-Deno.test("assertSecureBackendUrl leaves a non-URL to its own consumer", () => {
+test("assertSecureBackendUrl leaves a non-URL to its own consumer", () => {
   // Not a URL at all: complaining here would report the wrong problem.
   assertSecureBackendUrl("not a url", "ZUKE_STATE_URL", env({}));
 });
 
-Deno.test("isLoopbackHost recognises loopback names and the 127/8 block only", () => {
+test("isLoopbackHost recognises loopback names and the 127/8 block only", () => {
   assertEquals(isLoopbackHost("localhost"), true);
   assertEquals(isLoopbackHost("127.0.0.1"), true);
   assertEquals(isLoopbackHost("::1"), true);
@@ -130,7 +131,7 @@ Deno.test("isLoopbackHost recognises loopback names and the 127/8 block only", (
   assertEquals(isLoopbackHost("127.0.0.1.evil.example"), false);
 });
 
-Deno.test("every env-configured backend refuses a plaintext URL", () => {
+test("every env-configured backend refuses a plaintext URL", () => {
   assertThrows(
     () =>
       envStateStore(
@@ -156,7 +157,7 @@ Deno.test("every env-configured backend refuses a plaintext URL", () => {
   );
 });
 
-Deno.test("every env-configured backend still resolves over https", () => {
+test("every env-configured backend still resolves over https", () => {
   assertEquals(
     envStateStore(
       env({ ZUKE_STATE_URL: "https://state.example" }),
@@ -180,7 +181,7 @@ Deno.test("every env-configured backend still resolves over https", () => {
   );
 });
 
-Deno.test("the guard and the bounded body reader are public API for wrapper packages", async () => {
+test("the guard and the bounded body reader are public API for wrapper packages", async () => {
   // A wrapper package may depend on core alone, so these are the shared copies
   // it uses instead of retyping a loopback check or a capped reader.
   const core = await import("../mod.ts");

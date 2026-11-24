@@ -9,16 +9,17 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { rubyString } from "../src/ruby.ts";
 
-Deno.test("ruby: a plain value is quoted as it is", () => {
+test("ruby: a plain value is quoted as it is", () => {
   assertEquals(rubyString("Build automation"), '"Build automation"');
   assertEquals(rubyString(""), '""');
   assertEquals(rubyString("naïve ✓"), '"naïve ✓"');
 });
 
-Deno.test("ruby: quotes and backslashes cannot close the literal", () => {
+test("ruby: quotes and backslashes cannot close the literal", () => {
   assertEquals(rubyString('a"b'), '"a\\"b"');
   assertEquals(rubyString("a\\b"), '"a\\\\b"');
   // A trailing backslash would otherwise escape the closing quote.
@@ -26,7 +27,7 @@ Deno.test("ruby: quotes and backslashes cannot close the literal", () => {
   assertEquals(rubyString('";system("x");"'), '"\\";system(\\"x\\");\\""');
 });
 
-Deno.test("ruby: every interpolation form is neutralised, a bare # is left alone", () => {
+test("ruby: every interpolation form is neutralised, a bare # is left alone", () => {
   assertEquals(rubyString('#{system("id")}'), '"\\#{system(\\"id\\")}"');
   assertEquals(rubyString("#@ivar #$global"), '"\\#@ivar \\#$global"');
   assertEquals(rubyString("issue #42 #"), '"issue #42 #"');
@@ -35,7 +36,7 @@ Deno.test("ruby: every interpolation form is neutralised, a bare # is left alone
   assertEquals(rubyString("##{x}"), '"#\\#{x}"');
 });
 
-Deno.test("ruby: line breaks and control characters stay on one line", () => {
+test("ruby: line breaks and control characters stay on one line", () => {
   assertEquals(rubyString("a\nb\r\tc"), '"a\\nb\\r\\tc"');
   assertEquals(
     rubyString("a\u0000b\u001bc\u007f"),
@@ -48,7 +49,7 @@ Deno.test("ruby: line breaks and control characters stay on one line", () => {
   );
 });
 
-Deno.test("ruby: invisible and bidirectional characters are spelled out", () => {
+test("ruby: invisible and bidirectional characters are spelled out", () => {
   assertEquals(rubyString("a\u202eb"), '"a\\u{202e}b"');
   assertEquals(
     rubyString("\u2066a\u2028b\u200bc"),
@@ -56,7 +57,7 @@ Deno.test("ruby: invisible and bidirectional characters are spelled out", () => 
   );
 });
 
-Deno.test("ruby: the remaining invisible format characters are spelled out too", () => {
+test("ruby: the remaining invisible format characters are spelled out too", () => {
   // Finding 6 of the adversarial review: these render as nothing as well.
   const codes = [
     0x00ad,
@@ -83,7 +84,7 @@ Deno.test("ruby: the remaining invisible format characters are spelled out too",
   }
 });
 
-Deno.test("ruby: the literal is always one line with balanced, escaped quotes", () => {
+test("ruby: the literal is always one line with balanced, escaped quotes", () => {
   const hostile = [
     '"; `rm -rf /`; "',
     "#{`id`}",

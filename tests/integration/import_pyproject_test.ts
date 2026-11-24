@@ -13,6 +13,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -44,7 +45,7 @@ docs = { script = "app.docs:main" }
 ci.sequence = ["lint", "test"]
 `;
 
-Deno.test("zuke import turns a pyproject.toml into a Python build on the pinned engine", async () => {
+test("zuke import turns a pyproject.toml into a Python build on the pinned engine", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-it-import-py-" });
   const prev = Deno.cwd();
   Deno.chdir(dir);

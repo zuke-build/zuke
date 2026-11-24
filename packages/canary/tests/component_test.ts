@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -74,7 +75,7 @@ async function onlyRun(store: StateStore): Promise<string> {
   return runs[0].id;
 }
 
-Deno.test("a rollout stages, steps up, promotes, and names its targets under the field", async () => {
+test("a rollout stages, steps up, promotes, and names its targets under the field", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const b = built(rolloutOf(platform, (c) => c.steps(10, 50)));
@@ -104,7 +105,7 @@ Deno.test("a rollout stages, steps up, promotes, and names its targets under the
   });
 });
 
-Deno.test("a failed analysis rolls back with the state stage recorded", async () => {
+test("a failed analysis rolls back with the state stage recorded", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const check = analysis(2);
@@ -132,7 +133,7 @@ Deno.test("a failed analysis rolls back with the state stage recorded", async ()
   });
 });
 
-Deno.test("a failed expose and a failed promote roll back", async () => {
+test("a failed expose and a failed promote roll back", async () => {
   for (const failOn of ["expose", "promote"] as const) {
     await withTempStore(async (store) => {
       const platform = new FakePlatform();
@@ -148,7 +149,7 @@ Deno.test("a failed expose and a failed promote roll back", async () => {
   }
 });
 
-Deno.test("a stage that fails part-way still rolls back what it left", async () => {
+test("a stage that fails part-way still rolls back what it left", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     platform.failOn = "stage";
@@ -162,7 +163,7 @@ Deno.test("a stage that fails part-way still rolls back what it left", async () 
   });
 });
 
-Deno.test("analyses are handed the exposure achieved, not just the one requested", async () => {
+test("analyses are handed the exposure achieved, not just the one requested", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform("replicas");
     platform.achieve = (percent) => percent === 10 ? 12.5 : percent;
@@ -178,7 +179,7 @@ Deno.test("analyses are handed the exposure achieved, not just the one requested
   });
 });
 
-Deno.test("an exposure outside 0 to 100 fails the step and rolls back", async () => {
+test("an exposure outside 0 to 100 fails the step and rolls back", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     platform.achieve = () => Number.NaN;
@@ -193,7 +194,7 @@ Deno.test("an exposure outside 0 to 100 fails the step and rolls back", async ()
   });
 });
 
-Deno.test("an inline bake runs its analyses in flight and stops at the first failure", async () => {
+test("an inline bake runs its analyses in flight and stops at the first failure", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const check = analysis(3);
@@ -215,7 +216,7 @@ Deno.test("an inline bake runs its analyses in flight and stops at the first fai
   });
 });
 
-Deno.test("an inline bake that stays healthy runs to its end, then analyses once more", async () => {
+test("an inline bake that stays healthy runs to its end, then analyses once more", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const check = analysis();
@@ -236,7 +237,7 @@ Deno.test("an inline bake that stays healthy runs to its end, then analyses once
   });
 });
 
-Deno.test("the lock is held from staging to promotion, and released after", async () => {
+test("the lock is held from staging to promotion, and released after", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const held: boolean[] = [];
@@ -275,7 +276,7 @@ Deno.test("the lock is held from staging to promotion, and released after", asyn
   });
 });
 
-Deno.test("an approval gate parks the rollout, and the signal promotes it", async () => {
+test("an approval gate parks the rollout, and the signal promotes it", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const Rollout = rolloutOf(
@@ -301,7 +302,7 @@ Deno.test("an approval gate parks the rollout, and the signal promotes it", asyn
   });
 });
 
-Deno.test("an approval that times out rolls back", async () => {
+test("an approval that times out rolls back", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const Rollout = rolloutOf(
@@ -318,7 +319,7 @@ Deno.test("an approval that times out rolls back", async () => {
   });
 });
 
-Deno.test("zuke cancel on a parked rollout runs the same rollback", async () => {
+test("zuke cancel on a parked rollout runs the same rollback", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const Rollout = rolloutOf(platform, (c) => c.steps(10).approval("ok"));
@@ -333,7 +334,7 @@ Deno.test("zuke cancel on a parked rollout runs the same rollback", async () => 
   });
 });
 
-Deno.test("a durable bake parks the run until its time is up", async () => {
+test("a durable bake parks the run until its time is up", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const check = analysis();
@@ -362,7 +363,7 @@ Deno.test("a durable bake parks the run until its time is up", async () => {
   });
 });
 
-Deno.test("a canary with no steps soaks and analyses once before promoting", async () => {
+test("a canary with no steps soaks and analyses once before promoting", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform("channel");
     const check = analysis();
@@ -379,7 +380,7 @@ Deno.test("a canary with no steps soaks and analyses once before promoting", asy
   });
 });
 
-Deno.test("abort run by hand gets no recorded state", async () => {
+test("abort run by hand gets no recorded state", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const b = built(rolloutOf(platform, (c) => c.steps(10)));
@@ -392,7 +393,7 @@ Deno.test("abort run by hand gets no recorded state", async () => {
   });
 });
 
-Deno.test("the final analysis gets its target's signal, so a cancel cuts it short", async () => {
+test("the final analysis gets its target's signal, so a cancel cuts it short", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const signals: Array<AbortSignal | undefined> = [];
@@ -415,7 +416,7 @@ Deno.test("the final analysis gets its target's signal, so a cancel cuts it shor
   });
 });
 
-Deno.test("a second rollout refused the lock leaves the first rollout's candidate alone", async () => {
+test("a second rollout refused the lock leaves the first rollout's candidate alone", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const Rollout = rolloutOf(
@@ -443,7 +444,7 @@ Deno.test("a second rollout refused the lock leaves the first rollout's candidat
   });
 });
 
-Deno.test("a cancel while stage runs rolls back what it had staged", async () => {
+test("a cancel while stage runs rolls back what it had staged", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     let started: () => void = () => {};
@@ -486,7 +487,7 @@ Deno.test("a cancel while stage runs rolls back what it had staged", async () =>
   });
 });
 
-Deno.test("a stage whose rollback also fails reports both", async () => {
+test("a stage whose rollback also fails reports both", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     platform.failOn = "stage";
@@ -511,7 +512,7 @@ Deno.test("a stage whose rollback also fails reports both", async () => {
   });
 });
 
-Deno.test("a cancellation after promotion does not roll the release back", async () => {
+test("a cancellation after promotion does not roll the release back", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     class B extends Build {
@@ -533,7 +534,7 @@ Deno.test("a cancellation after promotion does not roll the release back", async
   });
 });
 
-Deno.test("a rollback run by hand is refused while a rollout holds the lock", async () => {
+test("a rollback run by hand is refused while a rollout holds the lock", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform();
     const Rollout = rolloutOf(

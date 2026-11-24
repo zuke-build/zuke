@@ -9,6 +9,7 @@
  * discovered graph feeding the generator, and the failing-check exit code).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { Build, discoverTargets, target } from "../../packages/core/mod.ts";
 import {
   assertEquals,
@@ -42,7 +43,7 @@ function fixture(path: string): new () => Build {
   };
 }
 
-Deno.test("graphDoc target writes the page and graphDocCheck then passes", async () => {
+test("graphDoc target writes the page and graphDocCheck then passes", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-it-graph-doc-" });
   const path = `${dir}/graph.md`;
   try {
@@ -77,7 +78,7 @@ Deno.test("graphDoc target writes the page and graphDocCheck then passes", async
   }
 });
 
-Deno.test("graphDocCheck fails when the build gains a target after generation", async () => {
+test("graphDocCheck fails when the build gains a target after generation", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-it-graph-drift-" });
   const path = `${dir}/graph.md`;
   try {

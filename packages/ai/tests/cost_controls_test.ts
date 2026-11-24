@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   aiCache,
@@ -107,7 +108,7 @@ function hermetic(f: ReturnType<typeof aiFixer>): ReturnType<typeof aiFixer> {
 
 // ----- Budget --------------------------------------------------------------
 
-Deno.test("reviewer records token usage against a shared budget", async () => {
+test("reviewer records token usage against a shared budget", async () => {
   const b = budget((x) => x.maxTokens(1000));
   const { fetch } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }, {
@@ -126,7 +127,7 @@ Deno.test("reviewer records token usage against a shared budget", async () => {
   assertEquals(lines.some((l) => l.startsWith("  budget:")), true);
 });
 
-Deno.test("reviewer skips the call once the budget is exhausted", async () => {
+test("reviewer skips the call once the budget is exhausted", async () => {
   const b = budget((x) => x.maxTokens(0)); // exhausted before any call
   // A critical finding that *would* trip the gate — but the call never happens.
   const { fetch, calls } = recordFetch(
@@ -147,7 +148,7 @@ Deno.test("reviewer skips the call once the budget is exhausted", async () => {
   assertEquals(lines.some((l) => l.includes("AI budget exhausted")), true);
 });
 
-Deno.test("the verify pass's own usage draws down the shared budget", async () => {
+test("the verify pass's own usage draws down the shared budget", async () => {
   const b = budget((x) => x.maxTokens(100_000));
   const finding = {
     title: "weak hash",
@@ -196,7 +197,7 @@ Deno.test("the verify pass's own usage draws down the shared budget", async () =
 
 // ----- Cache ---------------------------------------------------------------
 
-Deno.test("reviewer caches a response and reuses it on a repeat run", async () => {
+test("reviewer caches a response and reuses it on a repeat run", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch, calls } = recordFetch(
@@ -213,7 +214,7 @@ Deno.test("reviewer caches a response and reuses it on a repeat run", async () =
   assertEquals(store.map.size, 1);
 });
 
-Deno.test("reviewer cache key is effort-sensitive (no cross-effort reuse)", async () => {
+test("reviewer cache key is effort-sensitive (no cross-effort reuse)", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch, calls } = recordFetch(
@@ -232,7 +233,7 @@ Deno.test("reviewer cache key is effort-sensitive (no cross-effort reuse)", asyn
   assertEquals(store.map.size, 2);
 });
 
-Deno.test("a cached review notes it served from cache", async () => {
+test("a cached review notes it served from cache", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch } = recordFetch(
@@ -257,7 +258,7 @@ function poison(store: ReturnType<typeof memStore>): void {
   }
 }
 
-Deno.test("a corrupt cache entry follows the reviewer's onError policy", async () => {
+test("a corrupt cache entry follows the reviewer's onError policy", async () => {
   // Reading a cached response is a parse, and a parse can fail — a truncated or
   // tampered entry must be handled like any other unreadable response, not
   // thrown past the reviewer's own error policy.
@@ -285,7 +286,7 @@ Deno.test("a corrupt cache entry follows the reviewer's onError policy", async (
   });
 });
 
-Deno.test("a corrupt cache entry makes the fixer give up, not throw", async () => {
+test("a corrupt cache entry makes the fixer give up, not throw", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
@@ -309,7 +310,7 @@ Deno.test("a corrupt cache entry makes the fixer give up, not throw", async () =
 
 // ----- Suppression ---------------------------------------------------------
 
-Deno.test("a finding whose id is suppressed is dropped from the review", async () => {
+test("a finding whose id is suppressed is dropped from the review", async () => {
   const dismissed = { title: "weak hash", severity: "low" as const };
   const sup = suppressions((s) =>
     s.add(findingFingerprint("security", dismissed))
@@ -337,7 +338,7 @@ Deno.test("a finding whose id is suppressed is dropped from the review", async (
   );
 });
 
-Deno.test("suppressing every finding clears the score and passes the gate", async () => {
+test("suppressing every finding clears the score and passes the gate", async () => {
   const only = { title: "rce", severity: "critical" as const, file: "x.ts" };
   const sup = suppressions((s) => s.add(findingFingerprint("security", only)));
   // Score 9 would trip the default gate (>7); suppression must clear it.
@@ -350,7 +351,7 @@ Deno.test("suppressing every finding clears the score and passes the gate", asyn
   ).validate(noRedactionContext("t")); // resolves — does not throw
 });
 
-Deno.test("partial suppression recomputes severity from what remains", async () => {
+test("partial suppression recomputes severity from what remains", async () => {
   const high = { title: "high one", severity: "high" as const };
   const low = { title: "low one", severity: "low" as const };
   const sup = suppressions((s) => s.add(findingFingerprint("security", high)));
@@ -367,7 +368,7 @@ Deno.test("partial suppression recomputes severity from what remains", async () 
   assertEquals(lines.some((l) => l.includes("(low) — 1 finding(s)")), true);
 });
 
-Deno.test("suppressing the critical finding recomputes the score below the gate", async () => {
+test("suppressing the critical finding recomputes the score below the gate", async () => {
   const critical = {
     title: "rce",
     severity: "critical" as const,
@@ -394,7 +395,7 @@ Deno.test("suppressing the critical finding recomputes the score below the gate"
   ).validate(noRedactionContext("t")); // resolves — the recomputed score no longer trips
 });
 
-Deno.test("an empty suppress list leaves the findings untouched", async () => {
+test("an empty suppress list leaves the findings untouched", async () => {
   // An injected reader that finds no file -> no fingerprints, nothing dropped.
   const sup = suppressions((s) => s.reader(() => Promise.resolve(undefined)));
   const { fetch } = recordFetch(
@@ -414,7 +415,7 @@ Deno.test("an empty suppress list leaves the findings untouched", async () => {
   assertEquals(lines.some((l) => l.includes("suppressed")), false);
 });
 
-Deno.test("a suppress list that matches no finding drops nothing", async () => {
+test("a suppress list that matches no finding drops nothing", async () => {
   // A non-empty list whose fingerprints belong to some other finding: the
   // assessment must pass through untouched, so the critical finding still
   // trips the default gate.
@@ -440,7 +441,7 @@ Deno.test("a suppress list that matches no finding drops nothing", async () => {
   assertEquals(lines.some((l) => l.includes("suppressed")), false);
 });
 
-Deno.test("the verify pass is skipped once the review call exhausts the budget", async () => {
+test("the verify pass is skipped once the review call exhausts the budget", async () => {
   // The review itself fits under the cap check (0 < 1) but its usage blows the
   // cap, so the verify pass that follows must be skipped — visibly — and the
   // unverified finding must keep gating.
@@ -475,7 +476,7 @@ Deno.test("the verify pass is skipped once the review call exhausts the budget",
 
 // ----- Report rendering ----------------------------------------------------
 
-Deno.test("consoleLines renders cache, suppressed, and budget extras", () => {
+test("consoleLines renders cache, suppressed, and budget extras", () => {
   const lines = consoleLines(
     "r",
     { score: 0, severity: "none", summary: "", findings: [] },
@@ -490,7 +491,7 @@ Deno.test("consoleLines renders cache, suppressed, and budget extras", () => {
   assertEquals(lines.includes("  budget: spent 5 tokens"), true);
 });
 
-Deno.test("toMarkdown renders budget, suppressed, cache, and id-hint", () => {
+test("toMarkdown renders budget, suppressed, cache, and id-hint", () => {
   const md = toMarkdown(
     "r",
     "t",
@@ -510,7 +511,7 @@ Deno.test("toMarkdown renders budget, suppressed, cache, and id-hint", () => {
   assertEquals(md.includes("- `abc1` — weak hash"), true);
 });
 
-Deno.test("toMarkdown omits the dismiss hint when no finding has an id", () => {
+test("toMarkdown omits the dismiss hint when no finding has an id", () => {
   const md = toMarkdown("r", "t", {
     score: 1,
     severity: "low",
@@ -520,7 +521,7 @@ Deno.test("toMarkdown omits the dismiss hint when no finding has an id", () => {
   assertEquals(md.includes("Dismiss a false positive"), false);
 });
 
-Deno.test("toMarkdown lists suppressed findings in an auditable section", () => {
+test("toMarkdown lists suppressed findings in an auditable section", () => {
   const md = toMarkdown(
     "security review",
     "t",
@@ -547,7 +548,7 @@ Deno.test("toMarkdown lists suppressed findings in an auditable section", () => 
   );
 });
 
-Deno.test("consoleLines lists each suppressed finding under the count", () => {
+test("consoleLines lists each suppressed finding under the count", () => {
   const lines = consoleLines(
     "r",
     { score: 0, severity: "none", summary: "", findings: [] },
@@ -573,7 +574,7 @@ Deno.test("consoleLines lists each suppressed finding under the count", () => {
 
 // ----- Fixer ---------------------------------------------------------------
 
-Deno.test("fixer skips the model call when the budget is exhausted", async () => {
+test("fixer skips the model call when the budget is exhausted", async () => {
   const b = budget((x) => x.maxTokens(0));
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const result = await hermetic(
@@ -583,7 +584,7 @@ Deno.test("fixer skips the model call when the budget is exhausted", async () =>
   assertEquals(calls.length, 0);
 });
 
-Deno.test("fixer records usage against a budget", async () => {
+test("fixer records usage against a budget", async () => {
   const b = budget((x) => x.maxTokens(1000));
   const { fetch } = recordFetch(
     claudeFix(ONE_EDIT, { input_tokens: 10, output_tokens: 5 }),
@@ -593,7 +594,7 @@ Deno.test("fixer records usage against a budget", async () => {
   assertEquals(b.spend_().totalTokens, 15);
 });
 
-Deno.test("fixer reuses a cached fix on a repeat failure", async () => {
+test("fixer reuses a cached fix on a repeat failure", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
@@ -606,7 +607,7 @@ Deno.test("fixer reuses a cached fix on a repeat failure", async () => {
   assertEquals(store.map.size, 1);
 });
 
-Deno.test("fixer cache key is effort-sensitive (no cross-effort reuse)", async () => {
+test("fixer cache key is effort-sensitive (no cross-effort reuse)", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import {
   batchCommandLine,
@@ -20,7 +21,7 @@ function written(argument: string): string {
   return line.slice(prefix.length, -1);
 }
 
-Deno.test("isBatchFile knows a batch file by its extension, in any case", () => {
+test("isBatchFile knows a batch file by its extension, in any case", () => {
   for (const name of ["a.cmd", "a.bat", "A.CMD", "C:\\x y\\b.Bat"]) {
     assertEquals(isBatchFile(name), true);
   }
@@ -33,7 +34,7 @@ Deno.test("isBatchFile knows a batch file by its extension, in any case", () => 
   }
 });
 
-Deno.test("a plain argument is written as it is", () => {
+test("a plain argument is written as it is", () => {
   for (
     const plain of [
       "build",
@@ -48,7 +49,7 @@ Deno.test("a plain argument is written as it is", () => {
   }
 });
 
-Deno.test("anything cmd.exe could act on is inside quotes", () => {
+test("anything cmd.exe could act on is inside quotes", () => {
   assertEquals(written("a b"), '"a b"');
   assertEquals(written("a&b"), '"a&b"');
   assertEquals(written("a|b"), '"a|b"');
@@ -62,7 +63,7 @@ Deno.test("anything cmd.exe could act on is inside quotes", () => {
   assertEquals(written("café→"), "café→");
 });
 
-Deno.test("an empty argument and a trailing backslash are quoted, the backslashes doubled", () => {
+test("an empty argument and a trailing backslash are quoted, the backslashes doubled", () => {
   assertEquals(written(""), '""');
   assertEquals(written("dir\\"), '"dir\\\\"');
   assertEquals(written("dir\\\\"), '"dir\\\\\\\\"');
@@ -70,7 +71,7 @@ Deno.test("an empty argument and a trailing backslash are quoted, the backslashe
   assertEquals(written("a b\\"), '"a b\\\\"');
 });
 
-Deno.test("a quote is doubled, and the backslashes before it are doubled", () => {
+test("a quote is doubled, and the backslashes before it are doubled", () => {
   assertEquals(written('say "hi"'), '"say ""hi"""');
   assertEquals(written('a\\"b'), '"a\\\\""b"');
   assertEquals(written('a\\\\"b'), '"a\\\\\\\\""b"');
@@ -78,19 +79,19 @@ Deno.test("a quote is doubled, and the backslashes before it are doubled", () =>
   assertEquals(written("a\\b c"), '"a\\b c"');
 });
 
-Deno.test("a percent sign cannot start a variable", () => {
+test("a percent sign cannot start a variable", () => {
   assertEquals(written("%PATH%"), '"%%cd:~,%PATH%%cd:~,%"');
   assertEquals(written("100%"), '"100%%cd:~,%"');
 });
 
-Deno.test("the payload from the disclosure stays one quoted argument", () => {
+test("the payload from the disclosure stays one quoted argument", () => {
   assertEquals(
     batchCommandLine(SCRIPT, ["affected", '--head=fix"&calc.exe']),
     `""${SCRIPT}" affected "--head=fix""&calc.exe""`,
   );
 });
 
-Deno.test("the line is the quoted script and its arguments, wrapped once more", () => {
+test("the line is the quoted script and its arguments, wrapped once more", () => {
   assertEquals(batchCommandLine(SCRIPT, []), `""${SCRIPT}""`);
   assertEquals(
     batchCommandLine("C:\\my tools\\run.bat", ["a", "b c", ""]),
@@ -98,7 +99,7 @@ Deno.test("the line is the quoted script and its arguments, wrapped once more", 
   );
 });
 
-Deno.test("what cannot be made safe is refused", () => {
+test("what cannot be made safe is refused", () => {
   for (const argument of ["a\nb", "a\rb", "a\0b"]) {
     assertThrows(() => batchCommandLine(SCRIPT, ["ok", argument]));
   }
@@ -107,7 +108,7 @@ Deno.test("what cannot be made safe is refused", () => {
   }
 });
 
-Deno.test("cmd.exe is named by its full path under the system directory", () => {
+test("cmd.exe is named by its full path under the system directory", () => {
   assertEquals(
     commandPrompt({ SystemRoot: "C:\\Windows" }),
     "C:\\Windows\\System32\\cmd.exe",
@@ -134,7 +135,7 @@ Deno.test("cmd.exe is named by its full path under the system directory", () => 
   }
 });
 
-Deno.test("a bare batch file name is found on PATH, by full paths only, in order", () => {
+test("a bare batch file name is found on PATH, by full paths only, in order", () => {
   const files = new Set(["C:\\b\\npm.cmd", "D:\\c\\npm.cmd", ".\\npm.cmd"]);
   const isFile = (path: string) => files.has(path);
   const path = '.;relative;;C:\\a;"C:\\b\\";D:\\c';
@@ -159,7 +160,7 @@ function hostWith(files: Record<string, string> = {}) {
   };
 }
 
-Deno.test("a batch file on Windows is started through cmd.exe on a prepared line", () => {
+test("a batch file on Windows is started through cmd.exe on a prepared line", () => {
   const parent = { SystemRoot: "C:\\Windows", PATH: "C:\\parent" };
   const none = hostWith();
   assertEquals(invocation(SCRIPT, ["a b", "&c"], true, parent, {}, none), {
@@ -196,7 +197,7 @@ Deno.test("a batch file on Windows is started through cmd.exe on a prepared line
   assertThrows(() => invocation("npm.cmd", [], true, parent, {}, none));
 });
 
-Deno.test("a package manager's shim for a Node script is seen through", () => {
+test("a package manager's shim for a Node script is seen through", () => {
   const bin = "C:\\p\\node_modules\\.bin";
   const shim = `${bin}\\tsc.cmd`;
   const target = `${bin}\\..\\typescript\\bin\\tsc`;
@@ -305,7 +306,7 @@ Deno.test("a package manager's shim for a Node script is seen through", () => {
   }
 });
 
-Deno.test("everything else is started as it is", () => {
+test("everything else is started as it is", () => {
   const args = ["a b", "&c", "new\nline"];
   const none = hostWith();
   assertEquals(invocation("C:\\tools\\node.exe", args, true, {}, {}, none), {

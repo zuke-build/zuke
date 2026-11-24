@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, target } from "../mod.ts";
 import { forceTarget } from "../src/force.ts";
@@ -46,7 +47,7 @@ async function seed(
   return record.id;
 }
 
-Deno.test("forcing records the outcome, the actor and the reason", async () => {
+test("forcing records the outcome, the actor and the reason", async () => {
   await withTempStore(async (store) => {
     const runId = await seed(store);
     const result = await forceTarget(new CD(), {
@@ -69,7 +70,7 @@ Deno.test("forcing records the outcome, the actor and the reason", async () => {
   });
 });
 
-Deno.test("a settled target cannot be forced", async () => {
+test("a settled target cannot be forced", async () => {
   // The record is the account of what happened; rewriting a settled outcome
   // would make it say something untrue.
   for (const status of ["succeeded", "failed", "skipped"] as const) {
@@ -95,7 +96,7 @@ Deno.test("a settled target cannot be forced", async () => {
   }
 });
 
-Deno.test("the returned message is data, not terminal-encoded output", async () => {
+test("the returned message is data, not terminal-encoded output", async () => {
   // The MCP `force_target` tool returns this message inside a JSON payload. If
   // `forceTarget` encoded it for a terminal, every client would get mangled
   // text whenever the *server* happened to run under Actions — so the escaping
@@ -122,7 +123,7 @@ Deno.test("the returned message is data, not terminal-encoded output", async () 
   });
 });
 
-Deno.test("a target the build declares unforceable is refused", async () => {
+test("a target the build declares unforceable is refused", async () => {
   await withTempStore(async (store) => {
     const runId = await seed(store);
     const result = await forceTarget(new CD(), {
@@ -139,7 +140,7 @@ Deno.test("a target the build declares unforceable is refused", async () => {
   });
 });
 
-Deno.test("a terminal run, an unknown run and an unknown target are refused", async () => {
+test("a terminal run, an unknown run and an unknown target are refused", async () => {
   await withTempStore(async (store) => {
     const terminal = await seed(store, { status: "succeeded" });
     assertEquals(
@@ -189,7 +190,7 @@ Deno.test("a terminal run, an unknown run and an unknown target are refused", as
   });
 });
 
-Deno.test("two concurrent forces of different targets both land", async () => {
+test("two concurrent forces of different targets both land", async () => {
   // The write is a compare-and-swap, so the loser re-reads and re-applies onto
   // the winner's record rather than clobbering it. Both overrides must survive.
   class Open extends Build {
@@ -219,7 +220,7 @@ Deno.test("two concurrent forces of different targets both land", async () => {
   });
 });
 
-Deno.test("an override round-trips through the record parser", async () => {
+test("an override round-trips through the record parser", async () => {
   await withTempStore(async (store) => {
     const runId = await seed(store);
     await forceTarget(new CD(), {
@@ -237,7 +238,7 @@ Deno.test("an override round-trips through the record parser", async () => {
   });
 });
 
-Deno.test("declaring a fan-out parent unforceable covers its per-item stages", async () => {
+test("declaring a fan-out parent unforceable covers its per-item stages", async () => {
   // A fan-out's stages are named `parent[item].stage` at run time, so no target
   // reference can denote one. Without the prefix rule the guard would protect
   // the target that only schedules work and leave the ones that do it exposed.
@@ -279,7 +280,7 @@ Deno.test("declaring a fan-out parent unforceable covers its per-item stages", a
   });
 });
 
-Deno.test("a running target is refused, and the message says why", async () => {
+test("a running target is refused, and the message says why", async () => {
   // A force promises the body will not run; for a target a live process is
   // already executing, that promise is already broken.
   await withTempStore(async (store) => {

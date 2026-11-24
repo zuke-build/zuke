@@ -14,6 +14,7 @@
  * `includes("::stop-commands::")` would pass whether or not the fix is there.
  */
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { cliReporter } from "../mod.ts";
 import { capture as captureConsole } from "./_console.ts";
@@ -52,7 +53,7 @@ function streamLines(lines: string[]): string[] {
   return lines.flatMap((l) => l.split(NL));
 }
 
-Deno.test("escapeLineIf escapes only when something is parsing for commands", () => {
+test("escapeLineIf escapes only when something is parsing for commands", () => {
   const forged = "::stop-commands::deadbeef";
   assertEquals(escapeLineIf(false, forged), forged);
   assertEquals(escapeLineIf(true, forged), ENC + "stop-commands::deadbeef");
@@ -61,7 +62,7 @@ Deno.test("escapeLineIf escapes only when something is parsing for commands", ()
   assertEquals(escapeLineIf(false, "lint passed"), "lint passed");
 });
 
-Deno.test("escapingReporter neutralises a command and leaves prose alone", () => {
+test("escapingReporter neutralises a command and leaves prose alone", () => {
   const sink = capture();
   const wrapped = escapingReporter(sink.reporter);
 
@@ -76,7 +77,7 @@ Deno.test("escapingReporter neutralises a command and leaves prose alone", () =>
   assertEquals(sink.error[0], "held by %23%23[group]x");
 });
 
-Deno.test("escapingReporter is idempotent, so double-wrapping is harmless", () => {
+test("escapingReporter is idempotent, so double-wrapping is harmless", () => {
   const once = capture();
   const twice = capture();
   escapingReporter(once.reporter).info("::error::x");
@@ -105,7 +106,7 @@ async function runQuiet(
   return { info: streamLines(sink.info), error: streamLines(sink.error) };
 }
 
-Deno.test("a plugin's message cannot forge a command through the executor's sink", async () => {
+test("a plugin's message cannot forge a command through the executor's sink", async () => {
   // A plugin that throws is reported through the lifecycle's `warn` channel,
   // which embeds the thrown message verbatim — third-party text on a stream the
   // runner parses.
@@ -139,7 +140,7 @@ Deno.test("a plugin's message cannot forge a command through the executor's sink
   );
 });
 
-Deno.test("the renderer's own workflow commands survive the executor's sink", async () => {
+test("the renderer's own workflow commands survive the executor's sink", async () => {
   // The guard on the other side: wrapping the renderer's sink too would encode
   // `::endgroup::` and break every target's grouping. This fails if the
   // escaping reporter is put in front of `ctx.reporter` instead of beside it.
@@ -161,7 +162,7 @@ class NestedFanOut extends Build {
   );
 }
 
-Deno.test("a fan-out item key cannot forge a command through the count line", async () => {
+test("a fan-out item key cannot forge a command through the count line", async () => {
   // Reachability is the point: a top-level fan-out's name is a class field, but
   // a *stage* may declare a fan-out of its own, and the nested one is named
   // `outer[<key>].stage` — so the count line is composed from an item key.
@@ -188,7 +189,7 @@ Deno.test("a fan-out item key cannot forge a command through the count line", as
   assertEquals(lines.some((l) => l.startsWith("::stop-commands::")), false);
 });
 
-Deno.test("cliReporter is public, and neutralises each line only on a runner", async () => {
+test("cliReporter is public, and neutralises each line only on a runner", async () => {
   // Imported from `mod.ts`, so this pins the export a companion command
   // surface (`@zuke/cli`) writes through rather than composing a copy. The
   // decision is per line: the environment changes between the two writes on
@@ -208,12 +209,12 @@ Deno.test("cliReporter is public, and neutralises each line only on a runner", a
   assertEquals(err, ["held by %23%23[group]x", "held by ##[group]x"]);
 });
 
-Deno.test("silentReporter stays silent once wrapped", () => {
+test("silentReporter stays silent once wrapped", () => {
   // The wrapper composes with the other reporters rather than replacing them.
   escapingReporter(silentReporter).info("::error::x");
 });
 
-Deno.test("no module writes to the console except the sink itself", async () => {
+test("no module writes to the console except the sink itself", async () => {
   // Two of the modules routed through `cliReporter` had no test at all, and
   // reverting either to a bare console call left the whole suite green — the
   // shape of a guard that quietly comes undone.
@@ -242,7 +243,7 @@ Deno.test("no module writes to the console except the sink itself", async () => 
   );
 });
 
-Deno.test("printJson encodes the marker wherever it appears in a payload", async () => {
+test("printJson encodes the marker wherever it appears in a payload", async () => {
   // `replaceAll` runs over the whole serialised document, so field position is
   // not a factor — but that is the kind of claim worth demonstrating rather
   // than asserting, since a reader cannot tell from the call site whether it

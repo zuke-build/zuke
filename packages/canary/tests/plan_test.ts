@@ -3,6 +3,7 @@
 
 /** Unit tests for the canary plan: what it builds and what it refuses. */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -12,7 +13,7 @@ import type { LockSettings } from "@zuke/core";
 import { planCanary } from "../src/plan.ts";
 import { FakePlatform } from "./_platform.ts";
 
-Deno.test("steps become phases with their bakes, overrides included", () => {
+test("steps become phases with their bakes, overrides included", () => {
   const plan = planCanary((c) =>
     c.platform(new FakePlatform()).steps(10, 50).bake("1m").bakeStep(2, "5m")
   );
@@ -24,7 +25,7 @@ Deno.test("steps become phases with their bakes, overrides included", () => {
   assertEquals(plan.durable, false);
 });
 
-Deno.test("a canary with no steps soaks only when it bakes or analyses", () => {
+test("a canary with no steps soaks only when it bakes or analyses", () => {
   const platform = new FakePlatform("channel");
   assertEquals(planCanary((c) => c.platform(platform)).phases, []);
   assertEquals(planCanary((c) => c.platform(platform).bake("1m")).phases, [
@@ -36,7 +37,7 @@ Deno.test("a canary with no steps soaks only when it bakes or analyses", () => {
   assertEquals(analysed.phases, [{ key: "soak", step: 0, bakeMs: 0 }]);
 });
 
-Deno.test("approval, its timeout, the lock and durability are carried through", () => {
+test("approval, its timeout, the lock and durability are carried through", () => {
   const lock = (l: LockSettings) => l;
   const plan = planCanary((c) =>
     c.platform(new FakePlatform()).approval("ok").approvalTimeout("1h")
@@ -48,7 +49,7 @@ Deno.test("approval, its timeout, the lock and durability are carried through", 
   assertEquals(plan.analysisIntervalMs, 30_000);
 });
 
-Deno.test("a canary that could not roll out is refused with the fix", () => {
+test("a canary that could not roll out is refused with the fix", () => {
   const traffic = new FakePlatform();
   const cases: Array<[string, () => unknown]> = [
     ["no platform", () => planCanary((c) => c)],
@@ -100,7 +101,7 @@ Deno.test("a canary that could not roll out is refused with the fix", () => {
   }
 });
 
-Deno.test("only durations that become timers are held under the longest one", () => {
+test("only durations that become timers are held under the longest one", () => {
   const platform = new FakePlatform();
   const durable = planCanary((c) =>
     c.platform(platform).steps(10).bake("30d").durable().approval("ok")

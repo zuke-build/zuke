@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import type { DownloadFn, InstallPlatform, Platform } from "../src/install.ts";
 import type { NpmRunner } from "../src/npm_tool.ts";
@@ -65,7 +66,7 @@ function recordingNpm(
   };
 }
 
-Deno.test("ToolTasks.install fetches a single tool via a settings-lambda", async () => {
+test("ToolTasks.install fetches a single tool via a settings-lambda", async () => {
   await withTemp(async (dir) => {
     const seen: string[] = [];
     const bin = await ToolTasks.install((s) =>
@@ -81,7 +82,7 @@ Deno.test("ToolTasks.install fetches a single tool via a settings-lambda", async
   });
 });
 
-Deno.test("toolchain installs every declared tool and maps names to paths", async () => {
+test("toolchain installs every declared tool and maps names to paths", async () => {
   await withTemp(async (dir) => {
     const seen: string[] = [];
     const tools = toolchain((t) =>
@@ -104,14 +105,14 @@ Deno.test("toolchain installs every declared tool and maps names to paths", asyn
   });
 });
 
-Deno.test("toolchain exposes its configured tools in order", () => {
+test("toolchain exposes its configured tools in order", () => {
   const chain = new Toolchain()
     .tool((s) => s.name("a").url(() => "a"))
     .tool((s) => s.name("b").url(() => "b"));
   assertEquals(chain.tools.map((s) => s.name_), ["a", "b"]);
 });
 
-Deno.test("toolchain provisions npm tools alongside release tools", async () => {
+test("toolchain provisions npm tools alongside release tools", async () => {
   await withTemp(async (dir) => {
     const seen: string[] = [];
     const npmCalls: string[][] = [];
@@ -138,14 +139,14 @@ Deno.test("toolchain provisions npm tools alongside release tools", async () => 
   });
 });
 
-Deno.test("toolchain exposes its npm tools in declaration order", () => {
+test("toolchain exposes its npm tools in declaration order", () => {
   const chain = new Toolchain()
     .npm({ name: "a", version: "1" })
     .npm({ name: "b", version: "2" });
   assertEquals(chain.npmTools.map((s) => s.name), ["a", "b"]);
 });
 
-Deno.test("ToolTasks.npm provisions a single npm package with a distinct bin", async () => {
+test("ToolTasks.npm provisions a single npm package with a distinct bin", async () => {
   await withTemp(async (dir) => {
     const npmCalls: string[][] = [];
     const bin = await ToolTasks.npm(
@@ -157,7 +158,7 @@ Deno.test("ToolTasks.npm provisions a single npm package with a distinct bin", a
   });
 });
 
-Deno.test("a per-tool destDir overrides the toolchain default", async () => {
+test("a per-tool destDir overrides the toolchain default", async () => {
   const shared = await Deno.makeTempDir();
   const special = await Deno.makeTempDir();
   try {
@@ -183,7 +184,7 @@ Deno.test("a per-tool destDir overrides the toolchain default", async () => {
   }
 });
 
-Deno.test("a per-tool download seam is used when the toolchain sets none", async () => {
+test("a per-tool download seam is used when the toolchain sets none", async () => {
   await withTemp(async (dir) => {
     const seen: string[] = [];
     const bins = await toolchain()
@@ -197,7 +198,7 @@ Deno.test("a per-tool download seam is used when the toolchain sets none", async
   });
 });
 
-Deno.test("install with no destDir uses .zuke/tools under the working directory", async () => {
+test("install with no destDir uses .zuke/tools under the working directory", async () => {
   await withTempCwd(async () => {
     const bins = await toolchain()
       .tool((s) =>
@@ -211,7 +212,7 @@ Deno.test("install with no destDir uses .zuke/tools under the working directory"
   });
 });
 
-Deno.test("ToolInstallSettings.options_ requires name and url", () => {
+test("ToolInstallSettings.options_ requires name and url", () => {
   const noName = new ToolInstallSettings();
   assertThrows(
     () => noName.options_(DEFAULT_TOOLS_DIR),
@@ -223,7 +224,7 @@ Deno.test("ToolInstallSettings.options_ requires name and url", () => {
   assertThrows(() => noUrl.options_(DEFAULT_TOOLS_DIR), Error, "requires .url");
 });
 
-Deno.test("ToolInstallSettings carries every option through to the install spec", () => {
+test("ToolInstallSettings carries every option through to the install spec", () => {
   const platform = { os: "linux", arch: "aarch64" } as const;
   const url = () => "u";
   const download: DownloadFn = () => Promise.resolve();
@@ -246,7 +247,7 @@ Deno.test("ToolInstallSettings carries every option through to the install spec"
   assertEquals(spec.checksum, checksum);
 });
 
-Deno.test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", async () => {
+test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", async () => {
   await withTemp(async (dir) => {
     const tarball = await toolTarball();
     const root = await ToolTasks.installTree((s) =>
@@ -262,7 +263,7 @@ Deno.test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", 
   });
 });
 
-Deno.test("toolchain installs a runtime tree alongside release tools", async () => {
+test("toolchain installs a runtime tree alongside release tools", async () => {
   await withTemp(async (dir) => {
     const seen: string[] = [];
     const tarball = await toolTarball();
@@ -293,7 +294,7 @@ Deno.test("toolchain installs a runtime tree alongside release tools", async () 
   });
 });
 
-Deno.test("a toolchain-level download seam is applied to a tree without its own", async () => {
+test("a toolchain-level download seam is applied to a tree without its own", async () => {
   await withTemp(async (dir) => {
     const tarball = await toolTarball();
     // The tree sets no .download(), so the toolchain-level seam must be used.
@@ -312,14 +313,14 @@ Deno.test("a toolchain-level download seam is applied to a tree without its own"
   });
 });
 
-Deno.test("toolchain exposes its configured trees in order", () => {
+test("toolchain exposes its configured trees in order", () => {
   const chain = new Toolchain()
     .tree((s) => s.name("node").url(() => "n"))
     .tree((s) => s.name("bun").url(() => "b"));
   assertEquals(chain.trees.map((s) => s.name_), ["node", "bun"]);
 });
 
-Deno.test("treeOptions_ requires name and url and rejects a raw archive", () => {
+test("treeOptions_ requires name and url and rejects a raw archive", () => {
   assertThrows(
     () => new ToolInstallSettings().treeOptions_(DEFAULT_TOOLS_DIR),
     Error,
@@ -339,13 +340,13 @@ Deno.test("treeOptions_ requires name and url and rejects a raw archive", () => 
   );
 });
 
-Deno.test("treeOptions_ accepts a tar.xz archive", () => {
+test("treeOptions_ accepts a tar.xz archive", () => {
   const spec = new ToolInstallSettings().name("flutter").url(() => "u")
     .archive("tar.xz").treeOptions_(".fallback");
   assertEquals(spec.archive, "tar.xz");
 });
 
-Deno.test("treeOptions_ carries strip/bins and defaults the archive to tar.gz", () => {
+test("treeOptions_ carries strip/bins and defaults the archive to tar.gz", () => {
   const spec = new ToolInstallSettings()
     .name("node")
     .url(() => "u")
@@ -359,7 +360,7 @@ Deno.test("treeOptions_ carries strip/bins and defaults the archive to tar.gz", 
   assertEquals(spec.bins, ["bin/node", "bin/npm"]);
 });
 
-Deno.test("archive and binaryPath carry a per-platform resolver through", () => {
+test("archive and binaryPath carry a per-platform resolver through", () => {
   const archive = (p: { os: string }) =>
     p.os === "windows" ? ("zip" as const) : ("tar.gz" as const);
   const binaryPath = (p: { os: string }) => p.os === "windows" ? "t.exe" : "t";
@@ -375,7 +376,7 @@ Deno.test("archive and binaryPath carry a per-platform resolver through", () => 
   assertEquals(spec.binaryPath, binaryPath);
 });
 
-Deno.test("a tree archive resolver is rejected when it resolves to raw", () => {
+test("a tree archive resolver is rejected when it resolves to raw", () => {
   const spec = new ToolInstallSettings()
     .name("node")
     .url(() => "u")
@@ -393,6 +394,6 @@ Deno.test("a tree archive resolver is rejected when it resolves to raw", () => {
   );
 });
 
-Deno.test("the default tools directory is .zuke/tools", () => {
+test("the default tools directory is .zuke/tools", () => {
   assertEquals(DEFAULT_TOOLS_DIR, ".zuke/tools");
 });

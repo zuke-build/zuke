@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, type McpRequestContext, target } from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
@@ -56,7 +57,7 @@ async function startHttp(
   };
 }
 
-Deno.test("http transport answers a POST JSON-RPC request", async () => {
+test("http transport answers a POST JSON-RPC request", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -74,7 +75,7 @@ Deno.test("http transport answers a POST JSON-RPC request", async () => {
   }
 });
 
-Deno.test("http transport rejects a non-POST with 405", async () => {
+test("http transport rejects a non-POST with 405", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -86,7 +87,7 @@ Deno.test("http transport rejects a non-POST with 405", async () => {
   }
 });
 
-Deno.test("originAllowed enforces the loopback / allow-list rules", () => {
+test("originAllowed enforces the loopback / allow-list rules", () => {
   // No Origin (a CLI/MCP client) is always allowed.
   assertEquals(originAllowed(null, undefined, "127.0.0.1"), true);
   // On a loopback bind, only loopback origins pass.
@@ -126,7 +127,7 @@ Deno.test("originAllowed enforces the loopback / allow-list rules", () => {
   );
 });
 
-Deno.test("http transport rejects a cross-origin browser request (drive-by guard)", async () => {
+test("http transport rejects a cross-origin browser request (drive-by guard)", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -151,7 +152,7 @@ Deno.test("http transport rejects a cross-origin browser request (drive-by guard
   }
 });
 
-Deno.test("http transport answers unparseable JSON with a 400 parse error", async () => {
+test("http transport answers unparseable JSON with a 400 parse error", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -167,7 +168,7 @@ Deno.test("http transport answers unparseable JSON with a 400 parse error", asyn
   }
 });
 
-Deno.test("http transport refuses an oversized body with 413", async () => {
+test("http transport refuses an oversized body with 413", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -197,7 +198,7 @@ Deno.test("http transport refuses an oversized body with 413", async () => {
   }
 });
 
-Deno.test("http transport answers a notification with 202 and no body", async () => {
+test("http transport answers a notification with 202 and no body", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));
   try {
@@ -212,7 +213,7 @@ Deno.test("http transport answers a notification with 202 and no body", async ()
   }
 });
 
-Deno.test("http transport enforces a configured bearer token", async () => {
+test("http transport enforces a configured bearer token", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m), {
     token: "swordfish",
@@ -266,7 +267,7 @@ Deno.test("http transport enforces a configured bearer token", async () => {
   }
 });
 
-Deno.test("serveMcp serves over HTTP on loopback", async () => {
+test("serveMcp serves over HTTP on loopback", async () => {
   const ac = new AbortController();
   let setPort = (_: number) => {};
   const portReady = new Promise<number>((r) => (setPort = r));
@@ -291,7 +292,7 @@ Deno.test("serveMcp serves over HTTP on loopback", async () => {
   }
 });
 
-Deno.test("serveMcp refuses a non-loopback HTTP bind without a token", async () => {
+test("serveMcp refuses a non-loopback HTTP bind without a token", async () => {
   const origErr = console.error;
   const errs: string[] = [];
   console.error = (...a: unknown[]) => void errs.push(a.join(" "));
@@ -308,7 +309,7 @@ Deno.test("serveMcp refuses a non-loopback HTTP bind without a token", async () 
   }
 });
 
-Deno.test("serveMcp applies the build's identity hook to HTTP requests", async () => {
+test("serveMcp applies the build's identity hook to HTTP requests", async () => {
   // A build declaring a per-call identity hook via the override seam.
   class Guarded extends Build {
     deploy = target().description("Deploy").executes(() => {});
@@ -371,7 +372,7 @@ Deno.test("serveMcp applies the build's identity hook to HTTP requests", async (
   }
 });
 
-Deno.test("serveMcp prints an HTTP banner naming the mode and (lack of) auth", async () => {
+test("serveMcp prints an HTTP banner naming the mode and (lack of) auth", async () => {
   const origErr = console.error;
   const banner: string[] = [];
   console.error = (...a: unknown[]) => void banner.push(a.join(" "));
@@ -401,7 +402,7 @@ Deno.test("serveMcp prints an HTTP banner naming the mode and (lack of) auth", a
   assertEquals(text.includes("registry"), false);
 });
 
-Deno.test("http transport answers a refusal with the authenticator's own status", async () => {
+test("http transport answers a refusal with the authenticator's own status", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m), {
     authenticator: {
@@ -476,7 +477,7 @@ Deno.test("http transport answers a refusal with the authenticator's own status"
   }
 });
 
-Deno.test("http transport hands the resolved identity to the handler", async () => {
+test("http transport hands the resolved identity to the handler", async () => {
   const server = new McpServer(new Demo());
   const seen: (ResolvedIdentity | undefined)[] = [];
   const views: { method: string; hasBody: boolean }[] = [];
@@ -537,7 +538,7 @@ Deno.test("http transport hands the resolved identity to the handler", async () 
   ]);
 });
 
-Deno.test("http transport authenticates after the method, Origin and token checks", async () => {
+test("http transport authenticates after the method, Origin and token checks", async () => {
   const server = new McpServer(new Demo());
   let calls = 0;
   const s = await startHttp((m) => server.handleMessage(m), {
@@ -593,7 +594,7 @@ Deno.test("http transport authenticates after the method, Origin and token check
   }
 });
 
-Deno.test("http transport refuses an unauthenticated caller before reading its body", async () => {
+test("http transport refuses an unauthenticated caller before reading its body", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m), {
     authenticator: {
@@ -623,7 +624,7 @@ Deno.test("http transport refuses an unauthenticated caller before reading its b
   }
 });
 
-Deno.test("http transport answers a throwing authenticator with the bare 401", async () => {
+test("http transport answers a throwing authenticator with the bare 401", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m), {
     authenticator: {
@@ -647,7 +648,7 @@ Deno.test("http transport answers a throwing authenticator with the bare 401", a
   }
 });
 
-Deno.test("serveMcp refuses a build declaring both mcpAuth() and mcpIdentity()", async () => {
+test("serveMcp refuses a build declaring both mcpAuth() and mcpIdentity()", async () => {
   // Two gates on one build: one would silently win, so the server refuses to
   // start instead of leaving the other one only *looking* enforced.
   class Ambiguous extends Build {
@@ -673,7 +674,7 @@ Deno.test("serveMcp refuses a build declaring both mcpAuth() and mcpIdentity()",
   }
 });
 
-Deno.test("serveMcp accepts a non-loopback bind authenticated by mcpAuth()", async () => {
+test("serveMcp accepts a non-loopback bind authenticated by mcpAuth()", async () => {
   class Guarded extends Build {
     lint = target().description("Lint").executes(() => {});
     override mcpAuth(): McpAuthenticator {
@@ -697,7 +698,7 @@ Deno.test("serveMcp accepts a non-loopback bind authenticated by mcpAuth()", asy
   assertEquals(await finished, 0);
 });
 
-Deno.test("serveMcp's HTTP banner names the authenticator", async () => {
+test("serveMcp's HTTP banner names the authenticator", async () => {
   class Guarded extends Build {
     lint = target().description("Lint").executes(() => {});
     override mcpAuth(): McpAuthenticator {
@@ -739,7 +740,7 @@ Deno.test("serveMcp's HTTP banner names the authenticator", async () => {
   assertStringIncludes(both, "authenticator + bearer token");
 });
 
-Deno.test("serveMcp applies the build's mcpAuth() to HTTP requests", async () => {
+test("serveMcp applies the build's mcpAuth() to HTTP requests", async () => {
   // The general seam, refusing by *returning* a rejection rather than throwing.
   class Guarded extends Build {
     deploy = target().description("Deploy").executes(() => {});
@@ -811,7 +812,7 @@ Deno.test("serveMcp applies the build's mcpAuth() to HTTP requests", async () =>
 
 // ---- Regressions: a malformed Host, and what unlocks a non-loopback bind ----
 
-Deno.test("a Host the URL parser rejects still serves, with no request view", async () => {
+test("a Host the URL parser rejects still serves, with no request view", async () => {
   // Deno builds `request.url` from the raw Host header and accepts hosts the
   // WHATWG parser rejects (`Host: bad host`). Building the authenticator's view
   // of such a request throws, so the view is simply absent — the headers, where
@@ -860,7 +861,7 @@ Deno.test("a Host the URL parser rejects still serves, with no request view", as
   }
 });
 
-Deno.test("mcpIdentity() alone does not unlock a non-loopback bind", async () => {
+test("mcpIdentity() alone does not unlock a non-loopback bind", async () => {
   // The hook trusts a header, which is an identity only when something in front
   // strips the client's copy. On a directly reachable endpoint any caller sets
   // it, so the hook authenticates nobody and the bind guard must still demand a
@@ -896,7 +897,7 @@ Deno.test("mcpIdentity() alone does not unlock a non-loopback bind", async () =>
   }
 });
 
-Deno.test("mcpAuth() unlocks a non-loopback bind, and still runs the hook path", async () => {
+test("mcpAuth() unlocks a non-loopback bind, and still runs the hook path", async () => {
   // The general seam is a deliberate declaration of authentication, so it does
   // satisfy the guard where the proxy hook does not.
   class Guarded extends Build {

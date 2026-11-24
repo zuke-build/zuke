@@ -13,9 +13,10 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 
-Deno.test("every workspace package passes deno publish --dry-run", async () => {
+test("every workspace package passes deno publish --dry-run", async () => {
   const { code, stderr } = await new Deno.Command(Deno.execPath(), {
     // `--allow-dirty` so the check runs on a working tree with local edits,
     // which is the tree a contributor tests.

@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -25,7 +26,7 @@ function quietHost(lines: string[]): SetupHost {
   return { ...defaultHost, log: (message: string) => void lines.push(message) };
 }
 
-Deno.test("zuke setup --runtime node scaffolds a Node project that names no Deno", async () => {
+test("zuke setup --runtime node scaffolds a Node project that names no Deno", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-it-node-" });
   try {
     await Deno.writeTextFile(`${dir}/package.json`, '{"name":"mine"}');
@@ -80,7 +81,7 @@ Deno.test("zuke setup --runtime node scaffolds a Node project that names no Deno
   }
 });
 
-Deno.test("zuke setup creates the --dir it is given when it is not there yet", async () => {
+test("zuke setup creates the --dir it is given when it is not there yet", async () => {
   const root = await Deno.makeTempDir({ prefix: "zuke-it-node-" });
   try {
     const dir = `${root}/new/project`;

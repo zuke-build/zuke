@@ -8,6 +8,7 @@
  * executable, and its symlink comes back as a symlink.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
 import { makeZip } from "../../packages/core/tests/_zip.ts";
@@ -16,7 +17,7 @@ import { runCli } from "./_harness.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
-Deno.test({
+test({
   name: "a build installs a Unix zip tree keeping its modes and symlinks",
   ignore: Deno.build.os === "windows",
   fn: async () => {

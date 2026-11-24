@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -22,7 +23,7 @@ class BaseBuild extends Build {
     });
 }
 
-Deno.test("a missing git fails the default-branch lookup, both attempts", async () => {
+test("a missing git fails the default-branch lookup, both attempts", async () => {
   const { code, out, err } = await runCli(BaseBuild, ["base"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");

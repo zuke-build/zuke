@@ -20,6 +20,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -33,7 +34,7 @@ import {
 } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("a remediation can mask a secret the build declared", async () => {
+test("a remediation can mask a secret the build declared", async () => {
   const seen: string[] = [];
 
   class Healing extends Build {
@@ -65,7 +66,7 @@ Deno.test("a remediation can mask a secret the build declared", async () => {
   );
 });
 
-Deno.test("a validation can mask a secret the build declared", async () => {
+test("a validation can mask a secret the build declared", async () => {
   // The reviewer case: a validation that posts its assessment to a pull
   // request. It never fails the target and never touches the tree, so this is
   // a run that "changed nothing" and still published — which is where an
@@ -96,7 +97,7 @@ Deno.test("a validation can mask a secret the build declared", async () => {
   );
 });
 
-Deno.test("a validateBefore gate gets the same redactor", async () => {
+test("a validateBefore gate gets the same redactor", async () => {
   // Pinned separately because the two hooks are two call sites: one of them
   // being wired and the other not is the shape this would regress into.
   const seen: string[] = [];

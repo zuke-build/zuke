@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -50,7 +51,7 @@ async function withBanner(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-Deno.test("parseSetupFlags reads every flag form", () => {
+test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags([]), {
     force: false,
     yes: false,
@@ -131,7 +132,7 @@ function setupSdk(
   );
 }
 
-Deno.test("main setup --sdk python pins this zuke's own release, and its engine", async () => {
+test("main setup --sdk python pins this zuke's own release, and its engine", async () => {
   const host = new FakeHost();
   const code = await setupSdk(host, ["--name", "Acme", "--mcp"]);
   assertEquals(code, 0, host.logs.join("\n"));
@@ -158,7 +159,7 @@ Deno.test("main setup --sdk python pins this zuke's own release, and its engine"
   );
 });
 
-Deno.test("main setup --sdk python --zuke pins that release", async () => {
+test("main setup --sdk python --zuke pins that release", async () => {
   const host = new FakeHost();
   assertEquals(await setupSdk(host, ["--zuke", OTHER]), 0);
   assertEquals(
@@ -174,7 +175,7 @@ Deno.test("main setup --sdk python --zuke pins that release", async () => {
   );
 });
 
-Deno.test("main setup --mcp registers a zuke.ts build on Deno, whichever CLI ran it", async () => {
+test("main setup --mcp registers a zuke.ts build on Deno, whichever CLI ran it", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--mcp"],
@@ -195,7 +196,7 @@ Deno.test("main setup --mcp registers a zuke.ts build on Deno, whichever CLI ran
   );
 });
 
-Deno.test("main setup --sdk refuses what it cannot scaffold, before writing anything", async () => {
+test("main setup --sdk refuses what it cannot scaffold, before writing anything", async () => {
   const cases: Array<[string[], typeof RELEASES | Error, string]> = [
     [["--sdk", "rust"], RELEASES, 'unknown --sdk "rust"'],
     [["--zuke", "latest"], RELEASES, "not an exact version"],
@@ -216,7 +217,7 @@ Deno.test("main setup --sdk refuses what it cannot scaffold, before writing anyt
   }
 });
 
-Deno.test("main --help documents --sdk and upgrade --engine", async () => {
+test("main --help documents --sdk and upgrade --engine", async () => {
   // Outside any project, so the help is the CLI's own and runs no build.
   const host = new FakeHost();
   const code = await main(
@@ -235,7 +236,7 @@ Deno.test("main --help documents --sdk and upgrade --engine", async () => {
   assertStringIncludes(help, "upgrade --engine [<v>]");
 });
 
-Deno.test("main setup --yes scaffolds the bootstrapping launchers by default", async () => {
+test("main setup --yes scaffolds the bootstrapping launchers by default", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true);
   assertEquals(await main(["setup", "--yes"], host, prompter), 0);
@@ -245,7 +246,7 @@ Deno.test("main setup --yes scaffolds the bootstrapping launchers by default", a
   assertEquals(prompter.asks, []);
 });
 
-Deno.test("main setup --no-bootstrap-deno scaffolds the plain launchers", async () => {
+test("main setup --no-bootstrap-deno scaffolds the plain launchers", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--no-bootstrap-deno"],
@@ -264,7 +265,7 @@ Deno.test("main setup --no-bootstrap-deno scaffolds the plain launchers", async 
   );
 });
 
-Deno.test("main setup (interactive) asks about the launcher and honours a no", async () => {
+test("main setup (interactive) asks about the launcher and honours a no", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true, false, "n");
   assertEquals(await main(["setup"], host, prompter), 0);
@@ -278,7 +279,7 @@ Deno.test("main setup (interactive) asks about the launcher and honours a no", a
   );
 });
 
-Deno.test("main setup (interactive) takes Enter as the default: bootstrap", async () => {
+test("main setup (interactive) takes Enter as the default: bootstrap", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true);
   assertEquals(await main(["setup"], host, prompter), 0);
@@ -289,7 +290,7 @@ Deno.test("main setup (interactive) takes Enter as the default: bootstrap", asyn
   assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
 });
 
-Deno.test("main setup (interactive) does not ask when a flag already answered", async () => {
+test("main setup (interactive) does not ask when a flag already answered", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true, false, "n");
   const code = await main(["setup", "--bootstrap-deno"], host, prompter);
@@ -302,7 +303,7 @@ Deno.test("main setup (interactive) does not ask when a flag already answered", 
   assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
 });
 
-Deno.test("main import honours the launcher flags and question too", async () => {
+test("main import honours the launcher flags and question too", async () => {
   const flagged = new FakeHost({ Makefile: "build:\n\techo hi\n" });
   const code = await main(
     ["import", "--yes", "--no-bootstrap-deno"],
@@ -329,7 +330,7 @@ Deno.test("main import honours the launcher flags and question too", async () =>
   );
 });
 
-Deno.test("main --help documents both launcher flags", async () => {
+test("main --help documents both launcher flags", async () => {
   const host = new FakeHost();
   assertEquals(
     await main(
@@ -348,7 +349,7 @@ Deno.test("main --help documents both launcher flags", async () => {
   assertEquals(help.includes("--no-bootstrap "), true);
 });
 
-Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {
+test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--dir", "app", "--mcp"],
@@ -372,7 +373,7 @@ Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it th
   assertEquals(importedConfig.mcpServers.zuke.args.at(-1), "--allow-run");
 });
 
-Deno.test("main setup surfaces a directory collision as a friendly exit 1", async () => {
+test("main setup surfaces a directory collision as a friendly exit 1", async () => {
   const host = new FakeHost();
   host.directories.add("zuke"); // a zuke/ directory is in the way
   const code = await main(["setup", "--yes"], host, new FakePrompter(false));
@@ -381,7 +382,7 @@ Deno.test("main setup surfaces a directory collision as a friendly exit 1", asyn
   assertEquals(host.files.size, 0); // nothing scaffolded
 });
 
-Deno.test("main setup --launcher-name renames the launcher and reports it", async () => {
+test("main setup --launcher-name renames the launcher and reports it", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--launcher-name", "build"],
@@ -395,7 +396,7 @@ Deno.test("main setup --launcher-name renames the launcher and reports it", asyn
   assertEquals(host.logs.some((l) => l.endsWith("Next: zuke")), true);
 });
 
-Deno.test("main doc runs `deno doc <spec>` in an isolated temp-dir cwd", async () => {
+test("main doc runs `deno doc <spec>` in an isolated temp-dir cwd", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const code = await main(["doc", "core"], host, defaultPrompter, (args) => {
@@ -406,7 +407,7 @@ Deno.test("main doc runs `deno doc <spec>` in an isolated temp-dir cwd", async (
   assertEquals(seen, ["doc", "jsr:@zuke/core"]);
 });
 
-Deno.test("main doc pins a relative path to an absolute spec (cwd changes under it)", async () => {
+test("main doc pins a relative path to an absolute spec (cwd changes under it)", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const code = await main(
@@ -426,7 +427,7 @@ Deno.test("main doc pins a relative path to an absolute spec (cwd changes under 
   assertEquals(seen[1].endsWith("/lib.ts"), true);
 });
 
-Deno.test("main doc forwards extra flags and propagates the exit code", async () => {
+test("main doc forwards extra flags and propagates the exit code", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const code = await main(
@@ -442,7 +443,7 @@ Deno.test("main doc forwards extra flags and propagates the exit code", async ()
   assertEquals(seen, ["doc", "--filter", "DenoTasks", "jsr:@zuke/deno"]);
 });
 
-Deno.test("main doc without a package prints usage and never spawns", async () => {
+test("main doc without a package prints usage and never spawns", async () => {
   const host = new FakeHost();
   let called = false;
   const runner = () => {
@@ -458,7 +459,7 @@ Deno.test("main doc without a package prints usage and never spawns", async () =
   assertEquals(host.logs.some((l) => l.includes("name a package")), true);
 });
 
-Deno.test("main doc runs a real `deno doc` via the default runner (end-to-end)", async () => {
+test("main doc runs a real `deno doc` via the default runner (end-to-end)", async () => {
   const host = new FakeHost();
   await withTemp(async (dir) => {
     const fixture = `${dir}/lib.ts`;
@@ -473,7 +474,7 @@ Deno.test("main doc runs a real `deno doc` via the default runner (end-to-end)",
   });
 });
 
-Deno.test("main doc relays the real runner's output through the sink, escaped on a runner", async () => {
+test("main doc relays the real runner's output through the sink, escaped on a runner", async () => {
   // `deno doc` repeats a `--filter` it cannot find on stderr. Inherited, that
   // line reached an Actions runner raw; relayed through the sink, the legacy
   // marker in it is neutralised. Off a runner the same line is left as the
@@ -508,7 +509,7 @@ Deno.test("main doc relays the real runner's output through the sink, escaped on
   });
 });
 
-Deno.test("main doc propagates a non-zero exit from the real runner", async () => {
+test("main doc propagates a non-zero exit from the real runner", async () => {
   const host = new FakeHost();
   // A missing file → `deno doc` exits non-zero. No injected runner, so the real
   // defaultDocRunner runs and its temp dir is still cleaned up on failure.
@@ -516,7 +517,7 @@ Deno.test("main doc propagates a non-zero exit from the real runner", async () =
   assertEquals(code !== 0, true);
 });
 
-Deno.test("main doc's real runner ignores a deno.json planted above its temp dir", async () => {
+test("main doc's real runner ignores a deno.json planted above its temp dir", async () => {
   // The isolated directory sits under the shared temp dir, whose ancestors
   // any local user can seed. A planted import map there — even one claiming
   // every subdirectory as a workspace member — must not steer what is
@@ -554,7 +555,7 @@ Deno.test("main doc's real runner ignores a deno.json planted above its temp dir
   });
 });
 
-Deno.test("main setup honours --dir", async () => {
+test("main setup honours --dir", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--dir", "sub", "--name", "Widget"],
@@ -567,7 +568,7 @@ Deno.test("main setup honours --dir", async () => {
   assertEquals(host.logs.some((l) => l.includes("into sub")), true);
 });
 
-Deno.test("main --version prints the version, under both spellings", async () => {
+test("main --version prints the version, under both spellings", async () => {
   // The probe finds no project on purpose. `--version` reaches the build now,
   // so the real one would locate this repository's own zuke.json and spawn
   // its build — a subprocess in a test that only wants to read a string, and
@@ -592,7 +593,7 @@ Deno.test("main --version prints the version, under both spellings", async () =>
   assertEquals(await bare(["-V"]), [VERSION]);
 });
 
-Deno.test("main shows help for --help, -h and no args", async () => {
+test("main shows help for --help, -h and no args", async () => {
   // Outside any project: the probe sees no zuke.json, so a bare `zuke` is the
   // usage rather than a forwarded default target.
   for (const args of [[], ["--help"], ["-h"]]) {
@@ -615,7 +616,7 @@ Deno.test("main shows help for --help, -h and no args", async () => {
   }
 });
 
-Deno.test("main rejects an unknown command", async () => {
+test("main rejects an unknown command", async () => {
   const host = new FakeHost();
   const { runner, reached } = neverRun();
   const code = await main(
@@ -632,7 +633,7 @@ Deno.test("main rejects an unknown command", async () => {
   assertEquals(host.logs[0].includes("Unknown command: bogus"), true);
 });
 
-Deno.test("main setup (non-interactive) scaffolds with flags", async () => {
+test("main setup (non-interactive) scaffolds with flags", async () => {
   const host = new FakeHost();
   const code = await main(
     ["setup", "--yes", "--name", "Widget"],
@@ -643,14 +644,14 @@ Deno.test("main setup (non-interactive) scaffolds with flags", async () => {
   assertEquals(host.files.get("build.ts")?.includes("class Widget"), true);
 });
 
-Deno.test("main setup (non-tty) uses defaults without prompting", async () => {
+test("main setup (non-tty) uses defaults without prompting", async () => {
   const host = new FakeHost();
   const code = await main(["setup"], host, new FakePrompter(false));
   assertEquals(code, 0);
   assertEquals(host.files.get("build.ts")?.includes("class MyBuild"), true);
 });
 
-Deno.test("main setup (interactive) asks for name and overwrite", async () => {
+test("main setup (interactive) asks for name and overwrite", async () => {
   const host = new FakeHost({ "zuke.ts": "old" });
   const code = await main(
     ["setup"],
@@ -662,7 +663,7 @@ Deno.test("main setup (interactive) asks for name and overwrite", async () => {
   assertEquals(host.files.get("zuke.ts")?.includes("class Chosen"), true);
 });
 
-Deno.test("main setup (interactive) keeps --force without asking", async () => {
+test("main setup (interactive) keeps --force without asking", async () => {
   const host = new FakeHost();
   // confirm would return false, but --force already set: files still written.
   const code = await main(
@@ -674,7 +675,7 @@ Deno.test("main setup (interactive) keeps --force without asking", async () => {
   assertEquals(host.files.get("build.ts")?.includes("class Named"), true);
 });
 
-Deno.test("main setup opens with the Zuke logo and the version", async () => {
+test("main setup opens with the Zuke logo and the version", async () => {
   await withBanner(async () => {
     const host = new FakeHost();
     const code = await main(["setup", "--yes"], host, new FakePrompter(false));
@@ -684,7 +685,7 @@ Deno.test("main setup opens with the Zuke logo and the version", async () => {
   });
 });
 
-Deno.test("main import opens with the Zuke logo too", async () => {
+test("main import opens with the Zuke logo too", async () => {
   await withBanner(async () => {
     const host = new FakeHost({ Makefile: "build:\n\techo hi\n" });
     const code = await main(["import", "--yes"], host, new FakePrompter(false));
@@ -693,7 +694,7 @@ Deno.test("main import opens with the Zuke logo too", async () => {
   });
 });
 
-Deno.test("main setup (interactive) offers the star prompt and stars on yes", async () => {
+test("main setup (interactive) offers the star prompt and stars on yes", async () => {
   const host = new FakeHost();
   const actions = new FakeStarActions(true);
   const code = await main(
@@ -708,7 +709,7 @@ Deno.test("main setup (interactive) offers the star prompt and stars on yes", as
   assertEquals(host.logs.some((l) => l.includes("thank you!")), true);
 });
 
-Deno.test("main setup skips the star prompt under --yes and non-TTY", async () => {
+test("main setup skips the star prompt under --yes and non-TTY", async () => {
   for (
     const [args, prompter] of [
       [["setup", "--yes"], new FakePrompter(true, "", false, true)],
@@ -723,7 +724,7 @@ Deno.test("main setup skips the star prompt under --yes and non-TTY", async () =
   }
 });
 
-Deno.test("main uses default host/prompter when omitted", async () => {
+test("main uses default host/prompter when omitted", async () => {
   // `undefined` for host and prompter is what exercises their defaults — the
   // point of this test. The probe is given, though: `--version` reaches the
   // build now, so the real one would find this repository's own zuke.json and
@@ -742,7 +743,7 @@ Deno.test("main uses default host/prompter when omitted", async () => {
   );
 });
 
-Deno.test("defaultPrompter wraps prompt/confirm", () => {
+test("defaultPrompter wraps prompt/confirm", () => {
   assertEquals(typeof defaultPrompter.interactive(), "boolean");
 
   const realPrompt = globalThis.prompt;
@@ -763,7 +764,7 @@ Deno.test("defaultPrompter wraps prompt/confirm", () => {
   }
 });
 
-Deno.test("defaultPrompter shows the default in the question, neutralised on a runner", async () => {
+test("defaultPrompter shows the default in the question, neutralised on a runner", async () => {
   // `prompt` writes to the terminal past the package's sink, and the default
   // it shows is `--name` from the command line. It is shown in the question
   // rather than prefilled, escaped like every other line, and the value the
@@ -868,7 +869,7 @@ async function capturingErr(fn: () => Promise<void>): Promise<string[]> {
   return err;
 }
 
-Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", async () => {
+test("main forwards a build command to zuke.ts at the nearest zuke.json", async () => {
   const host = new FakeHost();
   let seen: [string, string[]] | undefined;
   const code = await main(
@@ -892,7 +893,7 @@ Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", a
   assertEquals(host.logs, []);
 });
 
-Deno.test("main runs a build file on Node with node when zuke.json names that runtime", async () => {
+test("main runs a build file on Node with node when zuke.json names that runtime", async () => {
   const host = new FakeHost();
   let seen: [string, string[], string | undefined] | undefined;
   const code = await main(
@@ -915,7 +916,7 @@ Deno.test("main runs a build file on Node with node when zuke.json names that ru
   ]);
 });
 
-Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", async () => {
+test("main forwards with --frozen once a deno.lock sits beside zuke.json", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const err = await capturingErr(async () => {
@@ -937,7 +938,7 @@ Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", 
   assertEquals(err, []);
 });
 
-Deno.test("main warns on stderr when forwarding without a lockfile", async () => {
+test("main warns on stderr when forwarding without a lockfile", async () => {
   const host = new FakeHost();
   const err = await capturingErr(async () => {
     await main(
@@ -956,7 +957,7 @@ Deno.test("main warns on stderr when forwarding without a lockfile", async () =>
   assertEquals(host.logs, []);
 });
 
-Deno.test("main says nothing about a lockfile for a hosted build, as the launchers do", async () => {
+test("main says nothing about a lockfile for a hosted build, as the launchers do", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const err = await capturingErr(async () => {
@@ -1027,7 +1028,7 @@ async function onEmbedded(
   return { code, runs, err };
 }
 
-Deno.test("main runs a hosted build on the binary's own engine, for a command, --help and --version", async () => {
+test("main runs a hosted build on the binary's own engine, for a command, --help and --version", async () => {
   // The binary's engine serves the pin, so Deno is not asked; the launcher
   // case is runBuild's, in dispatch_test.ts.
   const forwarded = await onEmbedded(["ci", "--plain"], hostedProbe("1.2.0"));
@@ -1051,7 +1052,7 @@ Deno.test("main runs a hosted build on the binary's own engine, for a command, -
   );
 });
 
-Deno.test("main refuses a pin the binary's engine cannot serve, rather than run Deno", async () => {
+test("main refuses a pin the binary's engine cannot serve, rather than run Deno", async () => {
   const { code, runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
   assertEquals(code, 1);
   assertEquals(runs, []);
@@ -1063,7 +1064,7 @@ Deno.test("main refuses a pin the binary's engine cannot serve, rather than run 
   );
 });
 
-Deno.test("main propagates the build's exit code and forwards flags verbatim", async () => {
+test("main propagates the build's exit code and forwards flags verbatim", async () => {
   const host = new FakeHost();
   let seen: string[] = [];
   const code = await main(
@@ -1082,7 +1083,7 @@ Deno.test("main propagates the build's exit code and forwards flags verbatim", a
   assertEquals(seen.slice(3), ["graph", "--no-open", "--output=html"]);
 });
 
-Deno.test("main keeps doc for itself even inside a project", async () => {
+test("main keeps doc for itself even inside a project", async () => {
   // A zuke.json is present, yet `doc` stays the global CLI's and never
   // reaches the build runner — `zuke doc jsr:@zuke/deno` has to work outside
   // a project too, so forwarding it would make it depend on one. It resolves
@@ -1117,7 +1118,7 @@ Deno.test("main keeps doc for itself even inside a project", async () => {
   assertEquals(documented, ["doc", "jsr:@zuke/core"]);
 });
 
-Deno.test("--version inside a project reports both, the CLI's first", async () => {
+test("--version inside a project reports both, the CLI's first", async () => {
   // The CLI and the build are separate packages on separate cadences, and a
   // project pins core through its own import map — so one number cannot stand
   // for both. The CLI's stays the first line, bare, so anything already
@@ -1143,7 +1144,7 @@ Deno.test("--version inside a project reports both, the CLI's first", async () =
   assertEquals(forwarded, [["run", "-A", "zuke.ts", "--version"]]);
 });
 
-Deno.test("--version outside a project is the one line, with no notice", async () => {
+test("--version outside a project is the one line, with no notice", async () => {
   // A version query is not the place to explain what a project is; --help
   // already does that, and a script reading this wants one line.
   const host = new FakeHost();
@@ -1165,7 +1166,7 @@ Deno.test("--version outside a project is the one line, with no notice", async (
   assertEquals(forwarded, []);
 });
 
-Deno.test("--version names a build that could not report one", async () => {
+test("--version names a build that could not report one", async () => {
   // The runner returns the build's exit code rather than throwing on one, so
   // a build that ran and failed would otherwise leave a heading over nothing
   // while the command still reported success.
@@ -1188,7 +1189,7 @@ Deno.test("--version names a build that could not report one", async () => {
   assertStringIncludes(err.join("\n"), "could not report its version");
 });
 
-Deno.test("--version refuses an untrusted build, and says so", async () => {
+test("--version refuses an untrusted build, and says so", async () => {
   // The trust gate reaches this path too, and a refusal must not be silent:
   // the version on stdout is still the CLI's and still right, but the reason
   // the second line is missing belongs on stderr rather than nowhere.
@@ -1215,7 +1216,7 @@ Deno.test("--version refuses an untrusted build, and says so", async () => {
   assertStringIncludes(err.join("\n"), "owned by user 0");
 });
 
-Deno.test("--help inside a project shows both surfaces, each labelled", async () => {
+test("--help inside a project shows both surfaces, each labelled", async () => {
   // The two used to disagree for no visible reason: `zuke --help` described
   // the installed CLI and `./zuke --help` the build, and from inside a project
   // nothing said which you were looking at. Both are shown now, and the
@@ -1244,7 +1245,7 @@ Deno.test("--help inside a project shows both surfaces, each labelled", async ()
   assertEquals(forwarded, [["run", "-A", "zuke.ts", "--help"]]);
 });
 
-Deno.test("--help names a build that ran its help and failed", async () => {
+test("--help names a build that ran its help and failed", async () => {
   // The runner returns the build's exit code rather than throwing on one, so
   // a build whose `--help` runs and fails was the one outcome this command
   // passed over without a word: the heading was printed, nothing followed it,
@@ -1273,7 +1274,7 @@ Deno.test("--help names a build that ran its help and failed", async () => {
   assertStringIncludes(err.join("\n"), "could not describe itself");
 });
 
-Deno.test("--help names a build that could not be spawned at all", async () => {
+test("--help names a build that could not be spawned at all", async () => {
   // The other shape of the same failure: the spawn throws rather than
   // returning a code. Both get the same explanation, so the reader is not
   // left to tell a missing section from an empty one.
@@ -1297,7 +1298,7 @@ Deno.test("--help names a build that could not be spawned at all", async () => {
   assertStringIncludes(stderr, "could not describe itself");
 });
 
-Deno.test("--help refuses an untrusted build, and says so rather than hiding it", async () => {
+test("--help refuses an untrusted build, and says so rather than hiding it", async () => {
   // The help reaches the build now, so the trust gate reaches the help. A
   // refused root must not be reported as an absent one: "there is no build
   // here" would turn a security refusal into a shrug, and the build must not
@@ -1332,7 +1333,7 @@ Deno.test("--help refuses an untrusted build, and says so rather than hiding it"
   assertStringIncludes(err.join("\n"), "owned by user 0");
 });
 
-Deno.test("--help outside a project says why there is no build section", async () => {
+test("--help outside a project says why there is no build section", async () => {
   // Silence would read as "this project has no targets" rather than "you are
   // not in a project", which is a different problem with a different fix.
   const host = new FakeHost();
@@ -1357,7 +1358,7 @@ Deno.test("--help outside a project says why there is no build section", async (
   assertEquals(forwarded, []);
 });
 
-Deno.test("main with no arguments runs the default target inside a project, like ./zuke", async () => {
+test("main with no arguments runs the default target inside a project, like ./zuke", async () => {
   const host = new FakeHost();
   let seen: string[] | undefined;
   const code = await main(
@@ -1377,7 +1378,7 @@ Deno.test("main with no arguments runs the default target inside a project, like
   assertEquals(host.logs, []);
 });
 
-Deno.test("main with no arguments outside a project prints the help", async () => {
+test("main with no arguments outside a project prints the help", async () => {
   const host = new FakeHost();
   let called = false;
   const code = await main(
@@ -1397,7 +1398,7 @@ Deno.test("main with no arguments outside a project prints the help", async () =
   assertEquals(host.logs[0].includes("Usage:"), true);
 });
 
-Deno.test("main outside a project reports the unknown command and the missing zuke.json", async () => {
+test("main outside a project reports the unknown command and the missing zuke.json", async () => {
   const host = new FakeHost();
   let called = false;
   const code = await main(
@@ -1418,7 +1419,7 @@ Deno.test("main outside a project reports the unknown command and the missing zu
   assertEquals(host.logs[0].includes("no zuke.json was found"), true);
 });
 
-Deno.test("main names the build it forwards to when it is not in the working directory", async () => {
+test("main names the build it forwards to when it is not in the working directory", async () => {
   // A zuke.json at the parent of the cwd: discovery chose it, so stderr says
   // so. (Every other routing test puts it at the cwd, where nothing is said.)
   const parent = absolutePath(Deno.cwd()).parent();
@@ -1457,7 +1458,7 @@ Deno.test("main names the build it forwards to when it is not in the working dir
   assertEquals(host.logs, []);
 });
 
-Deno.test("main surfaces a runner failure as a clean exit 1 on stderr", async () => {
+test("main surfaces a runner failure as a clean exit 1 on stderr", async () => {
   // Both forwarding paths — a named command and the bare default-target run
   // — share the handler, so neither can escape as an uncaught throw; and the
   // report goes to stderr, never to the stdout that belongs to the build.
@@ -1483,7 +1484,7 @@ Deno.test("main surfaces a runner failure as a clean exit 1 on stderr", async ()
   }
 });
 
-Deno.test("main refuses to forward into a build owned by another user", async () => {
+test("main refuses to forward into a build owned by another user", async () => {
   // The trust gate's refusal is exit 1 with the advice on stderr — under
   // `zuke mcp` stdout is the JSON-RPC stream — and the runner is never reached.
   const host = new FakeHost();
@@ -1507,7 +1508,7 @@ Deno.test("main refuses to forward into a build owned by another user", async ()
   assertEquals(err[0].includes("refusing to run the build at"), true);
 });
 
-Deno.test("an unknown command cannot forge a workflow command through the real host", async () => {
+test("an unknown command cannot forge a workflow command through the real host", async () => {
   // The bug: `Unknown command: <argv>` went out through a bare `console.log`.
   // The runner acts on a line whose first non-blank characters are `::`, and
   // an argument can carry a newline, so the second physical line of the
@@ -1540,7 +1541,7 @@ Deno.test("an unknown command cannot forge a workflow command through the real h
   );
 });
 
-Deno.test("a forwarding failure cannot forge a workflow command on stderr", async () => {
+test("a forwarding failure cannot forge a workflow command on stderr", async () => {
   // The catch arm is the sharp end: a spawn failure's message is Deno's, and a
   // refusal names a path from the filesystem — neither is Zuke's text. A
   // message carrying a newline puts the runner's `::` at the start of a line.
@@ -1597,7 +1598,7 @@ function coreLock(version: string): string {
   });
 }
 
-Deno.test("--version reads the project's core from deno.lock, running nothing", async () => {
+test("--version reads the project's core from deno.lock, running nothing", async () => {
   // A build on core older than 1.60.0 cannot answer --version, so asking it
   // printed "Unknown flag". The lock answers for every core.
   const host = new FakeHost({ [atCwd("deno.lock")]: coreLock("1.42.0") });
@@ -1620,7 +1621,7 @@ Deno.test("--version reads the project's core from deno.lock, running nothing", 
   assertEquals(host.logs[2], "1.42.0");
 });
 
-Deno.test("--version and --help name a hosted build by its zuke.json and engine", async () => {
+test("--version and --help name a hosted build by its zuke.json and engine", async () => {
   const hosted = hostedProbe("1.2.0");
   const label = `${atCwd("zuke.json")}, on @zuke/engine 1.2.0`;
   for (const args of [["--version"], ["--help"]]) {
@@ -1664,7 +1665,7 @@ Deno.test("--version and --help name a hosted build by its zuke.json and engine"
   );
 });
 
-Deno.test("--version still asks the build when the lock names no core", async () => {
+test("--version still asks the build when the lock names no core", async () => {
   const host = new FakeHost({
     [atCwd("deno.lock")]: JSON.stringify({ specifiers: {} }),
   });
@@ -1681,7 +1682,7 @@ Deno.test("--version still asks the build when the lock names no core", async ()
   assertEquals(reached(), true);
 });
 
-Deno.test("--version does not read a deno.lock the project's config disables", async () => {
+test("--version does not read a deno.lock the project's config disables", async () => {
   // Deno ignores a leftover deno.lock under "lock": false, so its core is not
   // the one the build runs on; the build is asked instead.
   const host = new FakeHost({
@@ -1702,7 +1703,7 @@ Deno.test("--version does not read a deno.lock the project's config disables", a
   assertEquals(host.logs.includes("1.42.0"), false);
 });
 
-Deno.test("--version still reads deno.lock under a commented deno.jsonc", async () => {
+test("--version still reads deno.lock under a commented deno.jsonc", async () => {
   // Deno reads its config as JSONC; a comment there must not send the CLI back
   // to running the build, which a core older than 1.60.0 cannot answer.
   const host = new FakeHost({
@@ -1723,7 +1724,7 @@ Deno.test("--version still reads deno.lock under a commented deno.jsonc", async 
   assertEquals(host.logs[2], "1.42.0");
 });
 
-Deno.test("--version reads the lockfile the project's config names", async () => {
+test("--version reads the lockfile the project's config names", async () => {
   const host = new FakeHost({
     [atCwd("deno.jsonc")]: JSON.stringify({
       lock: { path: "locks/zuke.lock" },
@@ -1745,7 +1746,7 @@ Deno.test("--version reads the lockfile the project's config names", async () =>
   assertEquals(host.logs[2], "1.42.0");
 });
 
-Deno.test("--version says why a build could not answer: core older than 1.60.0", async () => {
+test("--version says why a build could not answer: core older than 1.60.0", async () => {
   const err = await capturingErr(async () => {
     await main(
       ["--version"],
@@ -1760,7 +1761,7 @@ Deno.test("--version says why a build could not answer: core older than 1.60.0",
   assertStringIncludes(err.join("\n"), "older than 1.60.0");
 });
 
-Deno.test("--version on a terminal is one panel: cli, install, core, project, deno, platform", async () => {
+test("--version on a terminal is one panel: cli, install, core, project, deno, platform", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost({ [atCwd("deno.lock")]: coreLock("1.42.0") });
     host.terminal = true;
@@ -1811,7 +1812,7 @@ Deno.test("--version on a terminal is one panel: cli, install, core, project, de
   });
 });
 
-Deno.test("--version names a Homebrew install in the panel, and keeps plain output one line", async () => {
+test("--version names a Homebrew install in the panel, and keeps plain output one line", async () => {
   // One machine can hold the JSR zuke and the Homebrew one; the panel says
   // which answered. Plain output is what scripts read, so it stays the bare
   // version.
@@ -1848,7 +1849,7 @@ Deno.test("--version names a Homebrew install in the panel, and keeps plain outp
   assertEquals(await version(false), [VERSION]);
 });
 
-Deno.test("--version names an npm install in the panel", async () => {
+test("--version names an npm install in the panel", async () => {
   const entry = "file:///usr/lib/node_modules/@zuke-build/cli/zuke.js";
   const npm: UpgradeHost = {
     ...defaultUpgradeHost,
@@ -1872,7 +1873,7 @@ Deno.test("--version names an npm install in the panel", async () => {
   assertStringIncludes(stripAnsi(host.logs[0]), `◆ install   npm (${entry})`);
 });
 
-Deno.test("--version names a Chocolatey install in the panel", async () => {
+test("--version names a Chocolatey install in the panel", async () => {
   const chocolatey: UpgradeHost = {
     ...defaultUpgradeHost,
     standalone: () => true,
@@ -1899,7 +1900,7 @@ Deno.test("--version names a Chocolatey install in the panel", async () => {
   });
 });
 
-Deno.test("--version shortens a Windows binary's backslash path under home", async () => {
+test("--version shortens a Windows binary's backslash path under home", async () => {
   // The OS reports the executable with backslashes on Windows, while the
   // home prefix is compared in absolutePath's forward-slash form.
   const binary: UpgradeHost = {
@@ -1928,7 +1929,7 @@ Deno.test("--version shortens a Windows binary's backslash path under home", asy
   });
 });
 
-Deno.test("--plain is the CLI's for its own commands, and the build's for a forwarded one", async () => {
+test("--plain is the CLI's for its own commands, and the build's for a forwarded one", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost();
     host.terminal = true;
@@ -1961,7 +1962,7 @@ Deno.test("--plain is the CLI's for its own commands, and the build's for a forw
   });
 });
 
-Deno.test("--help on a terminal is the plain help, painted", async () => {
+test("--help on a terminal is the plain help, painted", async () => {
   await withEnv(RICH_ENV, async () => {
     const rich = new FakeHost();
     rich.terminal = true;
@@ -1994,7 +1995,7 @@ Deno.test("--help on a terminal is the plain help, painted", async () => {
   });
 });
 
-Deno.test("ZUKE_NO_BANNER and ZUKE_PLAIN drop the --help logo; ZUKE_NO_BANNER keeps the paint", async () => {
+test("ZUKE_NO_BANNER and ZUKE_PLAIN drop the --help logo; ZUKE_NO_BANNER keeps the paint", async () => {
   const help = async (env: Record<string, string | undefined>) => {
     const host = new FakeHost();
     host.terminal = true;
@@ -2019,7 +2020,7 @@ Deno.test("ZUKE_NO_BANNER and ZUKE_PLAIN drop the --help logo; ZUKE_NO_BANNER ke
   assertEquals(plain[0].includes("◆"), false);
 });
 
-Deno.test("--help on a terminal paints the heading of the build's half; plain keeps its text", async () => {
+test("--help on a terminal paints the heading of the build's half; plain keeps its text", async () => {
   const heading = async (terminal: boolean) => {
     const host = new FakeHost();
     host.terminal = terminal;
@@ -2045,7 +2046,7 @@ Deno.test("--help on a terminal paints the heading of the build's half; plain ke
   assertEquals(stripAnsi(rich).replace("◆ ", ""), plain);
 });
 
-Deno.test("setup on a terminal marks its outcome; ZUKE_PLAIN drops the logo", async () => {
+test("setup on a terminal marks its outcome; ZUKE_PLAIN drops the logo", async () => {
   await withEnv(RICH_ENV, async () => {
     const rich = new FakeHost();
     rich.terminal = true;
@@ -2065,7 +2066,7 @@ Deno.test("setup on a terminal marks its outcome; ZUKE_PLAIN drops the logo", as
   });
 });
 
-Deno.test("a command's failure is marked on a terminal", async () => {
+test("a command's failure is marked on a terminal", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost();
     host.terminal = true;
@@ -2086,7 +2087,7 @@ Deno.test("a command's failure is marked on a terminal", async () => {
   });
 });
 
-Deno.test("an explicit --plain reaches the build's half of --help as ZUKE_PLAIN", async () => {
+test("an explicit --plain reaches the build's half of --help as ZUKE_PLAIN", async () => {
   const envs: Array<Readonly<Record<string, string>> | undefined> = [];
   const runner = (
     _root: string,
@@ -2113,7 +2114,7 @@ Deno.test("an explicit --plain reaches the build's half of --help as ZUKE_PLAIN"
   assertEquals(envs, [{ ZUKE_PLAIN: "1" }, undefined]);
 });
 
-Deno.test("a build asked for its version is always asked plainly", async () => {
+test("a build asked for its version is always asked plainly", async () => {
   // Rich or not, the CLI prints the panel itself; the build's answer is the
   // bare number under the heading, never a second panel.
   await withEnv(RICH_ENV, async () => {
@@ -2136,7 +2137,7 @@ Deno.test("a build asked for its version is always asked plainly", async () => {
   });
 });
 
-Deno.test("ZUKE_NO_BANNER drops the setup logo too, and keeps the rest", async () => {
+test("ZUKE_NO_BANNER drops the setup logo too, and keeps the rest", async () => {
   await withEnv({ ...RICH_ENV, ZUKE_NO_BANNER: "1" }, async () => {
     const host = new FakeHost();
     await withBanner(async () => {
@@ -2147,7 +2148,7 @@ Deno.test("ZUKE_NO_BANNER drops the setup logo too, and keeps the rest", async (
   });
 });
 
-Deno.test("--version names the binary's built-in engine as its own row", async () => {
+test("--version names the binary's built-in engine as its own row", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost();
     host.terminal = true;
@@ -2170,7 +2171,7 @@ Deno.test("--version names the binary's built-in engine as its own row", async (
   });
 });
 
-Deno.test("binaryMain is main with every default and the binary's engine", async () => {
+test("binaryMain is main with every default and the binary's engine", async () => {
   // Outside any project, with plain output, so the answer is one line and
   // nothing is spawned.
   await withTemp(async (dir) => {
@@ -2190,14 +2191,14 @@ Deno.test("binaryMain is main with every default and the binary's engine", async
   });
 });
 
-Deno.test("parseSetupFlags reads --build-file in both forms", () => {
+test("parseSetupFlags reads --build-file in both forms", () => {
   assertEquals(parseSetupFlags(["--build-file", "ci.ts"]).buildFile, "ci.ts");
   assertEquals(parseSetupFlags(["--build-file=ci.ts"]).buildFile, "ci.ts");
   assertEquals(parseSetupFlags(["--build-file"]).buildFile, undefined);
   assertEquals(parseSetupFlags([]).buildFile, undefined);
 });
 
-Deno.test("main setup asks a new project's build file first, with build.ts the default", async () => {
+test("main setup asks a new project's build file first, with build.ts the default", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "Chosen", false);
   assertEquals(await main(["setup"], host, prompter), 0);
@@ -2217,7 +2218,7 @@ Deno.test("main setup asks a new project's build file first, with build.ts the d
   assertEquals(named.files.has("build.ts"), false);
 });
 
-Deno.test("main setup shows --build-file as the default answer, and takes it under --yes", async () => {
+test("main setup shows --build-file as the default answer, and takes it under --yes", async () => {
   const asked = new FakeHost();
   const prompter = new FakePrompter(true, "", false);
   assertEquals(
@@ -2239,7 +2240,7 @@ Deno.test("main setup shows --build-file as the default answer, and takes it und
   assertEquals(quiet.files.has("ci.ts"), true);
 });
 
-Deno.test("main setup asks again after a bad or taken build file name, then gives up", async () => {
+test("main setup asks again after a bad or taken build file name, then gives up", async () => {
   const host = new FakeHost({ "build.ts": "console.log('mine');\n" });
   const prompter = new FakePrompter(true, "", false, false, "", [
     "../x.ts",
@@ -2267,7 +2268,7 @@ Deno.test("main setup asks again after a bad or taken build file name, then give
   assertEquals([...stuck.files.keys()], ["build.ts"]);
 });
 
-Deno.test("main setup does not ask the build file of an existing project or a Python build", async () => {
+test("main setup does not ask the build file of an existing project or a Python build", async () => {
   const existing = new FakePrompter(true, "Chosen", true);
   const host = new FakeHost({ "zuke.json": '{ "name": "Old" }\n' });
   assertEquals(await main(["setup"], host, existing), 0);
@@ -2291,7 +2292,7 @@ Deno.test("main setup does not ask the build file of an existing project or a Py
   assertEquals(python.asks.includes("Build file"), false);
 });
 
-Deno.test("main setup --runtime node scaffolds a Node project and asks nothing about Deno", async () => {
+test("main setup --runtime node scaffolds a Node project and asks nothing about Deno", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true);
   assertEquals(await main(["setup", "--runtime", "node"], host, prompter), 0);
@@ -2301,7 +2302,7 @@ Deno.test("main setup --runtime node scaffolds a Node project and asks nothing a
   assertEquals(prompter.asks.some((q) => q.includes("Deno")), false);
 });
 
-Deno.test("main setup (interactive) asks the runtime, and takes an answer of node", async () => {
+test("main setup (interactive) asks the runtime, and takes an answer of node", async () => {
   const host = new FakeHost();
   const base = new FakePrompter(true, "", true);
   const asked: string[] = [];
@@ -2327,7 +2328,7 @@ Deno.test("main setup (interactive) asks the runtime, and takes an answer of nod
   assertEquals(deno.files.has("deno.json"), true);
 });
 
-Deno.test("main setup refuses an unknown runtime, from the flag and from the question", async () => {
+test("main setup refuses an unknown runtime, from the flag and from the question", async () => {
   const flagged = new FakeHost();
   assertEquals(
     await main(["setup", "--runtime=bun"], flagged, new FakePrompter(false)),
@@ -2346,7 +2347,7 @@ Deno.test("main setup refuses an unknown runtime, from the flag and from the que
   assertEquals(asked.files.size, 0);
 });
 
-Deno.test("main setup refuses --runtime node with --sdk", async () => {
+test("main setup refuses --runtime node with --sdk", async () => {
   const host = new FakeHost();
   const code = await setupSdk(host, ["--runtime", "node"], RELEASES);
   assertEquals(code, 1);

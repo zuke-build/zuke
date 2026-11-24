@@ -10,6 +10,7 @@
  * lost.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -44,7 +45,7 @@ class LosesDeploySettlement extends FileSystemStateStore {
   }
 }
 
-Deno.test("zuke cancel compensates an unproven target on a degraded record", async () => {
+test("zuke cancel compensates an unproven target on a degraded record", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     const store = new LosesDeploySettlement(`${dir}/runs`, defaultStateHost);

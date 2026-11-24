@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -57,7 +58,7 @@ function appBuild(bundle: string, fake: { fetch: typeof fetch }) {
   };
 }
 
-Deno.test("a build uploads a bundle to the internal track through the CLI", async () => {
+test("a build uploads a bundle to the internal track through the CLI", async () => {
   const bundle = await Deno.makeTempFile({ suffix: ".aab" });
   await Deno.writeFile(bundle, new Uint8Array([1, 2, 3]));
   const fake = google(false);
@@ -78,7 +79,7 @@ Deno.test("a build uploads a bundle to the internal track through the CLI", asyn
   assertEquals(fake.calls[2].body, 3);
 });
 
-Deno.test("a refused commit fails the run with Google's message, deletes the edit and never prints the key", async () => {
+test("a refused commit fails the run with Google's message, deletes the edit and never prints the key", async () => {
   const bundle = await Deno.makeTempFile({ suffix: ".aab" });
   const fake = google(true);
   const { code, out, err } = await runCli(appBuild(bundle, fake), [

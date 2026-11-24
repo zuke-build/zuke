@@ -8,11 +8,12 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { psString } from "../src/powershell.ts";
 import { xmlText } from "../src/xml.ts";
 
-Deno.test("psString: every quote PowerShell accepts is doubled", () => {
+test("psString: every quote PowerShell accepts is doubled", () => {
   assertEquals(psString("plain"), "'plain'");
   assertEquals(psString("it's"), "'it''s'");
   // PowerShell closes a single-quoted string on the typographic quotes too,
@@ -27,7 +28,7 @@ Deno.test("psString: every quote PowerShell accepts is doubled", () => {
   assertEquals(psString("$(calc) `n $env:PATH"), "'$(calc) `n $env:PATH'");
 });
 
-Deno.test("xmlText: markup characters become entities", () => {
+test("xmlText: markup characters become entities", () => {
   assertEquals(
     xmlText(`<a href="x">Tom & Jerry's</a>`, "f"),
     "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&apos;s&lt;/a&gt;",
@@ -36,7 +37,7 @@ Deno.test("xmlText: markup characters become entities", () => {
   assertEquals(xmlText("\u00e9\u4e2d\u{1f600}", "f"), "\u00e9\u4e2d\u{1f600}");
 });
 
-Deno.test("xmlText: a NuGet replacement token cannot form", () => {
+test("xmlText: a NuGet replacement token cannot form", () => {
   // choco pack replaces $name$ in the nuspec's raw text before parsing it;
   // a character reference is not a token, and parses back to "$".
   assertEquals(
@@ -45,7 +46,7 @@ Deno.test("xmlText: a NuGet replacement token cannot form", () => {
   );
 });
 
-Deno.test("xmlText: a character XML cannot hold is refused, naming the field", () => {
+test("xmlText: a character XML cannot hold is refused, naming the field", () => {
   assertThrows(
     () => xmlText("a\u0001b", "the nuspec <title>"),
     Error,

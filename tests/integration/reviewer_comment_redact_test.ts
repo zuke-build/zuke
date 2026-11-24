@@ -17,6 +17,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
@@ -72,7 +73,7 @@ interface Sent {
   body: string;
 }
 
-Deno.test("the AI reviewer never puts a declared secret on the pull request", async () => {
+test("the AI reviewer never puts a declared secret on the pull request", async () => {
   const sent: Sent[] = [];
 
   const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {

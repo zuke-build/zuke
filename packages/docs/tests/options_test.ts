@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { resolveOptions } from "../src/options.ts";
 
-Deno.test("resolveOptions fills in every default", () => {
+test("resolveOptions fills in every default", () => {
   const o = resolveOptions({});
   assertEquals(o.packagesDir, "packages");
   assertEquals(o.jsrBaseUrl, "https://jsr.io");
@@ -16,7 +17,7 @@ Deno.test("resolveOptions fills in every default", () => {
   assertEquals(typeof o.project.summary, "string");
 });
 
-Deno.test("resolveOptions honours every override", () => {
+test("resolveOptions honours every override", () => {
   const project = { title: "Acme", summary: "s", example: "e", install: "i" };
   const o = resolveOptions({
     packagesDir: "libs",

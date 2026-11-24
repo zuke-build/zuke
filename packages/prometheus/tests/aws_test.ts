@@ -12,6 +12,7 @@
 
 // cspell:ignore AKIDCI AKIDDEFAULT AKIDDEV AKIDFROMCONFIG AKIDHALF AKIDOTHER AKIDSTAGING ASIDEXAMPLETEMP
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -70,7 +71,7 @@ const temporary = (expiration = "2026-01-01T06:00:00Z") => () =>
     Expiration: expiration,
   });
 
-Deno.test("environment keys sign the exact request for aps in the region", async () => {
+test("environment keys sign the exact request for aps in the region", async () => {
   const env = {
     AWS_ACCESS_KEY_ID: ID,
     AWS_SECRET_ACCESS_KEY: SECRET,
@@ -99,7 +100,7 @@ Deno.test("environment keys sign the exact request for aps in the region", async
   assertEquals(withToken["x-amz-security-token"], SESSION);
 });
 
-Deno.test("the region comes from the setting, AWS_REGION, then AWS_DEFAULT_REGION", async () => {
+test("the region comes from the setting, AWS_REGION, then AWS_DEFAULT_REGION", async () => {
   const keys = { AWS_ACCESS_KEY_ID: ID, AWS_SECRET_ACCESS_KEY: SECRET };
   const cases: Array<
     [
@@ -142,7 +143,7 @@ Deno.test("the region comes from the setting, AWS_REGION, then AWS_DEFAULT_REGIO
   }
 });
 
-Deno.test("accessKey(...) wins over everything and refuses an empty secret", async () => {
+test("accessKey(...) wins over everything and refuses an empty secret", async () => {
   const sent = await headers(
     { env: { AWS_ACCESS_KEY_ID: "AKIDOTHER", AWS_SECRET_ACCESS_KEY: "x" } },
     (a) => a.region("us-east-1").accessKey(ID, SECRET, SESSION),
@@ -163,7 +164,7 @@ Deno.test("accessKey(...) wins over everything and refuses an empty secret", asy
   assertStringIncludes(message, "an empty key id or secret");
 });
 
-Deno.test("profile(...) reads static keys from the shared files, credentials winning", async () => {
+test("profile(...) reads static keys from the shared files, credentials winning", async () => {
   const files = {
     "/home/dev/.aws/config": [
       "# comment",
@@ -222,7 +223,7 @@ Deno.test("profile(...) reads static keys from the shared files, credentials win
   assertEquals(credentialOf(overridden.authorization).split("/")[0], "AKIDCI");
 });
 
-Deno.test("a profile that is missing, half a key, or not static keys is refused", async () => {
+test("a profile that is missing, half a key, or not static keys is refused", async () => {
   const env = { HOME: "/h", AWS_REGION: "us-east-1" };
   const cases: Array<[Record<string, string>, string, string]> = [
     [{}, "prod", 'aws: profile "prod" has no static keys'],
@@ -300,7 +301,7 @@ Deno.test("a profile that is missing, half a key, or not static keys is refused"
   );
 });
 
-Deno.test("the default chain reads AWS_PROFILE, else a [default] with keys", async () => {
+test("the default chain reads AWS_PROFILE, else a [default] with keys", async () => {
   const files = {
     "/h/.aws/credentials":
       `[default]\naws_access_key_id=AKIDDEFAULT\naws_secret_access_key=s\n[dev]\naws_access_key_id=AKIDDEV\naws_secret_access_key=s`,
@@ -320,7 +321,7 @@ Deno.test("the default chain reads AWS_PROFILE, else a [default] with keys", asy
   );
 });
 
-Deno.test("web identity assumes the role at the regional STS endpoint", async () => {
+test("web identity assumes the role at the regional STS endpoint", async () => {
   const clock: Clock = { now: T0 };
   const sts = "https://sts.us-west-2.amazonaws.com/";
   const fetcher = routes({
@@ -371,7 +372,7 @@ Deno.test("web identity assumes the role at the regional STS endpoint", async ()
   assertEquals(fetcher.sent.length, 2);
 });
 
-Deno.test("web identity honours the session name and the China partition", async () => {
+test("web identity honours the session name and the China partition", async () => {
   const sts = "https://sts.cn-north-1.amazonaws.com.cn/";
   const fetcher = routes({
     [`POST ${sts}`]: () =>
@@ -392,7 +393,7 @@ Deno.test("web identity honours the session name and the China partition", async
   assertEquals(form(fetcher.sent[0].body).RoleSessionName, "ci-run-42");
 });
 
-Deno.test("a refused or malformed STS answer fails without the web identity token", async () => {
+test("a refused or malformed STS answer fails without the web identity token", async () => {
   const env = {
     AWS_REGION: "us-east-1",
     AWS_WEB_IDENTITY_TOKEN_FILE: "/t",
@@ -438,7 +439,7 @@ Deno.test("a refused or malformed STS answer fails without the web identity toke
   }
 });
 
-Deno.test("the ECS relative URI is fetched from 169.254.170.2", async () => {
+test("the ECS relative URI is fetched from 169.254.170.2", async () => {
   const fetcher = routes({
     "GET http://169.254.170.2/v2/credentials/task-uuid": temporary(),
   });
@@ -454,7 +455,7 @@ Deno.test("the ECS relative URI is fetched from 169.254.170.2", async () => {
   assertEquals(fetcher.sent[0].headers.has("authorization"), false);
 });
 
-Deno.test("a relative URI that is not a path is refused before any request", async () => {
+test("a relative URI that is not a path is refused before any request", async () => {
   for (const relative of ["@evil.example/creds", "evil.example/creds"]) {
     const fetcher = fakeFetch(() => new Response());
     await assertRejects(
@@ -473,7 +474,7 @@ Deno.test("a relative URI that is not a path is refused before any request", asy
   }
 });
 
-Deno.test("EKS Pod Identity's full URI carries the authorization token from its file", async () => {
+test("EKS Pod Identity's full URI carries the authorization token from its file", async () => {
   const full = "http://169.254.170.23/v1/credentials";
   const fetcher = routes({ [`GET ${full}`]: temporary() });
   await headers({
@@ -502,7 +503,7 @@ Deno.test("EKS Pod Identity's full URI carries the authorization token from its 
   assertEquals(https.sent[0].headers.get("authorization"), "Basic env-token");
 });
 
-Deno.test("a plaintext full URI off the allowlist is refused; a refusal hides the token", async () => {
+test("a plaintext full URI off the allowlist is refused; a refusal hides the token", async () => {
   for (
     const full of [
       "http://169.254.170.2.evil.example/creds",
@@ -546,7 +547,7 @@ Deno.test("a plaintext full URI off the allowlist is refused; a refusal hides th
   assertEquals(error.message.includes("secret-container-token"), false);
 });
 
-Deno.test("EC2 IMDSv2: a session token, the role name, then the role's credentials", async () => {
+test("EC2 IMDSv2: a session token, the role name, then the role's credentials", async () => {
   const fetcher = routes({
     "PUT http://169.254.169.254/latest/api/token": () =>
       new Response("imds-session-token"),
@@ -577,7 +578,7 @@ Deno.test("EC2 IMDSv2: a session token, the role name, then the role's credentia
   assertEquals(fetcher.sent.length, 3);
 });
 
-Deno.test("IMDS failures: disabled, no role, a hostile role name, a failed Code", async () => {
+test("IMDS failures: disabled, no role, a hostile role name, a failed Code", async () => {
   await assertRejects(
     () =>
       headers({
@@ -626,7 +627,7 @@ Deno.test("IMDS failures: disabled, no role, a hostile role name, a failed Code"
   );
 });
 
-Deno.test("sigv4() signs a PrometheusTasks query, headers and body included", async () => {
+test("sigv4() signs a PrometheusTasks query, headers and body included", async () => {
   const url =
     "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234/api/v1/query";
   const fetcher = routes({ [`POST ${url}`]: () => vector() });

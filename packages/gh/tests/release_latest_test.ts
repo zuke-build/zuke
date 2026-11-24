@@ -10,6 +10,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -73,7 +74,7 @@ function fakeGithub(
   };
 }
 
-Deno.test("a release that is not latest is marked with a PATCH", async () => {
+test("a release that is not latest is marked with a PATCH", async () => {
   const seen: Seen[] = [];
   const result = await GhTasks.markReleaseLatest((s) =>
     s.tag("v1.0.2").repo("acme/app").token("tok").fetch(fakeGithub(seen))
@@ -91,7 +92,7 @@ Deno.test("a release that is not latest is marked with a PATCH", async () => {
   assertEquals(seen[2].authorization, "Bearer tok");
 });
 
-Deno.test("a release that is already latest is left unwritten", async () => {
+test("a release that is already latest is left unwritten", async () => {
   const seen: Seen[] = [];
   const result = await GhTasks.markReleaseLatest((s) =>
     s.tag("v1.0.2").repo("acme/app").token("tok")
@@ -107,7 +108,7 @@ Deno.test("a release that is already latest is left unwritten", async () => {
   assertEquals(seen.map((s) => s.method), ["GET", "GET"]);
 });
 
-Deno.test("a tag with no release reports no-release, not an error", async () => {
+test("a tag with no release reports no-release, not an error", async () => {
   const seen: Seen[] = [];
   const result = await GhTasks.markReleaseLatest((s) =>
     s.tag("v1.0.3").repo("acme/app").token("tok")
@@ -118,7 +119,7 @@ Deno.test("a tag with no release reports no-release, not an error", async () => 
   assertEquals(seen.map((s) => s.method), ["GET"]);
 });
 
-Deno.test("a repository with no latest release still gets the PATCH", async () => {
+test("a repository with no latest release still gets the PATCH", async () => {
   // GitHub hides drafts and prereleases from the latest lookup, so a 404
   // there does not mean the tag's release is missing — the write is what
   // gives the pointer a value.
@@ -129,7 +130,7 @@ Deno.test("a repository with no latest release still gets the PATCH", async () =
   assertEquals(result.state, "marked");
 });
 
-Deno.test("failures beyond the expected 404s surface with their status", async () => {
+test("failures beyond the expected 404s surface with their status", async () => {
   await assertRejects(
     () =>
       GhTasks.markReleaseLatest((s) =>
@@ -159,7 +160,7 @@ Deno.test("failures beyond the expected 404s surface with their status", async (
   );
 });
 
-Deno.test("a lookup that returns no id names the call that failed", async () => {
+test("a lookup that returns no id names the call that failed", async () => {
   const empty: typeof fetch = async () => {
     await Promise.resolve();
     return new Response("{}", { status: 200 });
@@ -174,7 +175,7 @@ Deno.test("a lookup that returns no id names the call that failed", async () => 
   );
 });
 
-Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
+test("a GHES base URL is honored, trailing slash and all", async () => {
   const seen: Seen[] = [];
   await GhTasks.markReleaseLatest((s) =>
     s.tag("v1.0.2").repo("acme/app").token("tok")
@@ -186,7 +187,7 @@ Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
   );
 });
 
-Deno.test("a tag that is not a valid ref name is refused up front", async () => {
+test("a tag that is not a valid ref name is refused up front", async () => {
   // The tag is interpolated into a request path; a `..` would redirect a
   // token-bearing request somewhere the caller never named.
   await assertRejects(
@@ -222,7 +223,7 @@ async function withEnv(
   }
 }
 
-Deno.test("missing settings fail with messages that name the fix", async () => {
+test("missing settings fail with messages that name the fix", async () => {
   await assertRejects(
     () => GhTasks.markReleaseLatest((s) => s.repo("a/b").token("t")),
     Error,
@@ -250,7 +251,7 @@ Deno.test("missing settings fail with messages that name the fix", async () => {
   );
 });
 
-Deno.test("the token and repo default to the Actions environment", async () => {
+test("the token and repo default to the Actions environment", async () => {
   await withEnv(
     { GITHUB_TOKEN: "ghs_env", GITHUB_REPOSITORY: "acme/app" },
     async () => {

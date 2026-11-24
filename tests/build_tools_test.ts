@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { Build } from "@zuke/core";
 import {
   assertEquals,
@@ -70,26 +71,26 @@ import { withTempCwd } from "../packages/core/tests/_temp.ts";
 // build/packages.ts
 // ---------------------------------------------------------------------------
 
-Deno.test("PACKAGES lists core first and has no duplicates", () => {
+test("PACKAGES lists core first and has no duplicates", () => {
   assertEquals(PACKAGES.length > 0, true);
   assertEquals(PACKAGES[0], "core");
   assertEquals(new Set(PACKAGES).size, PACKAGES.length);
 });
 
-Deno.test("readVersion accepts a well-formed deno.json shape", () => {
+test("readVersion accepts a well-formed deno.json shape", () => {
   assertEquals(readVersion({ version: "1.2.3" }), "1.2.3");
 });
 
-Deno.test("readVersion rejects a non-object", () => {
+test("readVersion rejects a non-object", () => {
   assertThrows(() => readVersion(null), Error, "must be a JSON object");
   assertThrows(() => readVersion("nope"), Error, "must be a JSON object");
 });
 
-Deno.test("readVersion rejects a missing version field", () => {
+test("readVersion rejects a missing version field", () => {
   assertThrows(() => readVersion({}), Error, 'missing a "version" field');
 });
 
-Deno.test("readVersion rejects a non-string version", () => {
+test("readVersion rejects a non-string version", () => {
   assertThrows(
     () => readVersion({ version: 1 }),
     Error,
@@ -97,7 +98,7 @@ Deno.test("readVersion rejects a non-string version", () => {
   );
 });
 
-Deno.test("packageEntrypoints resolves core's exports map to real paths", async () => {
+test("packageEntrypoints resolves core's exports map to real paths", async () => {
   const entrypoints = await packageEntrypoints("core");
   assertEquals(entrypoints.includes("packages/core/mod.ts"), true);
   assertEquals(entrypoints.includes("packages/core/src/tooling.ts"), true);
@@ -107,7 +108,7 @@ Deno.test("packageEntrypoints resolves core's exports map to real paths", async 
   );
 });
 
-Deno.test("localVersion matches core's own deno.json", async () => {
+test("localVersion matches core's own deno.json", async () => {
   const raw = JSON.parse(await Deno.readTextFile("packages/core/deno.json"));
   assertEquals(await localVersion("core"), raw.version);
 });
@@ -116,7 +117,7 @@ Deno.test("localVersion matches core's own deno.json", async () => {
 // build/api_reference.ts
 // ---------------------------------------------------------------------------
 
-Deno.test("renderType: typeRef with and without generics", () => {
+test("renderType: typeRef with and without generics", () => {
   assertEquals(
     renderType({
       kind: "typeRef",
@@ -130,7 +131,7 @@ Deno.test("renderType: typeRef with and without generics", () => {
   );
 });
 
-Deno.test("renderType: array, union, intersection, fallback, undefined", () => {
+test("renderType: array, union, intersection, fallback, undefined", () => {
   assertEquals(
     renderType({ kind: "array", value: { repr: "string" } }),
     "string[]",
@@ -151,7 +152,7 @@ Deno.test("renderType: array, union, intersection, fallback, undefined", () => {
   assertEquals(renderType(undefined), "unknown");
 });
 
-Deno.test("renderParam: rest, assign, and identifier forms", () => {
+test("renderParam: rest, assign, and identifier forms", () => {
   assertEquals(
     renderParam({
       kind: "rest",
@@ -186,7 +187,7 @@ Deno.test("renderParam: rest, assign, and identifier forms", () => {
   );
 });
 
-Deno.test("functionSignature: async, params, and a missing def", () => {
+test("functionSignature: async, params, and a missing def", () => {
   assertEquals(
     functionSignature("run", {
       isAsync: true,
@@ -198,7 +199,7 @@ Deno.test("functionSignature: async, params, and a missing def", () => {
   assertEquals(functionSignature("run", undefined), "function run(): unknown");
 });
 
-Deno.test("symbolSignature: every kind branch, including overloads", () => {
+test("symbolSignature: every kind branch, including overloads", () => {
   assertEquals(
     symbolSignature("run", "function", [
       { kind: "function", def: { params: [], returnType: { repr: "void" } } },
@@ -239,14 +240,14 @@ Deno.test("symbolSignature: every kind branch, including overloads", () => {
   assertEquals(symbolSignature("Mystery", "weird-kind", [{}]), "Mystery");
 });
 
-Deno.test("isPublicMember: undefined and public are public; private/protected are not", () => {
+test("isPublicMember: undefined and public are public; private/protected are not", () => {
   assertEquals(isPublicMember(undefined), true);
   assertEquals(isPublicMember("public"), true);
   assertEquals(isPublicMember("private"), false);
   assertEquals(isPublicMember("protected"), false);
 });
 
-Deno.test("memberMethod: class-style (functionDef) and interface-style (flat)", () => {
+test("memberMethod: class-style (functionDef) and interface-style (flat)", () => {
   assertEquals(
     memberMethod({
       name: "render",
@@ -281,7 +282,7 @@ Deno.test("memberMethod: class-style (functionDef) and interface-style (flat)", 
   );
 });
 
-Deno.test("memberProperty: optional and required", () => {
+test("memberProperty: optional and required", () => {
   assertEquals(
     memberProperty({
       name: "count",
@@ -308,7 +309,7 @@ Deno.test("memberProperty: optional and required", () => {
   );
 });
 
-Deno.test("symbolMembers: keeps only public members, methods before properties", () => {
+test("symbolMembers: keeps only public members, methods before properties", () => {
   const members = symbolMembers({
     methods: [
       { name: "render", params: [], returnType: { repr: "void" } },
@@ -332,7 +333,7 @@ Deno.test("symbolMembers: keeps only public members, methods before properties",
   assertEquals(symbolMembers(undefined), []);
 });
 
-Deno.test("buildSymbol: flags deprecated via a jsDoc tag", () => {
+test("buildSymbol: flags deprecated via a jsDoc tag", () => {
   const symbol = buildSymbol({
     name: "Widget",
     declarations: [
@@ -351,7 +352,7 @@ Deno.test("buildSymbol: flags deprecated via a jsDoc tag", () => {
   assertEquals(symbol.members, []);
 });
 
-Deno.test("buildSymbol: no declarations falls back to a bare variable", () => {
+test("buildSymbol: no declarations falls back to a bare variable", () => {
   const symbol = buildSymbol({ name: "ghost", declarations: [] });
   assertEquals(symbol.kind, "variable");
   assertEquals(symbol.doc, "");
@@ -359,7 +360,7 @@ Deno.test("buildSymbol: no declarations falls back to a bare variable", () => {
   assertEquals(symbol.members, undefined);
 });
 
-Deno.test("moduleSummary: first non-empty line, skipping blank module docs", () => {
+test("moduleSummary: first non-empty line, skipping blank module docs", () => {
   assertEquals(
     moduleSummary([
       { module_doc: { doc: "" } },
@@ -371,7 +372,7 @@ Deno.test("moduleSummary: first non-empty line, skipping blank module docs", () 
   assertEquals(moduleSummary([]), "");
 });
 
-Deno.test("transformPackage: dedupes first-seen, sorts, drops zero-declaration symbols", () => {
+test("transformPackage: dedupes first-seen, sorts, drops zero-declaration symbols", () => {
   const pkg = transformPackage("demo", {
     nodes: {
       "a.ts": {
@@ -464,7 +465,7 @@ function fakeDeps(opts: {
   };
 }
 
-Deno.test("publishOne: publishes cleanly when not yet on JSR", async () => {
+test("publishOne: publishes cleanly when not yet on JSR", async () => {
   const { deps, calls } = fakeDeps({
     publishedAnswers: [],
     attempts: [true],
@@ -475,7 +476,7 @@ Deno.test("publishOne: publishes cleanly when not yet on JSR", async () => {
   assertEquals(calls.waits, []);
 });
 
-Deno.test("publishOne: a timed-out upload JSR finishes processing is a success", async () => {
+test("publishOne: a timed-out upload JSR finishes processing is a success", async () => {
   // Not there, not yet, then there: JSR finished it during the second wait.
   const { deps, calls } = fakeDeps({
     publishedAnswers: [false, false, true],
@@ -489,7 +490,7 @@ Deno.test("publishOne: a timed-out upload JSR finishes processing is a success",
   ]);
 });
 
-Deno.test("publishOne: an attempt that fails is retried, and the retry can land it", async () => {
+test("publishOne: an attempt that fails is retried, and the retry can land it", async () => {
   const { deps, calls } = fakeDeps({
     publishedAnswers: [false],
     attempts: [new Error("503 Service Unavailable"), true],
@@ -504,7 +505,7 @@ Deno.test("publishOne: an attempt that fails is retried, and the retry can land 
   );
 });
 
-Deno.test("publishOne: a version that never lands throws after every attempt", async () => {
+test("publishOne: a version that never lands throws after every attempt", async () => {
   const { deps, calls } = fakeDeps({
     publishedAnswers: [],
     attempts: [false, false, false],
@@ -522,7 +523,7 @@ Deno.test("publishOne: a version that never lands throws after every attempt", a
   );
 });
 
-Deno.test("publishOne: the last attempt's failure is the one reported", async () => {
+test("publishOne: the last attempt's failure is the one reported", async () => {
   const { deps, calls } = fakeDeps({
     publishedAnswers: [],
     attempts: [false, false, new Error("slow types in mod.ts")],
@@ -573,14 +574,14 @@ function fakeAllDeps(opts: {
   };
 }
 
-Deno.test("publishAll: publishes every package in order", async () => {
+test("publishAll: publishes every package in order", async () => {
   const { deps, calls } = fakeAllDeps({});
   await publishAll(["core", "deno", "npm"], {}, deps);
   assertEquals(calls.published, ["core", "deno", "npm"]);
   assertEquals(calls.failed, []);
 });
 
-Deno.test("publishAll: a stalled package does not stop the ones after it", async () => {
+test("publishAll: a stalled package does not stop the ones after it", async () => {
   const { deps, calls } = fakeAllDeps({ stalls: ["docker-compose"] });
   await assertRejects(
     () => publishAll(["core", "docker-compose", "kubectl", "helm"], {}, deps),
@@ -595,7 +596,7 @@ Deno.test("publishAll: a stalled package does not stop the ones after it", async
   ]);
 });
 
-Deno.test("publishAll: a package whose dependency did not land is not tried", async () => {
+test("publishAll: a package whose dependency did not land is not tried", async () => {
   const { deps, calls } = fakeAllDeps({ stalls: ["gh"] });
   await assertRejects(
     () =>
@@ -610,7 +611,7 @@ Deno.test("publishAll: a package whose dependency did not land is not tried", as
   );
 });
 
-Deno.test("publishAll: when core does not land, nothing else is tried", async () => {
+test("publishAll: when core does not land, nothing else is tried", async () => {
   const { deps, calls } = fakeAllDeps({ stalls: ["core"] });
   await assertRejects(
     () => publishAll(["core", "deno"], {}, deps),
@@ -620,7 +621,7 @@ Deno.test("publishAll: when core does not land, nothing else is tried", async ()
   assertEquals(calls.published, []);
 });
 
-Deno.test("publishAll: a version already on JSR is not a failure when its dependency stalls", async () => {
+test("publishAll: a version already on JSR is not a failure when its dependency stalls", async () => {
   const { deps, calls } = fakeAllDeps({
     stalls: ["core"],
     onJsr: ["@zuke/deno"],
@@ -636,7 +637,7 @@ Deno.test("publishAll: a version already on JSR is not a failure when its depend
   );
 });
 
-Deno.test("publishAll: a package with no released version is skipped, not a failure", async () => {
+test("publishAll: a package with no released version is skipped, not a failure", async () => {
   const { deps, calls } = fakeAllDeps({ versions: { signpath: "0.0.0" } });
   await publishAll(["core", "signpath"], {}, deps);
   assertEquals(calls.published, ["core"]);
@@ -646,7 +647,7 @@ Deno.test("publishAll: a package with no released version is skipped, not a fail
   );
 });
 
-Deno.test("launcherScript: posix quotes every argv word and cds to the repo root", () => {
+test("launcherScript: posix quotes every argv word and cds to the repo root", () => {
   const script = launcherScript(["deno", "run", "-A", "it's.ts"], false);
   assertEquals(script.startsWith("#!/bin/sh\n"), true);
   assertEquals(script.includes("|| exit 1"), true);
@@ -655,7 +656,7 @@ Deno.test("launcherScript: posix quotes every argv word and cds to the repo root
   assertEquals(script.trimEnd().endsWith('"$@"'), true);
 });
 
-Deno.test("launcherScript: windows quotes every argv word and cds to the repo root", () => {
+test("launcherScript: windows quotes every argv word and cds to the repo root", () => {
   const script = launcherScript(["deno", "run", 'say "hi"'], true);
   assertEquals(script.startsWith("@echo off\r\n"), true);
   assertEquals(script.includes("|| exit /b 1"), true);
@@ -668,12 +669,12 @@ Deno.test("launcherScript: windows quotes every argv word and cds to the repo ro
 // build/website_sync.ts
 // ---------------------------------------------------------------------------
 
-Deno.test("resolveSyncTarget: null when the token is absent or empty", () => {
+test("resolveSyncTarget: null when the token is absent or empty", () => {
   assertEquals(resolveSyncTarget({}), null);
   assertEquals(resolveSyncTarget({ token: "" }), null);
 });
 
-Deno.test("resolveSyncTarget: the default repo, or an explicit override", () => {
+test("resolveSyncTarget: the default repo, or an explicit override", () => {
   assertEquals(resolveSyncTarget({ token: "abc" }), {
     token: "abc",
     repo: DEFAULT_WEBSITE_REPO,
@@ -684,7 +685,7 @@ Deno.test("resolveSyncTarget: the default repo, or an explicit override", () => 
   });
 });
 
-Deno.test("resolveSyncTarget: refuses an override that is not an owner/repo slug", () => {
+test("resolveSyncTarget: refuses an override that is not an owner/repo slug", () => {
   // This is the one place a cross-repo write token leaves for another
   // repository, so the slug is checked before it reaches `git push` and
   // `gh pr create` rather than after.
@@ -709,7 +710,7 @@ Deno.test("resolveSyncTarget: refuses an override that is not an owner/repo slug
   }
 });
 
-Deno.test("syncBranchInfo: names the branch and commit message from a version", () => {
+test("syncBranchInfo: names the branch and commit message from a version", () => {
   assertEquals(syncBranchInfo("1.2.3"), {
     branch: "zuke-sync/1.2.3",
     message: "chore: sync docs + api reference for core@1.2.3",
@@ -852,7 +853,7 @@ async function withSyncEnv(
   }
 }
 
-Deno.test("runWebsiteSync: skips cleanly with no credentials at all", async () => {
+test("runWebsiteSync: skips cleanly with no credentials at all", async () => {
   await withSyncEnv({}, async () => {
     // unreachableDeps throws if anything beyond the warn ran, proving the
     // function returns right after the guard without touching a real
@@ -866,7 +867,7 @@ Deno.test("runWebsiteSync: skips cleanly with no credentials at all", async () =
   });
 });
 
-Deno.test("runWebsiteSync: half a set of app credentials is not enough", async () => {
+test("runWebsiteSync: half a set of app credentials is not enough", async () => {
   // An app id with no key (or the reverse) cannot mint anything, so it must skip
   // rather than reach the minting call and fail there.
   for (const half of [{ appId: "123" }, { appKey: "pem" }]) {
@@ -878,7 +879,7 @@ Deno.test("runWebsiteSync: half a set of app credentials is not enough", async (
   }
 });
 
-Deno.test("runWebsiteSync: mints an app token scoped to the website repo", async () => {
+test("runWebsiteSync: mints an app token scoped to the website repo", async () => {
   await withSyncEnv({ appId: "12345", appKey: "-----BEGIN…" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(false),
@@ -893,7 +894,7 @@ Deno.test("runWebsiteSync: mints an app token scoped to the website repo", async
   });
 });
 
-Deno.test("runWebsiteSync: refuses to mint for a redirected target", async () => {
+test("runWebsiteSync: refuses to mint for a redirected target", async () => {
   // An env var must not decide what the app's credential reaches. Redirecting
   // the sync is still allowed — it just cannot borrow the app's token.
   await withSyncEnv({
@@ -912,7 +913,7 @@ Deno.test("runWebsiteSync: refuses to mint for a redirected target", async () =>
   });
 });
 
-Deno.test("runWebsiteSync: a redirected target still works with its own token", async () => {
+test("runWebsiteSync: a redirected target still works with its own token", async () => {
   await withSyncEnv({ repo: "acme/site", token: "tok" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(false),
@@ -923,13 +924,13 @@ Deno.test("runWebsiteSync: a redirected target still works with its own token", 
   });
 });
 
-Deno.test("mintableFor: only the default target may borrow the app credential", () => {
+test("mintableFor: only the default target may borrow the app credential", () => {
   assertEquals(mintableFor(DEFAULT_WEBSITE_REPO), true);
   assertEquals(mintableFor("zuke-build/something-else"), false);
   assertEquals(mintableFor("attacker/zuke-build.github.io"), false);
 });
 
-Deno.test("runWebsiteSync: an explicit token wins and mints nothing", async () => {
+test("runWebsiteSync: an explicit token wins and mints nothing", async () => {
   await withSyncEnv(
     { token: "tok", appId: "12345", appKey: "pem" },
     async () => {
@@ -942,7 +943,7 @@ Deno.test("runWebsiteSync: an explicit token wins and mints nothing", async () =
   );
 });
 
-Deno.test("runWebsiteSync: already in sync — no commit, push, or PR", async () => {
+test("runWebsiteSync: already in sync — no commit, push, or PR", async () => {
   await withSyncEnv({ token: "tok" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(false),
@@ -957,7 +958,7 @@ Deno.test("runWebsiteSync: already in sync — no commit, push, or PR", async ()
   });
 });
 
-Deno.test("runWebsiteSync: a freshly opened PR reports success", async () => {
+test("runWebsiteSync: a freshly opened PR reports success", async () => {
   await withSyncEnv({ token: "tok", repo: "me/site" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(true),
@@ -983,7 +984,7 @@ Deno.test("runWebsiteSync: a freshly opened PR reports success", async () => {
   });
 });
 
-Deno.test("runWebsiteSync: an already-open PR is reported, not treated as a failure", async () => {
+test("runWebsiteSync: an already-open PR is reported, not treated as a failure", async () => {
   await withSyncEnv({ token: "tok" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(true),
@@ -1004,7 +1005,7 @@ Deno.test("runWebsiteSync: an already-open PR is reported, not treated as a fail
   });
 });
 
-Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", async () => {
+test("runWebsiteSync: a failed merge fails the job and still cleans up", async () => {
   await withSyncEnv({ token: "tok" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(true),
@@ -1036,14 +1037,14 @@ Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", as
 // build/website_tools.ts
 // ---------------------------------------------------------------------------
 
-Deno.test("the landing-page catalogue covers exactly the published packages", () => {
+test("the landing-page catalogue covers exactly the published packages", () => {
   // The guard that makes the website self-updating worth anything: add a
   // package without landing-page copy, or drop one and leave its entry, and the
   // gate fails here rather than the site quietly advertising the wrong set.
   assertEquals(catalogueDrift(PACKAGES), { missing: [], unknown: [] });
 });
 
-Deno.test("catalogueDrift names a package with no entry and an entry with no package", () => {
+test("catalogueDrift names a package with no entry and an entry with no package", () => {
   const drift = catalogueDrift(["core", "brand-new-tool"]);
   assertEquals(drift.missing, ["@zuke/brand-new-tool"]);
   // Everything curated beyond `core` is now unknown — spot-check one.
@@ -1051,7 +1052,7 @@ Deno.test("catalogueDrift names a package with no entry and an entry with no pac
   assertEquals(drift.unknown.includes("@zuke/core"), false);
 });
 
-Deno.test("renderToolsModule refuses to render a stale catalogue", () => {
+test("renderToolsModule refuses to render a stale catalogue", () => {
   assertThrows(
     () => renderToolsModule([...PACKAGES, "brand-new-tool"]),
     Error,
@@ -1064,7 +1065,7 @@ Deno.test("renderToolsModule refuses to render a stale catalogue", () => {
   );
 });
 
-Deno.test("renderToolsModule emits the exports the landing page imports", () => {
+test("renderToolsModule emits the exports the landing page imports", () => {
   const module = renderToolsModule(PACKAGES);
   // index.astro imports these three by name; renaming one breaks the site.
   assertStringIncludes(module, "export const toolGroups: ToolGroup[] = [");
@@ -1076,7 +1077,7 @@ Deno.test("renderToolsModule emits the exports the landing page imports", () => 
   assertEquals(curatedPackages().has("@zuke/deno"), true);
 });
 
-Deno.test("renderToolsModule output is deterministic", () => {
+test("renderToolsModule output is deterministic", () => {
   // The sync diffs this file against the website's copy to decide whether a PR
   // is needed, so unstable output would open an empty PR every release.
   assertEquals(renderToolsModule(PACKAGES), renderToolsModule(PACKAGES));
@@ -1086,14 +1087,14 @@ Deno.test("renderToolsModule output is deterministic", () => {
 // build/docs.ts
 // ---------------------------------------------------------------------------
 
-Deno.test("cliReference: lists the build's reserved commands and flags", () => {
+test("cliReference: lists the build's reserved commands and flags", () => {
   const text = cliReference(new Build());
   assertEquals(text.includes("Reserved commands:"), true);
   assertEquals(text.includes("Option flags:"), true);
   assertEquals(text.includes("docs/cli.md"), true);
 });
 
-Deno.test("docsOptions: carries the project framing plus a live CLI block", () => {
+test("docsOptions: carries the project framing plus a live CLI block", () => {
   const options = docsOptions(new Build());
   assertEquals(options.regenerateCommand, "./zuke apiDocs");
   if (options.project === undefined) {
@@ -1103,7 +1104,7 @@ Deno.test("docsOptions: carries the project framing plus a live CLI block", () =
   assertEquals(options.project.cli, cliReference(new Build()));
 });
 
-Deno.test("crossPackageTypesOf: named, type, namespace, and default imports; tests/ excluded", async () => {
+test("crossPackageTypesOf: named, type, namespace, and default imports; tests/ excluded", async () => {
   await withTempCwd(async () => {
     await Deno.mkdir("packages/demo/tests", { recursive: true });
     await Deno.writeTextFile(

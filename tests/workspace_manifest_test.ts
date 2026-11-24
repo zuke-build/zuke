@@ -6,6 +6,7 @@
  * that the committed ones match their `deno.json`, and how drift is found.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { withTempCwd } from "../packages/core/tests/_temp.ts";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../build/workspace_manifest.ts";
 import { PACKAGES } from "../build/packages.ts";
 
-Deno.test("workspaceManifest names the package, keeps it private, and maps its exports to the sources", () => {
+test("workspaceManifest names the package, keeps it private, and maps its exports to the sources", () => {
   const text = workspaceManifest({
     name: "@zuke/core",
     version: "1.84.0",
@@ -41,11 +42,11 @@ Deno.test("workspaceManifest names the package, keeps it private, and maps its e
   );
 });
 
-Deno.test("every committed package.json matches its deno.json", async () => {
+test("every committed package.json matches its deno.json", async () => {
   assertEquals(await staleManifests(await workspaceManifests(PACKAGES)), []);
 });
 
-Deno.test("staleManifests names a manifest that is missing or differs, and not one that matches", async () => {
+test("staleManifests names a manifest that is missing or differs, and not one that matches", async () => {
   await withTempCwd(async () => {
     await Deno.writeTextFile("same.json", "same\n");
     await Deno.writeTextFile("other.json", "before\n");

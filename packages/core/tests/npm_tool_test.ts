@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -36,7 +37,7 @@ function fakeNpm(
   return { run, calls };
 }
 
-Deno.test("installNpmTool installs, returns the bin path, and records the argv", async () => {
+test("installNpmTool installs, returns the bin path, and records the argv", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const bin = await installNpmTool(
@@ -57,7 +58,7 @@ Deno.test("installNpmTool installs, returns the bin path, and records the argv",
   });
 });
 
-Deno.test("installNpmTool returns the .cmd shim path on Windows", async () => {
+test("installNpmTool returns the .cmd shim path on Windows", async () => {
   await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "windows");
     const bin = await installNpmTool(
@@ -69,7 +70,7 @@ Deno.test("installNpmTool returns the .cmd shim path on Windows", async () => {
   });
 });
 
-Deno.test("installNpmTool resolves a bin that differs from the package name", async () => {
+test("installNpmTool resolves a bin that differs from the package name", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("nest", "linux");
     const bin = await installNpmTool(
@@ -85,7 +86,7 @@ Deno.test("installNpmTool resolves a bin that differs from the package name", as
   });
 });
 
-Deno.test("a matching marker with the bin present is reused without re-running npm", async () => {
+test("a matching marker with the bin present is reused without re-running npm", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -104,7 +105,7 @@ Deno.test("a matching marker with the bin present is reused without re-running n
   });
 });
 
-Deno.test("a different version misses the cache and re-installs", async () => {
+test("a different version misses the cache and re-installs", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     await installNpmTool({ name: "vitest", version: "1.0.0" }, {
@@ -121,7 +122,7 @@ Deno.test("a different version misses the cache and re-installs", async () => {
   });
 });
 
-Deno.test("a marker recording a different package is ignored (re-installs)", async () => {
+test("a marker recording a different package is ignored (re-installs)", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -136,7 +137,7 @@ Deno.test("a marker recording a different package is ignored (re-installs)", asy
   });
 });
 
-Deno.test("a malformed marker is treated as absent (re-installs)", async () => {
+test("a malformed marker is treated as absent (re-installs)", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -153,7 +154,7 @@ Deno.test("a malformed marker is treated as absent (re-installs)", async () => {
   });
 });
 
-Deno.test("a valid marker whose bin has gone re-installs", async () => {
+test("a valid marker whose bin has gone re-installs", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -164,7 +165,7 @@ Deno.test("a valid marker whose bin has gone re-installs", async () => {
   });
 });
 
-Deno.test("installNpmTool rejects an unsafe name, version, or bin", async () => {
+test("installNpmTool rejects an unsafe name, version, or bin", async () => {
   let ran = 0;
   const noop: NpmRunner = () => {
     ran++;
@@ -195,7 +196,7 @@ Deno.test("installNpmTool rejects an unsafe name, version, or bin", async () => 
   assertEquals(ran, 0); // validation rejects before npm is ever invoked
 });
 
-Deno.test("installNpmTool throws when npm plants no bin, writing no marker", async () => {
+test("installNpmTool throws when npm plants no bin, writing no marker", async () => {
   await withTemp(async (dir) => {
     const calls: string[][] = [];
     // A runner that "succeeds" but plants nothing — a typo'd bin, or a package
@@ -220,7 +221,7 @@ Deno.test("installNpmTool throws when npm plants no bin, writing no marker", asy
   });
 });
 
-Deno.test("a rejecting npm runner propagates and writes no marker", async () => {
+test("a rejecting npm runner propagates and writes no marker", async () => {
   await withTemp(async (dir) => {
     let calls = 0;
     const failing: NpmRunner = () => {
@@ -243,7 +244,7 @@ Deno.test("a rejecting npm runner propagates and writes no marker", async () => 
   });
 });
 
-Deno.test("a non-NotFound error reading the marker surfaces (not swallowed)", async () => {
+test("a non-NotFound error reading the marker surfaces (not swallowed)", async () => {
   await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -261,7 +262,7 @@ Deno.test("a non-NotFound error reading the marker surfaces (not swallowed)", as
   });
 });
 
-Deno.test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", async () => {
+test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", async () => {
   await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
@@ -277,7 +278,7 @@ Deno.test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", asyn
   });
 });
 
-Deno.test("installNpmTool runs the ambient npm by default", async () => {
+test("installNpmTool runs the ambient npm by default", async () => {
   await withTemp(async (dir) => {
     const echoed: string[] = [];
     // With no injected runner, the default runner spawns `npm` via the Command
@@ -303,7 +304,7 @@ Deno.test("installNpmTool runs the ambient npm by default", async () => {
   });
 });
 
-Deno.test("installNpmTool defaults the install root to .zuke/tools and the host OS", async () => {
+test("installNpmTool defaults the install root to .zuke/tools and the host OS", async () => {
   await withTempCwd(async () => {
     const { run } = fakeNpm("vitest"); // host OS
     const bin = await installNpmTool(

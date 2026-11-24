@@ -7,6 +7,7 @@
  * rules), and each failed against the code before its fix.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -59,7 +60,7 @@ function ignoring(stdout: string) {
 /** A context whose redactor masks nothing. */
 const context = { redact: (text: string) => text };
 
-Deno.test("S1: a SAS token's signature is masked raw and URL-encoded", () => {
+test("S1: a SAS token's signature is masked raw and URL-encoded", () => {
   const sig = "a1%2B2b%2F3c%3D%3D";
   const { settings, marked } = recording(new AzStorageBlobDownloadSettings());
   settings.sasToken(`sv=2026-01-01&se=2026-10-08&sig=${sig}`);
@@ -79,7 +80,7 @@ Deno.test("S1: a SAS token's signature is masked raw and URL-encoded", () => {
   );
 });
 
-Deno.test("S1: debug masks a credential set through the settings' own env, in either order", () => {
+test("S1: debug masks a credential set through the settings' own env, in either order", () => {
   const before = recording(new AzSettings());
   before.settings.env({ AZURE_STORAGE_KEY: "env-set-key-before" }).debug();
   assertEquals(before.marked.includes("env-set-key-before"), true);
@@ -91,7 +92,7 @@ Deno.test("S1: debug masks a credential set through the settings' own env, in ei
   assertEquals(plain.marked, []);
 });
 
-Deno.test("S2: a key that starts with whitespace is refused", () => {
+test("S2: a key that starts with whitespace is refused", () => {
   assertThrows(
     () => new AzWebappConfigAppsettingsSetSettings().setting(' {"A":"1"}', "x"),
     Error,
@@ -104,7 +105,7 @@ Deno.test("S2: a key that starts with whitespace is refused", () => {
   );
 });
 
-Deno.test("S3: a Key Vault reference goes out as a JSON object the CLI cannot expand", () => {
+test("S3: a Key Vault reference goes out as a JSON object the CLI cannot expand", () => {
   const argv = new AzWebappConfigAppsettingsSetSettings().name("w")
     .resourceGroup("g")
     .keyVaultReference("DB", "https://kv.vault.azure.net/secrets/db").argv();
@@ -117,7 +118,7 @@ Deno.test("S3: a Key Vault reference goes out as a JSON object the CLI cannot ex
   assertEquals(argv.some((t) => t.startsWith("DB=")), false);
 });
 
-Deno.test("S4: Azure's credential field names are masked", async () => {
+test("S4: Azure's credential field names are masked", async () => {
   const fields = {
     pwd: "pwd-value-123",
     accountKey: "account-key-123",
@@ -150,7 +151,7 @@ Deno.test("S4: Azure's credential field names are masked", async () => {
   assertEquals(short.marked.includes("5432"), false);
 });
 
-Deno.test("S5: a query that moves the secret to another key still masks it", async () => {
+test("S5: a query that moves the secret to another key still masks it", async () => {
   const { settings, marked } = recording(
     new AzAccountGetAccessTokenSettings().query(
       "{accessToken: tokenType, moved: accessToken}",
@@ -162,13 +163,13 @@ Deno.test("S5: a query that moves the secret to another key still masks it", asy
   assertEquals(marked.includes("eyJ.moved-token.1"), true);
 });
 
-Deno.test("S6: acr login without a token masks nothing", async () => {
+test("S6: acr login without a token masks nothing", async () => {
   const { settings, marked } = recording(new AzAcrLoginSettings().name("r"));
   await settings.runner(new FakeAz("Login Succeeded\n").run).run();
   assertEquals(marked, []);
 });
 
-Deno.test("S6: a moved answer masks its leaves of three or more characters only", async () => {
+test("S6: a moved answer masks its leaves of three or more characters only", async () => {
   // The query dropped `accessToken`, so the secret may sit under any key:
   // core masks every leaf of three or more characters, but never an enum
   // word such as `true` or a two-character value such as `12`.
@@ -197,7 +198,7 @@ Deno.test("S6: a moved answer masks its leaves of three or more characters only"
   assertEquals(short.marked.includes("pin1"), true);
 });
 
-Deno.test("S7: an aggregation is checked like any list element", async () => {
+test("S7: an aggregation is checked like any list element", async () => {
   const runner = ignoring("[]");
   await assertRejects(
     () =>
@@ -225,7 +226,7 @@ function seriesAnswer(series: number[][], name = "requests/failed"): string {
   }]);
 }
 
-Deno.test("L1: the canary refuses an answer cut at --top, and takes .top(n)", async () => {
+test("L1: the canary refuses an answer cut at --top, and takes .top(n)", async () => {
   const ten = Array.from({ length: 10 }, () => [1]);
   const error = await assertRejects(() =>
     azureMonitor((m) =>
@@ -243,7 +244,7 @@ Deno.test("L1: the canary refuses an answer cut at --top, and takes .top(n)", as
   assertEquals(wide.flag(0, "--top"), "20");
 });
 
-Deno.test("L2: latest across several series sums them at the newest time", async () => {
+test("L2: latest across several series sums them at the newest time", async () => {
   const fake = new FakeAz(seriesAnswer([[1, 2], [5, 3]]));
   assertEquals(
     await AzTasks.metricValue((s) =>
@@ -254,7 +255,7 @@ Deno.test("L2: latest across several series sums them at the newest time", async
   );
 });
 
-Deno.test("L3: the canary runs the instance its .az(...) lambda returns", async () => {
+test("L3: the canary runs the instance its .az(...) lambda returns", async () => {
   const fake = new FakeAz(seriesAnswer([[1]]));
   await withEmptyPath(async () => {
     await azureMonitor((m) =>
@@ -277,7 +278,7 @@ function kql(rows: unknown, window: string | number = "5m") {
   );
 }
 
-Deno.test("L4: a whitespace-only KQL cell is no data", async () => {
+test("L4: a whitespace-only KQL cell is no data", async () => {
   await assertRejects(
     () => kql([{ n: "   " }]).validate(context),
     Error,
@@ -285,7 +286,7 @@ Deno.test("L4: a whitespace-only KQL cell is no data", async () => {
   );
 });
 
-Deno.test("L5: the KQL window must be positive", async () => {
+test("L5: the KQL window must be positive", async () => {
   await assertRejects(
     () => kql([{ n: "1" }], 0).validate(context),
     Error,
@@ -298,7 +299,7 @@ Deno.test("L5: the KQL window must be positive", async () => {
   );
 });
 
-Deno.test("L6: a bound must be finite", async () => {
+test("L6: a bound must be finite", async () => {
   for (const bound of [Infinity, -Infinity]) {
     await assertRejects(
       () =>
@@ -312,7 +313,7 @@ Deno.test("L6: a bound must be finite", async () => {
   }
 });
 
-Deno.test("L-top: an unfiltered metric is one series, whatever .top says", async () => {
+test("L-top: an unfiltered metric is one series, whatever .top says", async () => {
   assertEquals(
     await AzTasks.metricValue((s) =>
       s.resource("r").aggregation("Total").top(1)
@@ -322,7 +323,7 @@ Deno.test("L-top: an unfiltered metric is one series, whatever .top says", async
   );
 });
 
-Deno.test("L-name: an answer whose one metric has no name says so", async () => {
+test("L-name: an answer whose one metric has no name says so", async () => {
   await assertRejects(
     () =>
       AzTasks.metricValue((s) =>
@@ -334,7 +335,7 @@ Deno.test("L-name: an answer whose one metric has no name says so", async () => 
   );
 });
 
-Deno.test("L-window: a canary window shorter than its interval is refused", async () => {
+test("L-window: a canary window shorter than its interval is refused", async () => {
   await assertRejects(
     () =>
       azureMonitor((m) =>
@@ -347,7 +348,7 @@ Deno.test("L-window: a canary window shorter than its interval is refused", asyn
   );
 });
 
-Deno.test("L-cover: get-access-token with an empty or null answer masks nothing", async () => {
+test("L-cover: get-access-token with an empty or null answer masks nothing", async () => {
   for (const stdout of ["", "null"]) {
     const { settings, marked } = recording(
       new AzAccountGetAccessTokenSettings(),
@@ -364,7 +365,7 @@ const MISSING_EXTENSION = new CommandOutput(
   "ERROR: 'query' is misspelled or not recognized by the system.\n",
 );
 
-Deno.test("C1: a missing log-analytics extension is named, with the fix", async () => {
+test("C1: a missing log-analytics extension is named, with the fix", async () => {
   const hint = "az extension add --name log-analytics";
   await assertRejects(
     () =>
@@ -405,7 +406,7 @@ Deno.test("C1: a missing log-analytics extension is named, with the fix", async 
   );
 });
 
-Deno.test("C2: a managed identity takes no username or tenant, a principal no identity id", () => {
+test("C2: a managed identity takes no username or tenant, a principal no identity id", () => {
   assertThrows(
     () => new AzLoginSettings().identity().username("u").argv(),
     Error,
@@ -435,7 +436,7 @@ Deno.test("C2: a managed identity takes no username or tenant, a principal no id
   }
 });
 
-Deno.test("C4: --only-show-errors cannot be combined with --debug or --verbose", () => {
+test("C4: --only-show-errors cannot be combined with --debug or --verbose", () => {
   assertThrows(
     () => new AzSettings().onlyShowErrors().debug().argv(),
     Error,
@@ -448,7 +449,7 @@ Deno.test("C4: --only-show-errors cannot be combined with --debug or --verbose",
   );
 });
 
-Deno.test("C5: an encoding needs a file", () => {
+test("C5: an encoding needs a file", () => {
   assertThrows(
     () =>
       new AzKeyvaultSecretSetSettings().vaultName("kv").name("n")
@@ -458,7 +459,7 @@ Deno.test("C5: an encoding needs a file", () => {
   );
 });
 
-Deno.test("R4: a deployment parameter's refusal names the real task", () => {
+test("R4: a deployment parameter's refusal names the real task", () => {
   assertThrows(
     () =>
       new AzDeploymentGroupCreateSettings().resourceGroup("g")

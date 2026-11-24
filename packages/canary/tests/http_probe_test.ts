@@ -3,6 +3,7 @@
 
 /** Unit tests for `httpProbe(...)`, answered by a fake `fetch`. */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -11,7 +12,7 @@ import {
 import { httpProbe } from "../mod.ts";
 import { analysisContext, fakeFetch } from "./_context.ts";
 
-Deno.test("a healthy URL passes every sample", async () => {
+test("a healthy URL passes every sample", async () => {
   const fetcher = fakeFetch(() => new Response("ok"));
   await httpProbe((h) =>
     h.url("https://api.example/healthz").samples(3).interval(0)
@@ -21,7 +22,7 @@ Deno.test("a healthy URL passes every sample", async () => {
   assertEquals(fetcher.headers[0].get("X-Probe"), "1");
 });
 
-Deno.test("too many failures fail the probe, grouped by reason and redacted", async () => {
+test("too many failures fail the probe, grouped by reason and redacted", async () => {
   const fetcher = fakeFetch((_url, call) => {
     if (call === 1) return new Response("", { status: 503 });
     if (call === 2) return new Response("", { status: 503 });
@@ -43,7 +44,7 @@ Deno.test("too many failures fail the probe, grouped by reason and redacted", as
   );
 });
 
-Deno.test("expected statuses replace the 2xx default", async () => {
+test("expected statuses replace the 2xx default", async () => {
   await httpProbe((h) =>
     h.url("https://api.example").samples(1).expectStatus(204, 301)
       .fetch(fakeFetch(() => new Response(null, { status: 301 })))
@@ -59,7 +60,7 @@ Deno.test("expected statuses replace the 2xx default", async () => {
   );
 });
 
-Deno.test("a request that times out counts as a failure", async () => {
+test("a request that times out counts as a failure", async () => {
   const hang = fakeFetch((_url) =>
     Promise.reject(new DOMException("timed out", "TimeoutError"))
   );
@@ -74,7 +75,7 @@ Deno.test("a request that times out counts as a failure", async () => {
   );
 });
 
-Deno.test("the run's cancellation is not reported as the candidate's failure", async () => {
+test("the run's cancellation is not reported as the candidate's failure", async () => {
   const stop = new AbortController();
   const fetcher = fakeFetch(() => {
     stop.abort(new Error("run cancelled"));
@@ -91,7 +92,7 @@ Deno.test("the run's cancellation is not reported as the candidate's failure", a
   );
 });
 
-Deno.test("a probe with no URL or no samples is refused", async () => {
+test("a probe with no URL or no samples is refused", async () => {
   await assertRejects(
     async () => await httpProbe((h) => h).validate(analysisContext()),
     Error,
@@ -105,7 +106,7 @@ Deno.test("a probe with no URL or no samples is refused", async () => {
   );
 });
 
-Deno.test("credentials in the probe URL never reach the failure message", async () => {
+test("credentials in the probe URL never reach the failure message", async () => {
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>
@@ -126,7 +127,7 @@ Deno.test("credentials in the probe URL never reach the failure message", async 
   }
 });
 
-Deno.test("a maxFailures that could never mean anything is refused", async () => {
+test("a maxFailures that could never mean anything is refused", async () => {
   for (const bad of [Number.NaN, -1, 1.5]) {
     await assertRejects(
       async () =>
@@ -140,7 +141,7 @@ Deno.test("a maxFailures that could never mean anything is refused", async () =>
   }
 });
 
-Deno.test("an interval or timeout past the longest timer is refused", async () => {
+test("an interval or timeout past the longest timer is refused", async () => {
   await assertRejects(
     async () =>
       await httpProbe((h) => h.url("https://api.example").interval("30d"))
@@ -150,7 +151,7 @@ Deno.test("an interval or timeout past the longest timer is refused", async () =
   );
 });
 
-Deno.test("the run's redactor sees a secret before the URL is re-spelled", async () => {
+test("the run's redactor sees a secret before the URL is re-spelled", async () => {
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>
@@ -168,7 +169,7 @@ Deno.test("the run's redactor sees a secret before the URL is re-spelled", async
   );
 });
 
-Deno.test("a password with brackets in it does not slip past the cleaning", async () => {
+test("a password with brackets in it does not slip past the cleaning", async () => {
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>

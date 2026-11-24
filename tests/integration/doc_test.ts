@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { absolutePath, Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -13,7 +14,7 @@ class Noop extends Build {
   noop = target().executes(() => {});
 }
 
-Deno.test("zuke doc runs deno doc for a local module in an isolated cwd", async () => {
+test("zuke doc runs deno doc for a local module in an isolated cwd", async () => {
   await withTemp(async (dir) => {
     const mod = `${dir}/lib.ts`;
     await Deno.writeTextFile(
@@ -32,7 +33,7 @@ Deno.test("zuke doc runs deno doc for a local module in an isolated cwd", async 
   }, { prefix: "zuke-doc-it-" });
 });
 
-Deno.test("zuke doc ignores a deno.json planted above its isolated temp dir", async () => {
+test("zuke doc ignores a deno.json planted above its isolated temp dir", async () => {
   // The isolated cwd sits under the shared temp dir, whose ancestors any local
   // user can seed. Deno would honour a config found there — here one that is
   // not even JSON, which fails the run if Deno reads it. The runner's own
@@ -54,7 +55,7 @@ Deno.test("zuke doc ignores a deno.json planted above its isolated temp dir", as
   }, { prefix: "zuke-doc-it-" });
 });
 
-Deno.test("the build's doc resolves a bare name as a package, not a file", async () => {
+test("the build's doc resolves a bare name as a package, not a file", async () => {
   // The divergence this rule closed: the installed `zuke doc core` reached
   // jsr:@zuke/core while the launcher's `./zuke doc core` looked for a file
   // called `core` beside the caller and reported it missing. The runner is
@@ -71,7 +72,7 @@ Deno.test("the build's doc resolves a bare name as a package, not a file", async
   assertEquals(seen, "jsr:@zuke/core");
 });
 
-Deno.test("the build's doc still treats a path as a path", async () => {
+test("the build's doc still treats a path as a path", async () => {
   // The other half of the same rule: making bare names resolve as packages
   // must not turn a file into one.
   let seen: string | undefined;
@@ -90,7 +91,7 @@ Deno.test("the build's doc still treats a path as a path", async () => {
   assertEquals(seen, "jsr:@scope/pkg");
 });
 
-Deno.test("the build answers --version with the core version, bare", async () => {
+test("the build answers --version with the core version, bare", async () => {
   // `./zuke --version` used to be an unknown flag while `zuke --version`
   // answered, which was the sharpest edge of the two surfaces disagreeing.
   // Bare, so a script can read it without parsing around a banner.
@@ -99,7 +100,7 @@ Deno.test("the build answers --version with the core version, bare", async () =>
   assertEquals(out.trim(), VERSION);
 });
 
-Deno.test("--help wins when --version is also given", async () => {
+test("--help wins when --version is also given", async () => {
   // Same precedence the parser already gives help over an unknown flag:
   // whoever asked for help is the one who needs it.
   const { code, out } = await runCli(Noop, ["--help", "--version"]);
@@ -108,7 +109,7 @@ Deno.test("--help wins when --version is also given", async () => {
   assertEquals(out.includes("Usage"), true);
 });
 
-Deno.test("the build's doc refuses an empty spec instead of building a bad one", async () => {
+test("the build's doc refuses an empty spec instead of building a bad one", async () => {
   // Resolving "" would produce `jsr:@zuke/`, which deno doc rejects with a
   // message about a specifier the caller never typed. The installed CLI
   // already refused it; this is the same command, so it refuses it too.

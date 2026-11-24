@@ -10,6 +10,7 @@
  * record.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -40,7 +41,7 @@ async function loadRun(dir: string, id: string): Promise<RunRecord> {
   return got.record;
 }
 
-Deno.test("summary notes land in the run record, in runs show, and in outcomeOf", async () => {
+test("summary notes land in the run record, in runs show, and in outcomeOf", async () => {
   await withStateDir(async (dir) => {
     const seen: string[] = [];
     class CI extends Build {
@@ -71,7 +72,7 @@ Deno.test("summary notes land in the run record, in runs show, and in outcomeOf"
   });
 });
 
-Deno.test("a failed target's notes survive next to its error in runs show", async () => {
+test("a failed target's notes survive next to its error in runs show", async () => {
   await withStateDir(async (dir) => {
     class CI extends Build {
       test = target().executes((ctx) => {

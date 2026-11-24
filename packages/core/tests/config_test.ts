@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { absolutePath } from "../src/path.ts";
 import {
@@ -12,7 +13,7 @@ import {
 } from "../src/config.ts";
 import { withTempCwd } from "./_temp.ts";
 
-Deno.test("findConfigDir returns the directory holding zuke.json", () => {
+test("findConfigDir returns the directory holding zuke.json", () => {
   const dir = findConfigDir(
     "/a/b/c",
     (p) => p === `/a/b/c/${CONFIG_FILE}`,
@@ -20,16 +21,16 @@ Deno.test("findConfigDir returns the directory holding zuke.json", () => {
   assertEquals(dir, "/a/b/c");
 });
 
-Deno.test("findConfigDir walks up to an ancestor", () => {
+test("findConfigDir walks up to an ancestor", () => {
   const dir = findConfigDir("/a/b/c", (p) => p === `/a/${CONFIG_FILE}`);
   assertEquals(dir, "/a");
 });
 
-Deno.test("findConfigDir returns null when nothing is found", () => {
+test("findConfigDir returns null when nothing is found", () => {
   assertEquals(findConfigDir("/a/b", () => false), null);
 });
 
-Deno.test("repoRootFrom resolves the root and joins segments", () => {
+test("repoRootFrom resolves the root and joins segments", () => {
   const exists = (p: string) => p === `/proj/${CONFIG_FILE}`;
   assertEquals(repoRootFrom("/proj/pkg", exists, []).path, "/proj");
   assertEquals(
@@ -38,7 +39,7 @@ Deno.test("repoRootFrom resolves the root and joins segments", () => {
   );
 });
 
-Deno.test("repoRootFrom throws a helpful error when not found", () => {
+test("repoRootFrom throws a helpful error when not found", () => {
   assertThrows(
     () => repoRootFrom("/x", () => false, []),
     Error,
@@ -46,7 +47,7 @@ Deno.test("repoRootFrom throws a helpful error when not found", () => {
   );
 });
 
-Deno.test("pathExists reports existence and rethrows other errors", async () => {
+test("pathExists reports existence and rethrows other errors", async () => {
   const file = await Deno.makeTempFile();
   try {
     assertEquals(pathExists(file), true);
@@ -60,7 +61,7 @@ Deno.test("pathExists reports existence and rethrows other errors", async () => 
   }
 });
 
-Deno.test("repoRoot resolves from the current working directory", async () => {
+test("repoRoot resolves from the current working directory", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
   try {
@@ -77,7 +78,7 @@ Deno.test("repoRoot resolves from the current working directory", async () => {
   }
 });
 
-Deno.test("repoRoot throws when no config exists above the cwd", async () => {
+test("repoRoot throws when no config exists above the cwd", async () => {
   await withTempCwd(() => {
     assertThrows(() => repoRoot(), Error, "could not find zuke.json");
   });

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -25,7 +26,7 @@ import { parseContainerEntries } from "../src/container_info.ts";
 import { parseImageEntries } from "../src/image.ts";
 import { parseJsonLines, parseLines } from "../src/json_lines.ts";
 
-Deno.test("ps renders its selectors and format", () => {
+test("ps renders its selectors and format", () => {
   assertEquals(
     new DockerPsSettings().all().quietOutput().latest().noTrunc().size()
       .filter("status=running").format("{{json .}}").argv().slice(1),
@@ -44,7 +45,7 @@ Deno.test("ps renders its selectors and format", () => {
   );
 });
 
-Deno.test("logs renders its window, and requires a container", () => {
+test("logs renders its window, and requires a container", () => {
   assertEquals(
     new DockerLogsSettings().follow().timestamps().details().tail(100)
       .since("10m").until("1m").container("app").argv().slice(1),
@@ -73,7 +74,7 @@ Deno.test("logs renders its window, and requires a container", () => {
   );
 });
 
-Deno.test("inspect, top, port, and diff render their targets", () => {
+test("inspect, top, port, and diff render their targets", () => {
   assertEquals(
     new DockerInspectSettings().type("container").size()
       .format("{{.State.Status}}").targets("app", "db").argv().slice(1),
@@ -112,7 +113,7 @@ Deno.test("inspect, top, port, and diff render their targets", () => {
   ]);
 });
 
-Deno.test("stats never streams, because a target that never returns is a hang", () => {
+test("stats never streams, because a target that never returns is a hang", () => {
   assertEquals(
     new DockerStatsSettings().all().format("{{json .}}").containers("app")
       .argv().slice(1),
@@ -120,7 +121,7 @@ Deno.test("stats never streams, because a target that never returns is a hang", 
   );
 });
 
-Deno.test("cp needs both ends, and export writes where it is told", () => {
+test("cp needs both ends, and export writes where it is told", () => {
   assertEquals(
     new DockerCpSettings().archive().followLink()
       .from("app:/out/report.xml").to("reports/").argv().slice(1),
@@ -138,7 +139,7 @@ Deno.test("cp needs both ends, and export writes where it is told", () => {
   );
 });
 
-Deno.test("commit renders its metadata and pause override", () => {
+test("commit renders its metadata and pause override", () => {
   assertEquals(
     new DockerCommitSettings().message("snapshot").author("CI")
       .change("CMD /app").noPause().container("app").reference("app:snap")
@@ -163,7 +164,7 @@ Deno.test("commit renders its metadata and pause override", () => {
   );
 });
 
-Deno.test("parseJsonLines reads docker's one-object-per-line format", () => {
+test("parseJsonLines reads docker's one-object-per-line format", () => {
   const stdout = '{"ID":"abc","Names":"app"}\n{"ID":"def","Names":"db"}\n';
   assertEquals(parseJsonLines(stdout).length, 2);
   // docker interleaves warnings into the same stream; one must not lose the
@@ -178,7 +179,7 @@ Deno.test("parseJsonLines reads docker's one-object-per-line format", () => {
   assertEquals(parseJsonLines("[1,2]"), []);
 });
 
-Deno.test("parseContainerEntries maps docker's capitalised keys", () => {
+test("parseContainerEntries maps docker's capitalised keys", () => {
   const stdout = JSON.stringify({
     ID: "abc123",
     Image: "app:latest",
@@ -206,7 +207,7 @@ Deno.test("parseContainerEntries maps docker's capitalised keys", () => {
   assertEquals(parseContainerEntries(JSON.stringify({ ID: 7 })), [{}]);
 });
 
-Deno.test("parseImageEntries maps the image listing's keys", () => {
+test("parseImageEntries maps the image listing's keys", () => {
   const stdout = JSON.stringify({
     ID: "sha256:abc",
     Repository: "app",
@@ -226,7 +227,7 @@ Deno.test("parseImageEntries maps the image listing's keys", () => {
   assertEquals(parseImageEntries(""), []);
 });
 
-Deno.test("parseLines drops the blanks a name-only listing leaves", () => {
+test("parseLines drops the blanks a name-only listing leaves", () => {
   assertEquals(parseLines("build-cache\ntest-net\n"), [
     "build-cache",
     "test-net",
@@ -235,7 +236,7 @@ Deno.test("parseLines drops the blanks a name-only listing leaves", () => {
   assertEquals(parseLines(""), []);
 });
 
-Deno.test("the reading tasks fail on a missing docker rather than reporting nothing", async () => {
+test("the reading tasks fail on a missing docker rather than reporting nothing", async () => {
   await assertRejects(
     () => DockerTasks.psEntries((s) => missingTool(s)),
     ToolNotFoundError,

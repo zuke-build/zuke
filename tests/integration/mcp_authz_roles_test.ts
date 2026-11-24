@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -109,7 +110,7 @@ async function callTool(
   return { status: res.status, text: JSON.stringify(await res.json()) };
 }
 
-Deno.test("the role policy gates a real server's tools", async () => {
+test("the role policy gates a real server's tools", async () => {
   await withStateDir(async () => {
     ran.length = 0;
     const server = await startMcp(ControlPlane);
@@ -162,7 +163,7 @@ Deno.test("the role policy gates a real server's tools", async () => {
   });
 });
 
-Deno.test("the legacy identity hook is unconstrained by the policy", async () => {
+test("the legacy identity hook is unconstrained by the policy", async () => {
   // The compatibility guarantee, end to end: a server using the seam that
   // predates roles keeps working exactly as it did.
   await withStateDir(async () => {
@@ -179,7 +180,7 @@ Deno.test("the legacy identity hook is unconstrained by the policy", async () =>
   });
 });
 
-Deno.test("a caller granted no roles at all is refused everything", async () => {
+test("a caller granted no roles at all is refused everything", async () => {
   await withStateDir(async () => {
     ran.length = 0;
     const server = await startMcp(ControlPlane);
@@ -225,7 +226,7 @@ class Chained extends Build {
   }
 }
 
-Deno.test("requiresRole is enforced across the plan, not just the entry point", async () => {
+test("requiresRole is enforced across the plan, not just the entry point", async () => {
   // Invoking a target runs its dependencies, so a requirement guarding only the
   // named target would be bypassed by invoking anything that depends on it —
   // which is why --protect is plan-wide too.
@@ -285,7 +286,7 @@ class Partial extends Build {
   }
 }
 
-Deno.test("a token carrying no roles gets no privilege from the omission", async () => {
+test("a token carrying no roles gets no privilege from the omission", async () => {
   // Less information must never buy more privilege. Whether roles are enforced
   // is a property of the seam, so an mcpAuth() identity that omits them settles
   // to none and is denied — rather than skipping the policy entirely.

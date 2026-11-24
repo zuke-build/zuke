@@ -3,6 +3,7 @@
 
 /** Unit: the `value` and `samples` readers and their edge cases. */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -42,7 +43,7 @@ const HISTOGRAM: PrometheusQueryData = {
   }],
 };
 
-Deno.test("value reads a scalar and a one-sample vector, NaN and infinities included", () => {
+test("value reads a scalar and a one-sample vector, NaN and infinities included", () => {
   assertEquals(
     PrometheusTasks.value(response({
       resultType: "scalar",
@@ -58,7 +59,7 @@ Deno.test("value reads a scalar and a one-sample vector, NaN and infinities incl
   );
 });
 
-Deno.test("value fails clearly on no samples, several, or a non-float result", () => {
+test("value fails clearly on no samples, several, or a non-float result", () => {
   const cases: Array<[PrometheusQueryData, string]> = [
     [vectorOf(), "returned no samples — append `or vector(0)`"],
     [
@@ -81,7 +82,7 @@ Deno.test("value fails clearly on no samples, several, or a non-float result", (
   }
 });
 
-Deno.test("samples lists every float sample with its labels", () => {
+test("samples lists every float sample with its labels", () => {
   assertEquals(PrometheusTasks.samples(response(vectorOf(1, 2))), [
     { metric: { i: "0" }, timestamp: 1, value: 1 },
     { metric: { i: "1" }, timestamp: 1, value: 2 },

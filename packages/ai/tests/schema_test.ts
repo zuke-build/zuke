@@ -16,6 +16,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   ASSESSMENT_GEMINI_SCHEMA,
@@ -63,11 +64,11 @@ function geminiOf(schema: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-Deno.test("the assessment schemas are the same shape in both dialects", () => {
+test("the assessment schemas are the same shape in both dialects", () => {
   assertEquals(geminiOf(ASSESSMENT_JSON_SCHEMA), ASSESSMENT_GEMINI_SCHEMA);
 });
 
-Deno.test("the verdict schemas are the same shape in both dialects", () => {
+test("the verdict schemas are the same shape in both dialects", () => {
   const allowed = ["confirmed", "refuted"];
   assertEquals(
     geminiOf(verdictsJsonSchema(allowed)),
@@ -75,6 +76,6 @@ Deno.test("the verdict schemas are the same shape in both dialects", () => {
   );
 });
 
-Deno.test("the fix schemas are the same shape in both dialects", () => {
+test("the fix schemas are the same shape in both dialects", () => {
   assertEquals(geminiOf(FIX_JSON_SCHEMA), FIX_GEMINI_SCHEMA);
 });

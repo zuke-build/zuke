@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   GhWorkflowDisableSettings,
@@ -12,7 +13,7 @@ import {
 } from "../mod.ts";
 import { parseWorkflows } from "../src/workflow_command.ts";
 
-Deno.test("workflow list renders its flags", () => {
+test("workflow list renders its flags", () => {
   assertEquals(
     new GhWorkflowListSettings().repo("acme/app").all().limit(100).json("name")
       .jq(".[].name").argv().slice(1),
@@ -32,7 +33,7 @@ Deno.test("workflow list renders its flags", () => {
   );
 });
 
-Deno.test("every workflow command names its workflow", () => {
+test("every workflow command names its workflow", () => {
   for (
     const [task, build] of [
       ["workflowView", () => new GhWorkflowViewSettings().argv()],
@@ -45,7 +46,7 @@ Deno.test("every workflow command names its workflow", () => {
   }
 });
 
-Deno.test("workflow view carries no read flags, because gh gives it none", () => {
+test("workflow view carries no read flags, because gh gives it none", () => {
   // gh gives `workflow view` --yaml and --web but no --json, so the wrapper
   // must not offer the read flags it would reject.
   assertEquals("json" in new GhWorkflowViewSettings(), false);
@@ -58,7 +59,7 @@ Deno.test("workflow view carries no read flags, because gh gives it none", () =>
   );
 });
 
-Deno.test("workflow run renders its inputs", () => {
+test("workflow run renders its inputs", () => {
   assertEquals(
     new GhWorkflowRunSettings()
       .workflow("e2e.yml")
@@ -99,7 +100,7 @@ Deno.test("workflow run renders its inputs", () => {
   );
 });
 
-Deno.test("workflow enable and disable take the workflow and nothing else", () => {
+test("workflow enable and disable take the workflow and nothing else", () => {
   assertEquals(
     new GhWorkflowEnableSettings().workflow("nightly.yml").argv().slice(1),
     ["workflow", "enable", "nightly.yml"],
@@ -111,7 +112,7 @@ Deno.test("workflow enable and disable take the workflow and nothing else", () =
   );
 });
 
-Deno.test("parseWorkflows reads gh's JSON array", () => {
+test("parseWorkflows reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     { id: 1234, name: "CI", path: ".github/workflows/ci.yml", state: "active" },
   ]);
@@ -123,14 +124,14 @@ Deno.test("parseWorkflows reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseWorkflows treats anything but an array of objects as empty", () => {
+test("parseWorkflows treats anything but an array of objects as empty", () => {
   assertEquals(parseWorkflows("[]"), []);
   assertEquals(parseWorkflows("no workflows found"), []);
   assertEquals(parseWorkflows('{"id":1}'), []);
   assertEquals(parseWorkflows('[{"id":"1234"}]'), [{}]);
 });
 
-Deno.test("the pinned workflow field set is what the entry documents", () => {
+test("the pinned workflow field set is what the entry documents", () => {
   assertEquals(WORKFLOW_LIST_FIELDS.includes("path"), true);
   assertEquals(WORKFLOW_LIST_FIELDS.includes("state"), true);
   assertEquals(WORKFLOW_LIST_FIELDS.length, 4);

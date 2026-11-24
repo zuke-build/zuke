@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { appendJobSummary } from "../src/job_summary.ts";
 import { withTemp } from "./_temp.ts";
@@ -23,7 +24,7 @@ async function withSummaryPath(
   }
 }
 
-Deno.test("appendJobSummary appends, so sections from one run accumulate", async () => {
+test("appendJobSummary appends, so sections from one run accumulate", async () => {
   const dir = await Deno.makeTempDir();
   const path = `${dir}/summary.md`;
   try {
@@ -39,7 +40,7 @@ Deno.test("appendJobSummary appends, so sections from one run accumulate", async
   }
 });
 
-Deno.test("appendJobSummary ends the section with a newline", async () => {
+test("appendJobSummary ends the section with a newline", async () => {
   const dir = await Deno.makeTempDir();
   const path = `${dir}/summary.md`;
   try {
@@ -54,7 +55,7 @@ Deno.test("appendJobSummary ends the section with a newline", async () => {
   }
 });
 
-Deno.test("appendJobSummary is a no-op outside Actions", async () => {
+test("appendJobSummary is a no-op outside Actions", async () => {
   await withSummaryPath(undefined, () => {
     assertEquals(appendJobSummary("## ignored"), false);
   });
@@ -64,7 +65,7 @@ Deno.test("appendJobSummary is a no-op outside Actions", async () => {
   });
 });
 
-Deno.test("an unwritable summary reports false instead of failing the build", async () => {
+test("an unwritable summary reports false instead of failing the build", async () => {
   await withTemp(async (dir) => {
     // A directory where a file is expected: writing throws, and a report that
     // cannot be displayed must never fail the build that produced it.
@@ -74,7 +75,7 @@ Deno.test("an unwritable summary reports false instead of failing the build", as
   });
 });
 
-Deno.test("appendJobSummary masks the run's secrets", async () => {
+test("appendJobSummary masks the run's secrets", async () => {
   // The job summary is visible to everyone who can view the run, and the
   // `::add-mask::` directives do not cover it — they mask the runner's log
   // stream, not a file the build writes. Redacting at this one exported writer
@@ -99,7 +100,7 @@ Deno.test("appendJobSummary masks the run's secrets", async () => {
   }
 });
 
-Deno.test("appendJobSummary writes verbatim when no run is in scope", async () => {
+test("appendJobSummary writes verbatim when no run is in scope", async () => {
   // Outside a run there is no redactor and nothing to mask, so the text is
   // written exactly as given rather than routed through a no-op that could
   // change it.

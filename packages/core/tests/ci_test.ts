@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -40,7 +41,7 @@ const pipeline: CiPipeline = {
   }],
 };
 
-Deno.test("github: triggers, matrix-driven runs-on, needs, uses and run steps", () => {
+test("github: triggers, matrix-driven runs-on, needs, uses and run steps", () => {
   const yaml = generateCi(pipeline, "github");
   assertStringIncludes(yaml, "name: CI");
   // `on` is quoted so YAML doesn't read it as a boolean.
@@ -57,7 +58,7 @@ Deno.test("github: triggers, matrix-driven runs-on, needs, uses and run steps", 
   assertStringIncludes(yaml, "run: deno task ci");
 });
 
-Deno.test("github: a job without an os matrix uses runsOn or the default", () => {
+test("github: a job without an os matrix uses runsOn or the default", () => {
   const yaml = generateCi({
     name: "CI",
     jobs: [
@@ -69,7 +70,7 @@ Deno.test("github: a job without an os matrix uses runsOn or the default", () =>
   assertStringIncludes(yaml, "runs-on: ubuntu-latest");
 });
 
-Deno.test("github: permissions, concurrency, job if/timeout, and step env render", () => {
+test("github: permissions, concurrency, job if/timeout, and step env render", () => {
   const yaml = generateCi({
     name: "AI Review",
     triggers: { pullRequest: [] }, // every branch — no filter
@@ -97,12 +98,12 @@ Deno.test("github: permissions, concurrency, job if/timeout, and step env render
   assertStringIncludes(yaml, "env:\n          OPENAI_API_KEY:");
 });
 
-Deno.test("github: an empty push branch list is an unfiltered push trigger", () => {
+test("github: an empty push branch list is an unfiltered push trigger", () => {
   const yaml = generateCi({ triggers: { push: [] } }, "github");
   assertStringIncludes(yaml, "push: {}");
 });
 
-Deno.test("gitlab: a job timeout renders; if and step env are ignored", () => {
+test("gitlab: a job timeout renders; if and step env are ignored", () => {
   const yaml = generateCi({
     jobs: [{
       id: "review",
@@ -115,7 +116,7 @@ Deno.test("gitlab: a job timeout renders; if and step env are ignored", () => {
   assertEquals(yaml.includes("should-be-ignored"), false);
 });
 
-Deno.test("azure: condition, timeout, and unfiltered pr branches render", () => {
+test("azure: condition, timeout, and unfiltered pr branches render", () => {
   const yaml = generateCi({
     triggers: { pullRequest: [] },
     jobs: [{
@@ -130,7 +131,7 @@ Deno.test("azure: condition, timeout, and unfiltered pr branches render", () => 
   assertStringIncludes(yaml, "timeoutInMinutes: 15");
 });
 
-Deno.test("azure: a step's env block renders alongside its script", () => {
+test("azure: a step's env block renders alongside its script", () => {
   const yaml = generateCi({
     jobs: [{
       id: "review",
@@ -142,7 +143,7 @@ Deno.test("azure: a step's env block renders alongside its script", () => {
   assertStringIncludes(yaml, "env:\n          KEY:");
 });
 
-Deno.test("bitbucket: a PR pipeline maps to pull-requests with a step list", () => {
+test("bitbucket: a PR pipeline maps to pull-requests with a step list", () => {
   const yaml = generateCi({
     triggers: { pullRequest: [] }, // every branch → "**"
     jobs: [{
@@ -162,7 +163,7 @@ Deno.test("bitbucket: a PR pipeline maps to pull-requests with a step list", () 
   assertStringIncludes(yaml, "script:\n            - ./zuke review");
 });
 
-Deno.test("bitbucket: push triggers map to branches, empty push to default", () => {
+test("bitbucket: push triggers map to branches, empty push to default", () => {
   const named = generateCi({
     triggers: { push: ["main"] },
     jobs: [{ id: "a", steps: [{ run: "x" }] }],
@@ -176,7 +177,7 @@ Deno.test("bitbucket: push triggers map to branches, empty push to default", () 
   assertStringIncludes(def, "pipelines:\n  default:");
 });
 
-Deno.test("bitbucket: a manual-only pipeline becomes a custom trigger", () => {
+test("bitbucket: a manual-only pipeline becomes a custom trigger", () => {
   const yaml = generateCi({
     triggers: { manual: true },
     jobs: [{ id: "a", steps: [{ run: "x" }] }],
@@ -184,7 +185,7 @@ Deno.test("bitbucket: a manual-only pipeline becomes a custom trigger", () => {
   assertStringIncludes(yaml, "custom:\n    ai-review:");
 });
 
-Deno.test("gitlab: workflow rules, stages, image, parallel matrix, script", () => {
+test("gitlab: workflow rules, stages, image, parallel matrix, script", () => {
   const yaml = generateCi(pipeline, "gitlab");
   assertStringIncludes(yaml, "workflow:\n  rules:");
   // The `if:` expressions contain `$` and quotes, so YAML double-quotes them;
@@ -200,7 +201,7 @@ Deno.test("gitlab: workflow rules, stages, image, parallel matrix, script", () =
   assertStringIncludes(yaml, "parallel:\n    matrix:\n      - os:");
 });
 
-Deno.test("gitlab: a job's runsOn becomes the image", () => {
+test("gitlab: a job's runsOn becomes the image", () => {
   const yaml = generateCi({
     name: "CI",
     jobs: [{ id: "a", runsOn: "denoland/deno:latest", steps: [{ run: "x" }] }],
@@ -209,7 +210,7 @@ Deno.test("gitlab: a job's runsOn becomes the image", () => {
   assertStringIncludes(yaml, "denoland/deno:latest");
 });
 
-Deno.test("azure: trigger/pr branches, pool, dependsOn, matrix product, steps", () => {
+test("azure: trigger/pr branches, pool, dependsOn, matrix product, steps", () => {
   const yaml = generateCi(pipeline, "azure");
   assertStringIncludes(
     yaml,
@@ -229,7 +230,7 @@ Deno.test("azure: trigger/pr branches, pool, dependsOn, matrix product, steps", 
   assertEquals(yaml.includes("setup-deno"), false);
 });
 
-Deno.test("azure: a multi-dimension matrix is expanded to the cartesian product", () => {
+test("azure: a multi-dimension matrix is expanded to the cartesian product", () => {
   const yaml = generateCi({
     name: "CI",
     jobs: [{
@@ -247,7 +248,7 @@ Deno.test("azure: a multi-dimension matrix is expanded to the cartesian product"
   assertStringIncludes(yaml, `deno: "2.0"`);
 });
 
-Deno.test("azure: a manual-only pipeline disables the CI trigger", () => {
+test("azure: a manual-only pipeline disables the CI trigger", () => {
   const yaml = generateCi({
     name: "CI",
     triggers: { manual: true },
@@ -256,7 +257,7 @@ Deno.test("azure: a manual-only pipeline disables the CI trigger", () => {
   assertStringIncludes(yaml, "trigger: none");
 });
 
-Deno.test("explicit empty triggers render without an on/trigger block", () => {
+test("explicit empty triggers render without an on/trigger block", () => {
   const bare: CiPipeline = {
     name: "CI",
     triggers: {},
@@ -267,7 +268,7 @@ Deno.test("explicit empty triggers render without an on/trigger block", () => {
   assertEquals(generateCi(bare, "azure").includes("trigger:"), false);
 });
 
-Deno.test("defaults: name, triggers and job id fill in", () => {
+test("defaults: name, triggers and job id fill in", () => {
   // Only steps are given; everything else falls back to a meaningful default.
   const yaml = generateCi(
     { jobs: [{ steps: [{ run: "deno task ci" }] }] },
@@ -280,7 +281,7 @@ Deno.test("defaults: name, triggers and job id fill in", () => {
   assertStringIncludes(yaml, "build:"); // default job id
 });
 
-Deno.test("defaults: a default job id flows through every provider", () => {
+test("defaults: a default job id flows through every provider", () => {
   const pipeline: CiPipeline = {
     triggers: {},
     jobs: [{ steps: [{ run: "x" }] }],
@@ -290,7 +291,7 @@ Deno.test("defaults: a default job id flows through every provider", () => {
   assertStringIncludes(generateCi(pipeline, "azure"), "- job: build");
 });
 
-Deno.test("defaults: jobs and steps fall back to a single build step", () => {
+test("defaults: jobs and steps fall back to a single build step", () => {
   // An empty pipeline still produces a complete, runnable workflow.
   const yaml = generateCi({}, "github");
   assertStringIncludes(yaml, "name: CI");
@@ -298,26 +299,26 @@ Deno.test("defaults: jobs and steps fall back to a single build step", () => {
   assertStringIncludes(yaml, "run: ./zuke"); // default step runs the build
 });
 
-Deno.test("defaults: the default job/step flow through every provider", () => {
+test("defaults: the default job/step flow through every provider", () => {
   const empty: CiPipeline = { triggers: {} };
   assertStringIncludes(generateCi(empty, "github"), "run: ./zuke");
   assertStringIncludes(generateCi(empty, "gitlab"), "- ./zuke");
   assertStringIncludes(generateCi(empty, "azure"), "script: ./zuke");
 });
 
-Deno.test("defaults: a job may omit steps and get the default step", () => {
+test("defaults: a job may omit steps and get the default step", () => {
   const yaml = generateCi({ triggers: {}, jobs: [{ id: "verify" }] }, "github");
   assertStringIncludes(yaml, "verify:");
   assertStringIncludes(yaml, "run: ./zuke");
 });
 
-Deno.test("cicd: with only a provider declares the default workflow", () => {
+test("cicd: with only a provider declares the default workflow", () => {
   const file = cicd({ provider: "github" });
   assertEquals(file.path, ".github/workflows/ci.yml");
   assertStringIncludes(file.render(), "run: ./zuke");
 });
 
-Deno.test("cicd: the path follows the provider unless overridden", () => {
+test("cicd: the path follows the provider unless overridden", () => {
   const pipeline: CiPipeline = { jobs: [{ steps: [{ run: "x" }] }] };
   assertEquals(
     cicd({ provider: "github", pipeline }).path,
@@ -347,7 +348,7 @@ const filePipeline: CiPipeline = {
   jobs: [{ id: "test", steps: [{ run: "deno task ci" }] }],
 };
 
-Deno.test("cicd: path and render reflect the spec", () => {
+test("cicd: path and render reflect the spec", () => {
   const file = cicd({
     provider: "github",
     path: ".github/workflows/ci.yml",
@@ -357,7 +358,7 @@ Deno.test("cicd: path and render reflect the spec", () => {
   assertStringIncludes(file.render(), "name: CI");
 });
 
-Deno.test("discoverCiFiles collects every declared CI file", () => {
+test("discoverCiFiles collects every declared CI file", () => {
   class WithCi extends Build {
     gh = cicd({
       provider: "github",
@@ -375,14 +376,14 @@ Deno.test("discoverCiFiles collects every declared CI file", () => {
   assertEquals(paths, [".github/workflows/ci.yml", ".gitlab-ci.yml"]);
 });
 
-Deno.test("discoverCiFiles returns nothing for a build without CI", () => {
+test("discoverCiFiles returns nothing for a build without CI", () => {
   class Bare extends Build {
     build = target().executes(() => {});
   }
   assertEquals(discoverCiFiles(new Bare()), []);
 });
 
-Deno.test("syncCiFiles writes a changed file, then leaves a current one", async () => {
+test("syncCiFiles writes a changed file, then leaves a current one", async () => {
   const store = new Map<string, string>();
   const file = cicd({
     provider: "github",
@@ -403,7 +404,7 @@ Deno.test("syncCiFiles writes a changed file, then leaves a current one", async 
   assertEquals(second[0].status, "unchanged");
 });
 
-Deno.test("syncCiFiles in check mode reports a stale file without writing", async () => {
+test("syncCiFiles in check mode reports a stale file without writing", async () => {
   const file = cicd({
     provider: "github",
     path: "ci.yml",
@@ -422,7 +423,7 @@ Deno.test("syncCiFiles in check mode reports a stale file without writing", asyn
   assertEquals(wrote, false);
 });
 
-Deno.test("syncCiFiles in check mode passes when content already matches", async () => {
+test("syncCiFiles in check mode passes when content already matches", async () => {
   const file = cicd({
     provider: "github",
     path: "ci.yml",
@@ -435,7 +436,7 @@ Deno.test("syncCiFiles in check mode passes when content already matches", async
   assertEquals(results[0].status, "unchanged");
 });
 
-Deno.test("syncCiFiles tolerates a CRLF working copy (Windows checkout)", async () => {
+test("syncCiFiles tolerates a CRLF working copy (Windows checkout)", async () => {
   // Simulate a Windows checkout where git's autocrlf has converted LF→CRLF;
   // the rendered output is always LF, so a naive comparison would mismatch.
   const file = cicd({
@@ -451,7 +452,7 @@ Deno.test("syncCiFiles tolerates a CRLF working copy (Windows checkout)", async 
   assertEquals(results[0].status, "unchanged");
 });
 
-Deno.test("syncCiFiles uses the real filesystem by default", async () => {
+test("syncCiFiles uses the real filesystem by default", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/.github/workflows/ci.yml`;
     const file = cicd({ provider: "github", path, pipeline: filePipeline });
@@ -472,7 +473,7 @@ class FanBuild extends Build {
   empty = target().description("no body"); // not runnable
 }
 
-Deno.test("fanOutPipeline makes one job per runnable target, wired by dependencies", () => {
+test("fanOutPipeline makes one job per runnable target, wired by dependencies", () => {
   const targets = discoverTargets(new FanBuild());
   const pipeline = fanOutPipeline(targets);
   const jobs = pipeline.jobs ?? [];
@@ -490,14 +491,14 @@ Deno.test("fanOutPipeline makes one job per runnable target, wired by dependenci
   assertEquals(lint?.name, "Lint"); // description becomes the job name
 });
 
-Deno.test("fanOutPipeline honours includeUnlisted and drops needs to omitted jobs", () => {
+test("fanOutPipeline honours includeUnlisted and drops needs to omitted jobs", () => {
   const targets = discoverTargets(new FanBuild());
   const pipeline = fanOutPipeline(targets, {}, { includeUnlisted: true });
   const ids = (pipeline.jobs ?? []).map((j) => j.id);
   assertEquals(ids.includes("hidden"), true);
 });
 
-Deno.test("fanOutPipeline drops needs edges to excluded targets", () => {
+test("fanOutPipeline drops needs edges to excluded targets", () => {
   class B extends Build {
     hiddenDep = target().unlisted().executes(() => {});
     app = target().dependsOn(this.hiddenDep).executes(() => {});
@@ -507,7 +508,7 @@ Deno.test("fanOutPipeline drops needs edges to excluded targets", () => {
   assertEquals(app?.needs, undefined); // the only dep was excluded
 });
 
-Deno.test("fanOutPipeline applies command, runsOn, env, and setup overrides", () => {
+test("fanOutPipeline applies command, runsOn, env, and setup overrides", () => {
   const targets = discoverTargets(new FanBuild());
   const pipeline = fanOutPipeline(targets, {}, {
     command: (t) => `make ${t}`,
@@ -522,7 +523,7 @@ Deno.test("fanOutPipeline applies command, runsOn, env, and setup overrides", ()
   assertEquals(lint?.steps?.at(-1)?.run, "make lint");
 });
 
-Deno.test("fanOutPipeline carries base pipeline fields and ignores base jobs", () => {
+test("fanOutPipeline carries base pipeline fields and ignores base jobs", () => {
   const targets = discoverTargets(new FanBuild());
   const pipeline = fanOutPipeline(targets, {
     name: "My CI",
@@ -538,7 +539,7 @@ Deno.test("fanOutPipeline carries base pipeline fields and ignores base jobs", (
   assertEquals((pipeline.jobs ?? []).some((j) => j.id === "ignored"), false);
 });
 
-Deno.test("fanOutPipeline sanitises dotted component target names into job ids", () => {
+test("fanOutPipeline sanitises dotted component target names into job ids", () => {
   const release = { publish: target().dependsOn().executes(() => {}) };
   class B extends Build {
     release = release;
@@ -551,7 +552,7 @@ Deno.test("fanOutPipeline sanitises dotted component target names into job ids",
   assertEquals(deploy?.needs, ["release-publish"]);
 });
 
-Deno.test("cicd fanOut expands into a per-target workflow via discoverCiFiles", () => {
+test("cicd fanOut expands into a per-target workflow via discoverCiFiles", () => {
   class WithFanOut extends Build {
     lint = target().executes(() => {});
     test = target().dependsOn(this.lint).executes(() => {});
@@ -570,7 +571,7 @@ Deno.test("cicd fanOut expands into a per-target workflow via discoverCiFiles", 
   assertStringIncludes(yaml, "needs:");
 });
 
-Deno.test("a fan-out job checks out once, through the pinned prelude", () => {
+test("a fan-out job checks out once, through the pinned prelude", () => {
   // Regression: the fan-out default setup used to add `actions/checkout@v4`
   // after the prelude had already checked out — a second, unpinned checkout in
   // every job, which zizmor flags and the pinning policy forbids.
@@ -588,7 +589,7 @@ Deno.test("a fan-out job checks out once, through the pinned prelude", () => {
   assertEquals(yaml.includes("actions/checkout"), false);
 });
 
-Deno.test("a non-fan-out cicd file is unaffected by discovery resolution", () => {
+test("a non-fan-out cicd file is unaffected by discovery resolution", () => {
   class Plain extends Build {
     build = target().executes(() => {});
     ci = cicd({ provider: "github", pipeline: { name: "Plain" } });
@@ -597,12 +598,12 @@ Deno.test("a non-fan-out cicd file is unaffected by discovery resolution", () =>
   assertStringIncludes(yaml, "name: Plain");
 });
 
-Deno.test("CiFile.pipelineFor returns the base pipeline when not fanning out", () => {
+test("CiFile.pipelineFor returns the base pipeline when not fanning out", () => {
   const file = new CiFile({ provider: "github", pipeline: { name: "Base" } });
   assertEquals(file.pipelineFor(new Map()).name, "Base");
 });
 
-Deno.test("cicd accepts fan-out options directly", () => {
+test("cicd accepts fan-out options directly", () => {
   class B extends Build {
     lint = target().executes(() => {});
     ci = cicd({ provider: "github", fanOut: { runsOn: "self-hosted" } });
@@ -613,7 +614,7 @@ Deno.test("cicd accepts fan-out options directly", () => {
 
 // --- timezone-aware schedules (M8) ---
 
-Deno.test("github: a UTC schedule renders on.schedule with no guard job", () => {
+test("github: a UTC schedule renders on.schedule with no guard job", () => {
   const yaml = generateCi(
     { triggers: { schedule: [{ cron: "0 6 * * *" }] } },
     "github",
@@ -622,7 +623,7 @@ Deno.test("github: a UTC schedule renders on.schedule with no guard job", () => 
   assertEquals(yaml.includes("zuke-schedule-guard"), false);
 });
 
-Deno.test("github: a DST schedule emits dual crons, a guard job, and gates jobs", () => {
+test("github: a DST schedule emits dual crons, a guard job, and gates jobs", () => {
   const yaml = generateCi(
     {
       triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
@@ -645,7 +646,7 @@ Deno.test("github: a DST schedule emits dual crons, a guard job, and gates jobs"
   assertStringIncludes(yaml, "TZ='Europe/Sofia' date");
 });
 
-Deno.test("github: the guard ANDs onto an existing job condition", () => {
+test("github: the guard ANDs onto an existing job condition", () => {
   const yaml = generateCi(
     {
       triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
@@ -663,7 +664,7 @@ Deno.test("github: the guard ANDs onto an existing job condition", () => {
   );
 });
 
-Deno.test("azure: a UTC/fixed schedule renders native schedules; a DST zone errors", () => {
+test("azure: a UTC/fixed schedule renders native schedules; a DST zone errors", () => {
   const yaml = generateCi(
     {
       triggers: {
@@ -689,7 +690,7 @@ Deno.test("azure: a UTC/fixed schedule renders native schedules; a DST zone erro
   assertStringIncludes(threw, "GitHub-only");
 });
 
-Deno.test("github: a job colliding with the guard id is a friendly error", () => {
+test("github: a job colliding with the guard id is a friendly error", () => {
   let threw = "";
   try {
     generateCi(
@@ -705,13 +706,13 @@ Deno.test("github: a job colliding with the guard id is a friendly error", () =>
   assertStringIncludes(threw, "collides with the generated");
 });
 
-Deno.test("gitlab and bitbucket ignore schedules (configured in the provider UI)", () => {
+test("gitlab and bitbucket ignore schedules (configured in the provider UI)", () => {
   const triggers = { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] };
   assertEquals(generateCi({ triggers }, "gitlab").includes("cron"), false);
   assertEquals(generateCi({ triggers }, "bitbucket").includes("cron"), false);
 });
 
-Deno.test("github: harden and checkout are emitted before a job's own steps", () => {
+test("github: harden and checkout are emitted before a job's own steps", () => {
   const yaml = generateCi({
     harden: {
       action: "step-security/harden-runner@abc123",
@@ -736,7 +737,7 @@ Deno.test("github: harden and checkout are emitted before a job's own steps", ()
   assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
 
-Deno.test("github: an audit policy is the default and emits no allowlist", () => {
+test("github: an audit policy is the default and emits no allowlist", () => {
   const yaml = generateCi({
     harden: { action: "step-security/harden-runner@abc123" },
     jobs: [{ steps: [{ run: "x" }] }],
@@ -745,7 +746,7 @@ Deno.test("github: an audit policy is the default and emits no allowlist", () =>
   assertEquals(yaml.includes("allowed-endpoints"), false);
 });
 
-Deno.test("github: a job overrides or opts out of the pipeline prelude", () => {
+test("github: a job overrides or opts out of the pipeline prelude", () => {
   const yaml = generateCi({
     harden: { action: "harden@pipeline" },
     checkout: { action: "checkout@pipeline" },
@@ -772,7 +773,7 @@ Deno.test("github: a job overrides or opts out of the pipeline prelude", () => {
   assertStringIncludes(inherits, "checkout@pipeline");
 });
 
-Deno.test("github: per-job permissions isolate what each token can do", () => {
+test("github: per-job permissions isolate what each token can do", () => {
   const yaml = generateCi({
     permissions: { contents: "read" },
     jobs: [
@@ -797,7 +798,7 @@ Deno.test("github: per-job permissions isolate what each token can do", () => {
   assertStringIncludes(yaml.slice(yaml.indexOf("publish:")), "id-token: write");
 });
 
-Deno.test("github: a step carries id, if, shell, and continue-on-error", () => {
+test("github: a step carries id, if, shell, and continue-on-error", () => {
   const yaml = generateCi({
     jobs: [{
       steps: [
@@ -824,7 +825,7 @@ Deno.test("github: a step carries id, if, shell, and continue-on-error", () => {
   assertStringIncludes(yaml, "continue-on-error: true");
 });
 
-Deno.test("github: failFast is emitted only when declared", () => {
+test("github: failFast is emitted only when declared", () => {
   const kept = generateCi({
     jobs: [{
       matrix: { os: ["macos-latest"] },
@@ -839,7 +840,7 @@ Deno.test("github: failFast is emitted only when declared", () => {
   assertEquals(untouched.includes("fail-fast"), false);
 });
 
-Deno.test("github: pull-request types and branch protection triggers render", () => {
+test("github: pull-request types and branch protection triggers render", () => {
   const yaml = generateCi({
     triggers: {
       pullRequest: [],
@@ -853,7 +854,7 @@ Deno.test("github: pull-request types and branch protection triggers render", ()
   assertStringIncludes(yaml, "branch_protection_rule: {}");
 });
 
-Deno.test("a job-level concurrency group renders on the job, not the workflow", () => {
+test("a job-level concurrency group renders on the job, not the workflow", () => {
   const yaml = generateCi({
     triggers: { pullRequest: [] },
     jobs: [{
@@ -870,7 +871,7 @@ Deno.test("a job-level concurrency group renders on the job, not the workflow", 
   assertEquals(yaml.includes("\nconcurrency:"), false);
 });
 
-Deno.test("issueComment renders an issue_comment trigger with its activity types", () => {
+test("issueComment renders an issue_comment trigger with its activity types", () => {
   const yaml = generateCi({
     triggers: { pullRequest: [], issueComment: ["created"] },
     jobs: [{ steps: [{ run: "x" }] }],
@@ -892,7 +893,7 @@ Deno.test("issueComment renders an issue_comment trigger with its activity types
   }
 });
 
-Deno.test("invokes: one job per target, wired from the build graph", () => {
+test("invokes: one job per target, wired from the build graph", () => {
   // The point of the feature: naming targets is the whole declaration. Ids,
   // display names, commands, and needs edges all come from the graph.
   class B extends Build {
@@ -919,7 +920,7 @@ Deno.test("invokes: one job per target, wired from the build graph", () => {
   assertEquals(pipeline.jobs?.[1].needs, ["lint"]);
 });
 
-Deno.test("invokes: a dependency that is not itself a job is not an edge", () => {
+test("invokes: a dependency that is not itself a job is not an edge", () => {
   // `./zuke release` runs its own dependencies in-process, exactly as it does
   // locally — so an uninvoked dependency must not become a `needs:` edge that
   // waits for a job nobody generated.
@@ -934,7 +935,7 @@ Deno.test("invokes: a dependency that is not itself a job is not an edge", () =>
   assertEquals(pipeline.jobs?.[0].needs, undefined);
 });
 
-Deno.test("invokes: `after` orders jobs the build graph leaves independent", () => {
+test("invokes: `after` orders jobs the build graph leaves independent", () => {
   // Publishing after a release is a property of the pipeline, not a build
   // dependency — the targets stay independently runnable.
   class B extends Build {
@@ -952,7 +953,7 @@ Deno.test("invokes: `after` orders jobs the build graph leaves independent", () 
   assertEquals(b.publish.dependsOn_.length, 0);
 });
 
-Deno.test("invokes: overrides cover what the runner decides, not the work", () => {
+test("invokes: overrides cover what the runner decides, not the work", () => {
   class B extends Build {
     test = target().description("Run tests").executes(() => {});
     wf = cicd({
@@ -978,7 +979,7 @@ Deno.test("invokes: overrides cover what the runner decides, not the work", () =
   assertEquals(job?.steps?.[0].env, { TOKEN: "${{ secrets.TOKEN }}" });
 });
 
-Deno.test("invokes: before and then wrap the derived step", () => {
+test("invokes: before and then wrap the derived step", () => {
   class B extends Build {
     upload = target().executes(() => {});
     wf = cicd({
@@ -998,7 +999,7 @@ Deno.test("invokes: before and then wrap the derived step", () => {
   assertEquals(steps?.[2].run, "echo done");
 });
 
-Deno.test("invokes: a target that is not a build field is a friendly error", () => {
+test("invokes: a target that is not a build field is a friendly error", () => {
   // A stray builder has no name, so there is nothing to run — say so rather
   // than emitting `./zuke undefined`.
   class B extends Build {
@@ -1016,7 +1017,7 @@ Deno.test("invokes: a target that is not a build field is a friendly error", () 
   assertStringIncludes(threw, "not a field on this build");
 });
 
-Deno.test("invokes and fanOut are mutually exclusive", () => {
+test("invokes and fanOut are mutually exclusive", () => {
   class B extends Build {
     a = target().executes(() => {});
   }
@@ -1030,7 +1031,7 @@ Deno.test("invokes and fanOut are mutually exclusive", () => {
   assertStringIncludes(threw, "not both");
 });
 
-Deno.test("invokes: discoverCiFiles resolves the jobs, so render() sees them", () => {
+test("invokes: discoverCiFiles resolves the jobs, so render() sees them", () => {
   // The declaration holds target references whose names are assigned after
   // construction, so resolution has to happen at discovery.
   class B extends Build {
@@ -1042,7 +1043,7 @@ Deno.test("invokes: discoverCiFiles resolves the jobs, so render() sees them", (
   assertStringIncludes(file.render(), "name: The gate");
 });
 
-Deno.test("the prelude is one action, resolved through the pins hook", () => {
+test("the prelude is one action, resolved through the pins hook", () => {
   // Hardening, checkout and Deno setup are one prelude, not three decisions,
   // so they render as the one action that performs them. The resolver is asked
   // for it by name like any other, which is what lets a repository pin it.
@@ -1062,7 +1063,7 @@ Deno.test("the prelude is one action, resolved through the pins hook", () => {
   assertStringIncludes(yaml, "egress-policy: audit");
 });
 
-Deno.test("pins: a job adjusts the policy without naming the action again", () => {
+test("pins: a job adjusts the policy without naming the action again", () => {
   class B extends Build {
     gate = target().executes(() => {});
     wf = cicd({
@@ -1082,7 +1083,7 @@ Deno.test("pins: a job adjusts the policy without naming the action again", () =
   assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443"');
 });
 
-Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () => {
+test("pins: a missing pin is a friendly error, never an unpinned use", () => {
   // Emitting `uses:` with no ref would produce a floating reference that
   // supply-chain scanners reject, so this must fail rather than degrade.
   //
@@ -1109,7 +1110,7 @@ Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () =
   assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40}/.test(yaml), true);
 });
 
-Deno.test("the workflow path comes from the field it is declared on", () => {
+test("the workflow path comes from the field it is declared on", () => {
   class B extends Build {
     gate = target().executes(() => {});
     // `Workflow` is noise once the file is a workflow; camelCase reads better
@@ -1129,7 +1130,7 @@ Deno.test("the workflow path comes from the field it is declared on", () => {
   ]);
 });
 
-Deno.test("provider defaults to github, and permissions to read-only", () => {
+test("provider defaults to github, and permissions to read-only", () => {
   const yaml = generateCi({ jobs: [{ steps: [{ run: "x" }] }] }, "github");
   // Least privilege by default; a job that writes declares it.
   assertStringIncludes(yaml, "permissions:\n  contents: read");
@@ -1141,7 +1142,7 @@ Deno.test("provider defaults to github, and permissions to read-only", () => {
   assertStringIncludes(none, "permissions: {}");
 });
 
-Deno.test("the prelude action needs no resolver, since it carries its own pin", () => {
+test("the prelude action needs no resolver, since it carries its own pin", () => {
   // Hardening and checkout stay off without a resolver, because there is no
   // reference to render them with. The prelude action is different: it ships a
   // pin, so a build that configures nothing still gets the standard opening.
@@ -1156,7 +1157,7 @@ Deno.test("the prelude action needs no resolver, since it carries its own pin", 
   assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40} # v\d/.test(yaml), true);
 });
 
-Deno.test("bootstrap: false renders the separate steps it replaced", () => {
+test("bootstrap: false renders the separate steps it replaced", () => {
   // The escape hatch for a repository that cannot use a Marketplace action.
   class B extends Build {
     gate = target().executes(() => {});
@@ -1172,7 +1173,7 @@ Deno.test("bootstrap: false renders the separate steps it replaced", () => {
   assertStringIncludes(yaml, `actions/checkout@${"c".repeat(40)}`);
 });
 
-Deno.test("a job that declines either half falls back to the separate steps", () => {
+test("a job that declines either half falls back to the separate steps", () => {
   // One action cannot do half of itself, so `harden: false` — a job that
   // deliberately exercises the bootstrap launchers, say — must still be able to
   // opt out. Falling back is what keeps every pre-existing opt-out working.
@@ -1194,7 +1195,7 @@ Deno.test("a job that declines either half falls back to the separate steps", ()
   assertStringIncludes(yaml, `step-security/harden-runner@${"d".repeat(40)}`);
 });
 
-Deno.test("every prelude option maps onto the action's own input names", () => {
+test("every prelude option maps onto the action's own input names", () => {
   // The point of the substitution: a build declares the same things it always
   // did, and only the step count changes.
   class B extends Build {
@@ -1223,7 +1224,7 @@ Deno.test("every prelude option maps onto the action's own input names", () => {
   assertEquals(yaml.includes("actions/setup-node"), false);
 });
 
-Deno.test("bootstrap actionsCache renders the action's actions-cache input", () => {
+test("bootstrap actionsCache renders the action's actions-cache input", () => {
   class B extends Build {
     gate = target().executes(() => {});
     wf = cicd({
@@ -1247,7 +1248,7 @@ Deno.test("bootstrap actionsCache renders the action's actions-cache input", () 
   );
 });
 
-Deno.test("the two security-relevant inputs are always stated", () => {
+test("the two security-relevant inputs are always stated", () => {
   // Even when they match the action's own defaults, exactly as the two steps
   // this replaced stated them. Whether a job records egress or enforces it, and
   // whether it leaves a usable credential behind, are what a reader of a
@@ -1265,7 +1266,7 @@ Deno.test("the two security-relevant inputs are always stated", () => {
   assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
 
-Deno.test("github: an action ref without a version renders bare", () => {
+test("github: an action ref without a version renders bare", () => {
   const yaml = generateCi({
     jobs: [{
       steps: [
@@ -1278,7 +1279,7 @@ Deno.test("github: an action ref without a version renders bare", () => {
   assertStringIncludes(yaml, `uses: acme/tool@${"1".repeat(40)}\n`);
 });
 
-Deno.test("github: a bare job condition is wrapped when the guard ANDs on", () => {
+test("github: a bare job condition is wrapped when the guard ANDs on", () => {
   // An `if:` written without the ${{ }} wrapper must still combine correctly.
   const yaml = generateCi({
     triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
@@ -1290,7 +1291,7 @@ Deno.test("github: a bare job condition is wrapped when the guard ANDs on", () =
   );
 });
 
-Deno.test("naming only the checkout action opts out of the prelude", () => {
+test("naming only the checkout action opts out of the prelude", () => {
   // A pinned checkout (with no pinned harden) still means "those steps, by
   // name" — the prelude action must not replace it. Rendered through a
   // declared file, the path every build takes.
@@ -1306,7 +1307,7 @@ Deno.test("naming only the checkout action opts out of the prelude", () => {
   assertStringIncludes(yaml, `actions/checkout@${"7".repeat(40)}`);
 });
 
-Deno.test("a pinned-object first step is recognised as a prelude too", () => {
+test("a pinned-object first step is recognised as a prelude too", () => {
   // The prelude guard must see through the { ref, version } uses form, not
   // just the bare string form.
   const yaml = generateCi({
@@ -1327,7 +1328,7 @@ Deno.test("a pinned-object first step is recognised as a prelude too", () => {
   assertStringIncludes(yaml, `harden-runner@${"5".repeat(40)}`);
 });
 
-Deno.test("pins: a job that names its own harden pin keeps separate steps", () => {
+test("pins: a job that names its own harden pin keeps separate steps", () => {
   class B extends Build {
     gate = target().executes(() => {});
     wf = cicd({
@@ -1347,7 +1348,7 @@ Deno.test("pins: a job that names its own harden pin keeps separate steps", () =
   assertStringIncludes(yaml, `actions/checkout@${"6".repeat(40)}`);
 });
 
-Deno.test("a job without steps gets the default step on every provider", () => {
+test("a job without steps gets the default step on every provider", () => {
   const bare: CiPipeline = {
     triggers: { push: ["main"] },
     jobs: [{ id: "verify" }],
@@ -1357,7 +1358,7 @@ Deno.test("a job without steps gets the default step on every provider", () => {
   assertStringIncludes(generateCi(bare, "bitbucket"), "- ./zuke");
 });
 
-Deno.test("bitbucket: an empty pipeline gets the default triggers and step", () => {
+test("bitbucket: an empty pipeline gets the default triggers and step", () => {
   const yaml = generateCi({}, "bitbucket");
   // The default push/PR-on-main triggers flow through as named sections.
   assertStringIncludes(yaml, "pull-requests:\n    main:");
@@ -1365,7 +1366,7 @@ Deno.test("bitbucket: an empty pipeline gets the default triggers and step", () 
   assertStringIncludes(yaml, "- ./zuke");
 });
 
-Deno.test("a field-named non-github file keeps the provider's single path", () => {
+test("a field-named non-github file keeps the provider's single path", () => {
   // GitLab has one conventional file, so the field name never renames it.
   class B extends Build {
     build = target().executes(() => {});
@@ -1374,7 +1375,7 @@ Deno.test("a field-named non-github file keeps the provider's single path", () =
   assertEquals(discoverCiFiles(new B())[0].path, ".gitlab-ci.yml");
 });
 
-Deno.test("discovery leaves a plain file untouched next to a derived one", () => {
+test("discovery leaves a plain file untouched next to a derived one", () => {
   class B extends Build {
     gate = target().executes(() => {});
     plain = cicd({ provider: "github", pipeline: { name: "Plain" } });
@@ -1387,7 +1388,7 @@ Deno.test("discovery leaves a plain file untouched next to a derived one", () =>
   assertStringIncludes(derived?.render() ?? "", "run: ./zuke gate");
 });
 
-Deno.test("github: a checkout ref renders on the separate checkout step", () => {
+test("github: a checkout ref renders on the separate checkout step", () => {
   const yaml = generateCi({
     bootstrap: false,
     checkout: { action: `actions/checkout@${"a".repeat(40)}`, ref: "release" },
@@ -1397,7 +1398,7 @@ Deno.test("github: a checkout ref renders on the separate checkout step", () => 
   assertStringIncludes(yaml, "ref: release");
 });
 
-Deno.test("a checkout without a pin is a friendly error when bootstrap is off", () => {
+test("a checkout without a pin is a friendly error when bootstrap is off", () => {
   // Emitting `uses:` with no ref would be a floating reference; like an
   // unpinned harden, an unpinned checkout must fail rather than degrade.
   assertThrows(
@@ -1412,7 +1413,7 @@ Deno.test("a checkout without a pin is a friendly error when bootstrap is off", 
   );
 });
 
-Deno.test("bootstrap: false with no job steps still runs the default step", () => {
+test("bootstrap: false with no job steps still runs the default step", () => {
   // Opting out of the prelude action must not also lose the default build step.
   const yaml = generateCi(
     { bootstrap: false, jobs: [{ id: "plain" }] },
@@ -1422,7 +1423,7 @@ Deno.test("bootstrap: false with no job steps still runs the default step", () =
   assertEquals(yaml.includes("zuke-build/zuke"), false);
 });
 
-Deno.test("azure: a schedule without a push trigger defaults to main", () => {
+test("azure: a schedule without a push trigger defaults to main", () => {
   // Azure schedules need a branch filter; with no push trigger to mirror, the
   // conventional default branch stands in.
   const yaml = generateCi(
@@ -1433,7 +1434,7 @@ Deno.test("azure: a schedule without a push trigger defaults to main", () => {
   assertStringIncludes(yaml, "branches:\n      include:\n        - main");
 });
 
-Deno.test("a job's own bootstrap pin overrides the resolver", () => {
+test("a job's own bootstrap pin overrides the resolver", () => {
   // A job that names the prelude action asked for that exact pin; the resolver
   // must not replace it.
   class B extends Build {
@@ -1451,7 +1452,7 @@ Deno.test("a job's own bootstrap pin overrides the resolver", () => {
   assertEquals(yaml.includes("zuke-build/zuke"), false);
 });
 
-Deno.test("a field name that is all suffix keeps the provider default path", () => {
+test("a field name that is all suffix keeps the provider default path", () => {
   // `Ci` reduces to nothing once the suffix is dropped, so the provider's
   // conventional file name stands in rather than an empty ".yml".
   class B extends Build {
@@ -1461,7 +1462,7 @@ Deno.test("a field name that is all suffix keeps the provider default path", () 
   assertEquals(discoverCiFiles(new B())[0].path, ".github/workflows/ci.yml");
 });
 
-Deno.test("pipelineFor names a not-yet-discovered target by identity", () => {
+test("pipelineFor names a not-yet-discovered target by identity", () => {
   // Before discoverTargets assigns names, an invoked target can still be
   // resolved by identity against the map — what lets a workflow be declared
   // with `this.ci` in a field initialiser.
@@ -1472,7 +1473,7 @@ Deno.test("pipelineFor names a not-yet-discovered target by identity", () => {
   assertEquals(pipeline.jobs?.[0].name, "Gate");
 });
 
-Deno.test("syncCiFiles surfaces a read failure that is not file-absence", async () => {
+test("syncCiFiles surfaces a read failure that is not file-absence", async () => {
   // Only NotFound means "write it fresh"; any other read failure (here: the
   // path is a directory) must propagate, not be mistaken for a missing file.
   await withTemp(async (dir) => {
@@ -1483,7 +1484,7 @@ Deno.test("syncCiFiles surfaces a read failure that is not file-absence", async 
   });
 });
 
-Deno.test("a job whose own steps already harden or check out gets no prelude", () => {
+test("a job whose own steps already harden or check out gets no prelude", () => {
   // The prelude became a default for pipelines that never asked for one, so it
   // has to notice a job already doing the work itself — otherwise hardening
   // runs twice and the second checkout quietly undoes what the first fetched.
@@ -1504,7 +1505,7 @@ Deno.test("a job whose own steps already harden or check out gets no prelude", (
   assertStringIncludes(yaml, `harden-runner@${"a".repeat(40)}`);
 });
 
-Deno.test("a job with unrelated `uses:` steps still gets the prelude", () => {
+test("a job with unrelated `uses:` steps still gets the prelude", () => {
   // The guard keys on the two actions the prelude replaces, not on any action:
   // a job that sets up a toolchain has said nothing about hardening.
   const yaml = generateCi({
@@ -1520,7 +1521,7 @@ Deno.test("a job with unrelated `uses:` steps still gets the prelude", () => {
   assertStringIncludes(yaml, `setup-deno@${"c".repeat(40)}`);
 });
 
-Deno.test("a checkout part-way through a job does not strip its prelude", () => {
+test("a checkout part-way through a job does not strip its prelude", () => {
   // The prelude is positional: it is what a job does before anything else, so
   // only the first step can be one. A job that checks a second repository out
   // half way through — vendoring a dependency, say — has not built its own

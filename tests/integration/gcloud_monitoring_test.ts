@@ -11,6 +11,7 @@
  * injected runner, so nothing is spawned and no project is needed.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -82,7 +83,7 @@ class Gate extends Build {
     });
 }
 
-Deno.test("a build gates on a Cloud Monitoring metric read through CloudMonitoringTasks", async () => {
+test("a build gates on a Cloud Monitoring metric read through CloudMonitoringTasks", async () => {
   urls = [];
   counts = [1, 0, 1];
   const passed = await runCli(Gate, ["gate"]);
@@ -142,7 +143,7 @@ class LogGate extends Build {
     });
 }
 
-Deno.test("a build gates on a log-entry count read through GcloudTasks", async () => {
+test("a build gates on a log-entry count read through GcloudTasks", async () => {
   calls = [];
   logEntries = 0;
   const passed = await runCli(LogGate, ["gate"]);
@@ -184,7 +185,7 @@ class Deploy extends Build {
   );
 }
 
-Deno.test("canary's cloudMonitoring analysis promotes a healthy candidate", async () => {
+test("canary's cloudMonitoring analysis promotes a healthy candidate", async () => {
   platform = new FakePlatform();
   urls = [];
   calls = [];
@@ -207,7 +208,7 @@ Deno.test("canary's cloudMonitoring analysis promotes a healthy candidate", asyn
   });
 });
 
-Deno.test("canary's cloudMonitoring analysis rolls an unhealthy candidate back", async () => {
+test("canary's cloudMonitoring analysis rolls an unhealthy candidate back", async () => {
   platform = new FakePlatform();
   counts = [9];
   await withStateDir(async () => {
@@ -239,7 +240,7 @@ class Masked extends Build {
   );
 }
 
-Deno.test("a secret parameter in the analysis is masked in its failure", async () => {
+test("a secret parameter in the analysis is masked in its failure", async () => {
   platform = new FakePlatform();
   counts = [9];
   await withStateDir(async () => {

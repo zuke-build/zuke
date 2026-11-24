@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
   KubectlCpSettings,
@@ -13,7 +14,7 @@ import {
   KubectlSetResourcesSettings,
 } from "../mod.ts";
 
-Deno.test("rollout pause and resume complete the action set", () => {
+test("rollout pause and resume complete the action set", () => {
   assertEquals(
     new KubectlRolloutSettings().pause().resource("deployment/api").argv()
       .slice(1),
@@ -27,7 +28,7 @@ Deno.test("rollout pause and resume complete the action set", () => {
   );
 });
 
-Deno.test("rollout keeps each flag to the action it belongs to", () => {
+test("rollout keeps each flag to the action it belongs to", () => {
   // kubectl ignores --to-revision on anything but undo and --timeout on
   // anything but status, so a build would silently not get what it asked for.
   assertThrows(
@@ -58,7 +59,7 @@ Deno.test("rollout keeps each flag to the action it belongs to", () => {
   );
 });
 
-Deno.test("set env renders its variables and its injections", () => {
+test("set env renders its variables and its injections", () => {
   assertEquals(
     new KubectlSetEnvSettings().resource("deployment/api").set(
       "LOG_LEVEL",
@@ -96,7 +97,7 @@ Deno.test("set env renders its variables and its injections", () => {
   );
 });
 
-Deno.test("set env refuses what kubectl would quietly ignore", () => {
+test("set env refuses what kubectl would quietly ignore", () => {
   assertThrows(
     () => new KubectlSetEnvSettings().resource("deployment/api").argv(),
     Error,
@@ -129,7 +130,7 @@ Deno.test("set env refuses what kubectl would quietly ignore", () => {
   );
 });
 
-Deno.test("set resources renders its limits and requests", () => {
+test("set resources renders its limits and requests", () => {
   assertEquals(
     new KubectlSetResourcesSettings().resource("deployment/api").limit(
       "cpu",
@@ -150,7 +151,7 @@ Deno.test("set resources renders its limits and requests", () => {
   );
 });
 
-Deno.test("run puts its command after the separator", () => {
+test("run puts its command after the separator", () => {
   assertEquals(
     new KubectlRunSettings()
       .name("migrate")
@@ -206,7 +207,7 @@ Deno.test("run puts its command after the separator", () => {
   );
 });
 
-Deno.test("expose spells selector and labels in full, because -l means labels here", () => {
+test("expose spells selector and labels in full, because -l means labels here", () => {
   // Every other kubectl command reads -l as --selector; expose reads it as
   // --labels. Spelling both out is what keeps them from swapping.
   assertEquals(
@@ -252,7 +253,7 @@ Deno.test("expose spells selector and labels in full, because -l means labels he
   );
 });
 
-Deno.test("cp copies between a pod and the local filesystem, one way or the other", () => {
+test("cp copies between a pod and the local filesystem, one way or the other", () => {
   assertEquals(
     new KubectlCpSettings().from("prod/api-0:/out/report.xml").to("reports/")
       .container("api").retries(3).argv().slice(1),
@@ -289,7 +290,7 @@ Deno.test("cp copies between a pod and the local filesystem, one way or the othe
   );
 });
 
-Deno.test("events renders its filters", () => {
+test("events renders its filters", () => {
   assertEquals(
     new KubectlEventsSettings().namespace("prod").forResource("deploy/api")
       .types("Warning").allNamespaces().watch().noHeaders().output("json")
@@ -310,7 +311,7 @@ Deno.test("events renders its filters", () => {
   assertEquals(new KubectlEventsSettings().argv().slice(1), ["events"]);
 });
 
-Deno.test("the set commands take a manifest, a selector, or a dry run", () => {
+test("the set commands take a manifest, a selector, or a dry run", () => {
   assertEquals(
     new KubectlSetEnvSettings().file("k8s/api.yaml").local().set("A", "b")
       .selector("app=api").dryRun("server").argv().slice(1),
@@ -334,7 +335,7 @@ Deno.test("the set commands take a manifest, a selector, or a dry run", () => {
   );
 });
 
-Deno.test("explain caps its recursion only when it recurses", () => {
+test("explain caps its recursion only when it recurses", () => {
   assertEquals(
     new KubectlExplainSettings().type("deployments.spec").recursive().maxDepth(
       3,

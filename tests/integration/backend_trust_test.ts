@@ -8,6 +8,7 @@
  * ({@link runCli}), so the whole parse → resolve → execute path is exercised.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -19,7 +20,7 @@ import { withTempCwd } from "../../packages/core/tests/_temp.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 
-Deno.test("a plaintext state-service URL fails the run instead of sending the token", async () => {
+test("a plaintext state-service URL fails the run instead of sending the token", async () => {
   await withEnv(
     {
       ZUKE_STATE_URL: "http://state.example/api",
@@ -41,7 +42,7 @@ Deno.test("a plaintext state-service URL fails the run instead of sending the to
   );
 });
 
-Deno.test("a plaintext registry URL fails `register` the same way", async () => {
+test("a plaintext registry URL fails `register` the same way", async () => {
   // The guard sits in every backend resolver, and the CLI reports it once,
   // around every command — so a second command reaching a second backend gets
   // the same named error and exit code, not a stack trace.
@@ -57,7 +58,7 @@ Deno.test("a plaintext registry URL fails `register` the same way", async () => 
   });
 });
 
-Deno.test("a poisoned remote-cache artifact rebuilds the target instead of restoring it", async () => {
+test("a poisoned remote-cache artifact rebuilds the target instead of restoring it", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-poison-" });

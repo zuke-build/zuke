@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   AiReviewError,
@@ -111,7 +112,7 @@ function routedFetch(opts: {
 const captured = (fn: () => Promise<void>): Promise<string[]> =>
   captureLines(() => withEnv({ GITHUB_STEP_SUMMARY: undefined }, fn));
 
-Deno.test("security review passes below the threshold and calls Claude", async () => {
+test("security review passes below the threshold and calls Claude", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 2, severity: "low", summary: "fine", findings: [] }),
   );
@@ -135,7 +136,7 @@ Deno.test("security review passes below the threshold and calls Claude", async (
   assertEquals(body.output_config.format.schema.type, "object");
 });
 
-Deno.test("reviewer fetchBase fetches the base branch and diffs against it", async () => {
+test("reviewer fetchBase fetches the base branch and diffs against it", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -168,7 +169,7 @@ Deno.test("reviewer fetchBase fetches the base branch and diffs against it", asy
   assertEquals(content.includes("base context"), true);
 });
 
-Deno.test("reviewer fetchBase falls back to the plain diff when the fetch fails", async () => {
+test("reviewer fetchBase falls back to the plain diff when the fetch fails", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -198,7 +199,7 @@ Deno.test("reviewer fetchBase falls back to the plain diff when the fetch fails"
   assertEquals(content.includes("working tree"), true);
 });
 
-Deno.test("reviewer fetchBase rejects an option-like base ref (never fetches)", async () => {
+test("reviewer fetchBase rejects an option-like base ref (never fetches)", async () => {
   const { fetch } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -220,7 +221,7 @@ Deno.test("reviewer fetchBase rejects an option-like base ref (never fetches)", 
   assertEquals(git[0], ["git", "diff"]);
 });
 
-Deno.test("fetchBase failure with an empty fallback fails the gate, never a silent pass", async () => {
+test("fetchBase failure with an empty fallback fails the gate, never a silent pass", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -245,7 +246,7 @@ Deno.test("fetchBase failure with an empty fallback fails the gate, never a sile
   assertEquals(calls.length, 0); // the model is never called
 });
 
-Deno.test("fetchBase failure with an empty fallback skips visibly under onError:warn", async () => {
+test("fetchBase failure with an empty fallback skips visibly under onError:warn", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -264,7 +265,7 @@ Deno.test("fetchBase failure with an empty fallback skips visibly under onError:
   assertEquals(calls.length, 0);
 });
 
-Deno.test("fetchBase failure still reviews a non-empty working-tree fallback", async () => {
+test("fetchBase failure still reviews a non-empty working-tree fallback", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -284,7 +285,7 @@ Deno.test("fetchBase failure still reviews a non-empty working-tree fallback", a
   assertEquals(calls.length, 1); // the fallback diff was reviewed
 });
 
-Deno.test("a successful fetchBase with a genuinely empty diff passes, not fails", async () => {
+test("a successful fetchBase with a genuinely empty diff passes, not fails", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -302,7 +303,7 @@ Deno.test("a successful fetchBase with a genuinely empty diff passes, not fails"
   assertEquals(calls.length, 0); // no findings, no throw — a clean empty pass
 });
 
-Deno.test("the build breaks when the risk score exceeds the threshold", async () => {
+test("the build breaks when the risk score exceeds the threshold", async () => {
   const { fetch } = recordFetch(
     claude({ score: 9, severity: "high", summary: "RCE risk", findings: [] }),
   );
@@ -319,7 +320,7 @@ Deno.test("the build breaks when the risk score exceeds the threshold", async ()
   assertEquals(error.message.includes("RCE risk"), true);
 });
 
-Deno.test("a high score clamps to 10 and still trips the default gate", async () => {
+test("a high score clamps to 10 and still trips the default gate", async () => {
   const { fetch } = recordFetch(claude({ score: 50, findings: [] }));
   await assertRejects(
     () =>
@@ -332,7 +333,7 @@ Deno.test("a high score clamps to 10 and still trips the default gate", async ()
   );
 });
 
-Deno.test("severityAtLeast gates on a severity derived from findings", async () => {
+test("severityAtLeast gates on a severity derived from findings", async () => {
   // No top-level severity → derived from the findings' max severity.
   const { fetch } = recordFetch(
     claude({ score: 3, findings: [{ title: "secret", severity: "high" }] }),
@@ -348,7 +349,7 @@ Deno.test("severityAtLeast gates on a severity derived from findings", async () 
   );
 });
 
-Deno.test("a provider is required", async () => {
+test("a provider is required", async () => {
   await assertRejects(
     () =>
       securityReviewer((r) => r.apiKey("k")).validate(noRedactionContext("t")),
@@ -357,7 +358,7 @@ Deno.test("a provider is required", async () => {
   );
 });
 
-Deno.test("an API key is required", async () => {
+test("an API key is required", async () => {
   await assertRejects(
     () =>
       securityReviewer((r) => r.provider("claude")).validate(
@@ -368,7 +369,7 @@ Deno.test("an API key is required", async () => {
   );
 });
 
-Deno.test("skipIfKeyMissing skips the review and announces it, without calling the API", async () => {
+test("skipIfKeyMissing skips the review and announces it, without calling the API", async () => {
   const { fetch, calls } = recordFetch(claude({ score: 9, findings: [] }));
   const lines = await captured(() =>
     securityReviewer((r) =>
@@ -380,7 +381,7 @@ Deno.test("skipIfKeyMissing skips the review and announces it, without calling t
   assertEquals(lines, ["[security review] skipped — no API key"]);
 });
 
-Deno.test("skipIfKeyMissing stays silent under quiet()", async () => {
+test("skipIfKeyMissing stays silent under quiet()", async () => {
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("").skipIfKeyMissing().quiet()
@@ -390,7 +391,7 @@ Deno.test("skipIfKeyMissing stays silent under quiet()", async () => {
   assertEquals(lines, []);
 });
 
-Deno.test("a skipped review is noted in the GitHub Actions job summary", async () => {
+test("a skipped review is noted in the GitHub Actions job summary", async () => {
   const summaryFile = await Deno.makeTempFile();
   const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
   Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
@@ -414,7 +415,7 @@ Deno.test("a skipped review is noted in the GitHub Actions job summary", async (
   }
 });
 
-Deno.test("genericReviewer runs without explicit criteria using its built-in rubric", async () => {
+test("genericReviewer runs without explicit criteria using its built-in rubric", async () => {
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
   await genericReviewer((r) =>
     r.provider("claude").apiKey("k").quiet()
@@ -433,7 +434,7 @@ Deno.test("genericReviewer runs without explicit criteria using its built-in rub
   );
 });
 
-Deno.test(".criteria(...) appends project notes above the diff in the user prompt", async () => {
+test(".criteria(...) appends project notes above the diff in the user prompt", async () => {
   // It works for any reviewer, not just generic — here, the security one.
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
   await securityReviewer((r) =>
@@ -455,7 +456,7 @@ Deno.test(".criteria(...) appends project notes above the diff in the user promp
   assertEquals(user.includes("UNTRUSTED_DIFF>>>"), true);
 });
 
-Deno.test("an injected instruction in the diff is framed as untrusted data", async () => {
+test("an injected instruction in the diff is framed as untrusted data", async () => {
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
   // The payload also tries to forge the CLOSING marker to break out of the block.
   const injected =
@@ -476,7 +477,7 @@ Deno.test("an injected instruction in the diff is framed as untrusted data", asy
   assertEquals(user.includes("UNTRUSTED_DIFF_>>>"), true); // the neutralized copy
 });
 
-Deno.test("openai provider posts to chat/completions with a bearer token", async () => {
+test("openai provider posts to chat/completions with a bearer token", async () => {
   const { fetch, calls } = recordFetch(openai({ score: 1, findings: [] }));
   await correctnessReviewer((r) =>
     r.provider("openai").apiKey("sk-oa").model("gpt-x").quiet()
@@ -492,7 +493,7 @@ Deno.test("openai provider posts to chat/completions with a bearer token", async
   assertEquals(body.response_format.json_schema.schema.type, "object");
 });
 
-Deno.test("gemini provider posts to generateContent with the key in a header, not the URL", async () => {
+test("gemini provider posts to generateContent with the key in a header, not the URL", async () => {
   const { fetch, calls } = recordFetch(gemini({ score: 1, findings: [] }));
   await licenseReviewer((r) =>
     r.provider("gemini").apiKey("g-key").quiet()
@@ -512,7 +513,7 @@ Deno.test("gemini provider posts to generateContent with the key in a header, no
   assertEquals(body.generationConfig.responseSchema.type, "object");
 });
 
-Deno.test("a non-2xx response fails closed, but onError warn passes", async () => {
+test("a non-2xx response fails closed, but onError warn passes", async () => {
   const { fetch } = recordFetch("nope", 401);
   await assertRejects(
     () =>
@@ -534,7 +535,7 @@ Deno.test("a non-2xx response fails closed, but onError warn passes", async () =
   assertEquals(lines.some((l) => l.includes("skipped")), true);
 });
 
-Deno.test("a model refusal is surfaced as an error", async () => {
+test("a model refusal is surfaced as an error", async () => {
   const refusal = JSON.stringify({ content: [], stop_reason: "refusal" });
   const { fetch } = recordFetch(refusal);
   await assertRejects(
@@ -548,7 +549,7 @@ Deno.test("a model refusal is surfaced as an error", async () => {
   );
 });
 
-Deno.test("invalid JSON fails, fenced/prose JSON parses", async () => {
+test("invalid JSON fails, fenced/prose JSON parses", async () => {
   const bad = recordFetch(claudeText("not json at all"));
   await assertRejects(
     () =>
@@ -569,7 +570,7 @@ Deno.test("invalid JSON fails, fenced/prose JSON parses", async () => {
   ).validate(noRedactionContext("t")); // resolves
 });
 
-Deno.test("a malformed response shape fails closed", async () => {
+test("a malformed response shape fails closed", async () => {
   const { fetch } = recordFetch(JSON.stringify({ content: "oops" }));
   await assertRejects(
     () =>
@@ -582,7 +583,7 @@ Deno.test("a malformed response shape fails closed", async () => {
   );
 });
 
-Deno.test("an empty diff passes without calling the model", async () => {
+test("an empty diff passes without calling the model", async () => {
   const { fetch, calls } = recordFetch(claude({ score: 9, findings: [] }));
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text("   "))
@@ -591,7 +592,7 @@ Deno.test("an empty diff passes without calling the model", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("default excludes drop lockfile-only diffs", async () => {
+test("default excludes drop lockfile-only diffs", async () => {
   const lockDiff = 'diff --git a/deno.lock b/deno.lock\n+"x"\n';
   const { fetch, calls } = recordFetch(claude({ score: 9, findings: [] }));
   await securityReviewer((r) =>
@@ -601,7 +602,7 @@ Deno.test("default excludes drop lockfile-only diffs", async () => {
   assertEquals(calls.length, 0); // nothing left to review
 });
 
-Deno.test("include/exclude filter the diff by path", async () => {
+test("include/exclude filter the diff by path", async () => {
   const two = "diff --git a/src/app.ts b/src/app.ts\n+code\n" +
     "diff --git a/generated/out.ts b/generated/out.ts\n+gen\n";
   const inc = recordFetch(claude({ score: 1, findings: [] }));
@@ -622,7 +623,7 @@ Deno.test("include/exclude filter the diff by path", async () => {
   assertEquals(body2.includes("generated/out.ts"), false);
 });
 
-Deno.test("maxDiffTokens truncates a large diff (and leaves a small one)", async () => {
+test("maxDiffTokens truncates a large diff (and leaves a small one)", async () => {
   const big = "diff --git a/x b/x\n" + "+x".repeat(500);
   const cut = recordFetch(claude({ score: 0, findings: [] }));
   await securityReviewer((r) =>
@@ -641,7 +642,7 @@ Deno.test("maxDiffTokens truncates a large diff (and leaves a small one)", async
   ).validate(noRedactionContext("t")); // resolves, no truncation
 });
 
-Deno.test("base/staged diff is produced via the git exec seam, with effort", async () => {
+test("base/staged diff is produced via the git exec seam, with effort", async () => {
   const seen: string[][] = [];
   const run = (argv: string[]) => {
     seen.push(argv);
@@ -667,7 +668,7 @@ Deno.test("base/staged diff is produced via the git exec seam, with effort", asy
   assertEquals(seen[1], ["git", "diff", "--cached"]);
 });
 
-Deno.test("the default diff source runs git via the shell (no network)", async () => {
+test("the default diff source runs git via the shell (no network)", async () => {
   // No .exec()/.text(): exercises the real `git diff --cached` path. Whatever
   // the tree's staged state, the fake fetch keeps it off the network.
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
@@ -681,7 +682,7 @@ Deno.test("the default diff source runs git via the shell (no network)", async (
   );
 });
 
-Deno.test("the findings table is printed when not quiet", async () => {
+test("the findings table is printed when not quiet", async () => {
   const { fetch } = recordFetch(
     claude({
       score: 1,
@@ -708,7 +709,7 @@ Deno.test("the findings table is printed when not quiet", async () => {
   assertEquals(lines.some((l) => l.includes("one issue")), true);
 });
 
-Deno.test("malformed score/severity/findings degrade to a clean pass", async () => {
+test("malformed score/severity/findings degrade to a clean pass", async () => {
   // Non-number score → 0; unknown severity → derived; non-array findings → [].
   const { fetch } = recordFetch(
     JSON.stringify({
@@ -731,7 +732,7 @@ Deno.test("malformed score/severity/findings degrade to a clean pass", async () 
   assertEquals(lines.some((l) => l.includes("score 0/10 (none)")), true);
 });
 
-Deno.test("findings print with and without a file, and carry detail", async () => {
+test("findings print with and without a file, and carry detail", async () => {
   const { fetch } = recordFetch(
     claude({
       score: 1,
@@ -758,7 +759,7 @@ Deno.test("findings print with and without a file, and carry detail", async () =
   );
 });
 
-Deno.test("a thrown Error and a thrown non-Error both surface as AiReviewError", async () => {
+test("a thrown Error and a thrown non-Error both surface as AiReviewError", async () => {
   const boom = (() => Promise.reject(new TypeError("boom"))) as typeof fetch;
   await assertRejects(
     () =>
@@ -782,7 +783,7 @@ Deno.test("a thrown Error and a thrown non-Error both surface as AiReviewError",
   );
 });
 
-Deno.test("failWhen scoreAbove gates on an explicit score threshold", async () => {
+test("failWhen scoreAbove gates on an explicit score threshold", async () => {
   const { fetch } = recordFetch(claude({ score: 6, findings: [] }));
   await assertRejects(
     () =>
@@ -795,7 +796,7 @@ Deno.test("failWhen scoreAbove gates on an explicit score threshold", async () =
   );
 });
 
-Deno.test("a null inside the response shape fails closed", async () => {
+test("a null inside the response shape fails closed", async () => {
   const { fetch } = recordFetch(
     JSON.stringify({ content: [null], stop_reason: "end_turn" }),
   );
@@ -810,7 +811,7 @@ Deno.test("a null inside the response shape fails closed", async () => {
   );
 });
 
-Deno.test("a Claude answer after a thinking block is read", async () => {
+test("a Claude answer after a thinking block is read", async () => {
   const { fetch } = recordFetch(JSON.stringify({
     content: [
       { type: "thinking", thinking: "", signature: "sig" },
@@ -837,7 +838,7 @@ Deno.test("a Claude answer after a thinking block is read", async () => {
   );
 });
 
-Deno.test("a Claude reply with only a thinking block fails closed", async () => {
+test("a Claude reply with only a thinking block fails closed", async () => {
   const { fetch } = recordFetch(JSON.stringify({
     content: [{ type: "thinking", thinking: "", signature: "sig" }],
     stop_reason: "end_turn",
@@ -853,7 +854,7 @@ Deno.test("a Claude reply with only a thinking block fails closed", async () => 
   );
 });
 
-Deno.test("the assessment is appended to the GitHub Actions job summary", async () => {
+test("the assessment is appended to the GitHub Actions job summary", async () => {
   const summaryFile = await Deno.makeTempFile();
   const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
   Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
@@ -902,7 +903,7 @@ Deno.test("the assessment is appended to the GitHub Actions job summary", async 
   }
 });
 
-Deno.test("an unwritable job-summary file never fails the review", async () => {
+test("an unwritable job-summary file never fails the review", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not a writable file
   const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
   Deno.env.set("GITHUB_STEP_SUMMARY", dir);
@@ -921,7 +922,7 @@ Deno.test("an unwritable job-summary file never fails the review", async () => {
   }
 });
 
-Deno.test("a transient 503 from the provider is retried, then the review passes", async () => {
+test("a transient 503 from the provider is retried, then the review passes", async () => {
   // A scripted fetch that returns 503 once, then the assessment.
   let i = 0;
   const responses: Response[] = [
@@ -954,7 +955,7 @@ Deno.test("a transient 503 from the provider is retried, then the review passes"
   );
 });
 
-Deno.test("the start line echoes provider, model, gate, and comment settings", async () => {
+test("the start line echoes provider, model, gate, and comment settings", async () => {
   const { fetch } = recordFetch(claude({ score: 0, findings: [] }));
   const lines = await captured(() =>
     securityReviewer((r) =>
@@ -973,7 +974,7 @@ Deno.test("the start line echoes provider, model, gate, and comment settings", a
   );
 });
 
-Deno.test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediately", async () => {
+test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediately", async () => {
   const { fetch } = recordFetch("", 503);
   const lines = await captured(() =>
     securityReviewer((r) =>
@@ -987,7 +988,7 @@ Deno.test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediatel
   );
 });
 
-Deno.test("token usage from the provider is shown in the output", async () => {
+test("token usage from the provider is shown in the output", async () => {
   const { fetch } = recordFetch(
     claudeWithUsage({ score: 1, findings: [] }, {
       input_tokens: 1000,
@@ -1006,7 +1007,7 @@ Deno.test("token usage from the provider is shown in the output", async () => {
   );
 });
 
-Deno.test("partial usage renders only the reported counts", async () => {
+test("partial usage renders only the reported counts", async () => {
   // Only an input count: no output, and no total to derive.
   const { fetch } = recordFetch(
     claudeWithUsage({ score: 0, findings: [] }, { input_tokens: 42 }),
@@ -1019,7 +1020,7 @@ Deno.test("partial usage renders only the reported counts", async () => {
   assertEquals(lines.includes("  tokens: 42 in"), true);
 });
 
-Deno.test("token usage is read from the openai and gemini response shapes", async () => {
+test("token usage is read from the openai and gemini response shapes", async () => {
   const oa = recordFetch(JSON.stringify({
     choices: [{
       message: { content: JSON.stringify({ score: 0, findings: [] }) },
@@ -1053,7 +1054,7 @@ Deno.test("token usage is read from the openai and gemini response shapes", asyn
   assertEquals(lines.includes("  tokens: 7 in · 3 out · 10 total"), true);
 });
 
-Deno.test("token usage is included in the job-summary markdown", async () => {
+test("token usage is included in the job-summary markdown", async () => {
   const summaryFile = await Deno.makeTempFile();
   const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
   Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
@@ -1079,7 +1080,7 @@ Deno.test("token usage is included in the job-summary markdown", async () => {
   }
 });
 
-Deno.test("comment() posts the assessment to the pull request", async () => {
+test("comment() posts the assessment to the pull request", async () => {
   await withEnv(
     {
       GITHUB_ACTIONS: "true",
@@ -1113,7 +1114,7 @@ Deno.test("comment() posts the assessment to the pull request", async () => {
   );
 });
 
-Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async () => {
+test("comment() uses GITHUB_TOKEN and updates the existing comment", async () => {
   await withEnv(
     {
       GITHUB_ACTIONS: "true",
@@ -1150,7 +1151,7 @@ Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async 
   );
 });
 
-Deno.test("comment() warns and skips on GitHub without a PR ref", async () => {
+test("comment() warns and skips on GitHub without a PR ref", async () => {
   // Active CI host detected (GITHUB_ACTIONS=true), but the ref is a branch, not a PR.
   await withEnv(
     { GITHUB_ACTIONS: "true", GITHUB_REF: "refs/heads/master" },
@@ -1176,7 +1177,7 @@ Deno.test("comment() warns and skips on GitHub without a PR ref", async () => {
   );
 });
 
-Deno.test("a failed PR comment never breaks the review", async () => {
+test("a failed PR comment never breaks the review", async () => {
   await withEnv(
     {
       GITHUB_ACTIONS: "true",
@@ -1202,14 +1203,14 @@ Deno.test("a failed PR comment never breaks the review", async () => {
   );
 });
 
-Deno.test("provider_ reflects the configured provider", () => {
+test("provider_ reflects the configured provider", () => {
   const bare = securityReviewer();
   assertEquals(bare.provider_, undefined); // nothing configured yet
   const configured = securityReviewer((r) => r.provider("openai"));
   assertEquals(configured.provider_, "openai");
 });
 
-Deno.test("the fetchBase fallback is announced on the console when not quiet", async () => {
+test("the fetchBase fallback is announced on the console when not quiet", async () => {
   const { fetch } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -1237,7 +1238,7 @@ Deno.test("the fetchBase fallback is announced on the console when not quiet", a
 
 // ─── ZUKE_REVIEW_PR: a pull request reviewed as data ────────────────────────
 
-Deno.test("ZUKE_REVIEW_PR reviews the named pull request instead of the checkout", async () => {
+test("ZUKE_REVIEW_PR reviews the named pull request instead of the checkout", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -1288,7 +1289,7 @@ Deno.test("ZUKE_REVIEW_PR reviews the named pull request instead of the checkout
   assertEquals(content.includes(`<${merge}:src/app.ts>`), true);
 });
 
-Deno.test("a ZUKE_REVIEW_PR that is not a number fails the gate without touching git", async () => {
+test("a ZUKE_REVIEW_PR that is not a number fails the gate without touching git", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -1311,7 +1312,7 @@ Deno.test("a ZUKE_REVIEW_PR that is not a number fails the gate without touching
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a pull request that cannot be fetched fails, never reviews the checkout", async () => {
+test("a pull request that cannot be fetched fails, never reviews the checkout", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -1342,7 +1343,7 @@ Deno.test("a pull request that cannot be fetched fails, never reviews the checko
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a literal .text() diff still wins over ZUKE_REVIEW_PR", async () => {
+test("a literal .text() diff still wins over ZUKE_REVIEW_PR", async () => {
   const { fetch, calls } = recordFetch(
     claude({ score: 0, severity: "none", summary: "", findings: [] }),
   );
@@ -1361,7 +1362,7 @@ Deno.test("a literal .text() diff still wins over ZUKE_REVIEW_PR", async () => {
   assertEquals(calls.length, 1);
 });
 
-Deno.test("commentToken accepts a function whose token every post uses", async () => {
+test("commentToken accepts a function whose token every post uses", async () => {
   await withEnv(
     {
       GITHUB_ACTIONS: "true",

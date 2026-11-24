@@ -8,6 +8,7 @@
  * `build.ts`'s `release` target is wired (see `build/gemini_archive.ts`).
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -72,7 +73,7 @@ function releaseBuild(root: string, uploaded: string[]) {
   return Release;
 }
 
-Deno.test("the release wiring attaches missing assets and keeps existing ones", async () => {
+test("the release wiring attaches missing assets and keeps existing ones", async () => {
   await withTemp(async (root) => {
     await Deno.writeTextFile(
       `${root}/gemini-extension.json`,

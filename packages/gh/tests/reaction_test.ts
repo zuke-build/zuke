@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -48,7 +49,7 @@ function fakeFetch(
 
 const REPO = "https://api.github.com/repos/acme/app";
 
-Deno.test("react posts the content on an issue, a conversation comment or a review comment", async () => {
+test("react posts the content on an issue, a conversation comment or a review comment", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(
       JSON.stringify({ id: 7, content: "eyes", user: { login: "bot[bot]" } }),
@@ -73,7 +74,7 @@ Deno.test("react posts the content on an issue, a conversation comment or a revi
   assertEquals(calls[0].authorization, "Bearer tkn");
 });
 
-Deno.test("react answers a reaction GitHub reports without an author", async () => {
+test("react answers a reaction GitHub reports without an author", async () => {
   const { fetch } = fakeFetch(() =>
     new Response(JSON.stringify({ id: 3, content: "+1" }))
   );
@@ -85,7 +86,7 @@ Deno.test("react answers a reaction GitHub reports without an author", async () 
   );
 });
 
-Deno.test("the reaction tasks name what is missing, and refuse an id that is not one", async () => {
+test("the reaction tasks name what is missing, and refuse an id that is not one", async () => {
   const { fetch, calls } = fakeFetch(() => new Response("{}"));
   const settings = (s: GhReactionSettings) =>
     s.repo("acme/app").token("t").fetch(fetch);
@@ -118,7 +119,7 @@ Deno.test("the reaction tasks name what is missing, and refuse an id that is not
   assertEquals(calls, []);
 });
 
-Deno.test("listReactions follows the pages, filtered by content when set", async () => {
+test("listReactions follows the pages, filtered by content when set", async () => {
   const page = (from: number, count: number) =>
     Array.from({ length: count }, (_, i) => ({
       id: from + i,
@@ -153,7 +154,7 @@ Deno.test("listReactions follows the pages, filtered by content when set", async
   );
 });
 
-Deno.test("deleteReaction deletes by id, and a refusal is a GhApiError", async () => {
+test("deleteReaction deletes by id, and a refusal is a GhApiError", async () => {
   const { fetch, calls } = fakeFetch((_url, method) =>
     method === "DELETE" ? new Response(null, { status: 204 }) : new Response()
   );
@@ -174,7 +175,7 @@ Deno.test("deleteReaction deletes by id, and a refusal is a GhApiError", async (
   assertEquals(error instanceof GhApiError ? error.status : 0, 403);
 });
 
-Deno.test("collaboratorPermission reads the permission and the role", async () => {
+test("collaboratorPermission reads the permission and the role", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(JSON.stringify({ permission: "write", role_name: "maintain" }))
   );
@@ -187,7 +188,7 @@ Deno.test("collaboratorPermission reads the permission and the role", async () =
   assertEquals(calls[0].url, `${REPO}/collaborators/mona-lisa/permission`);
 });
 
-Deno.test("collaboratorPermission refuses a login that could change the path, and fails closed", async () => {
+test("collaboratorPermission refuses a login that could change the path, and fails closed", async () => {
   const { fetch, calls } = fakeFetch(() => new Response("{}"));
   for (const login of ["../../evil", "a b", ""]) {
     await assertRejects(
@@ -225,7 +226,7 @@ Deno.test("collaboratorPermission refuses a login that could change the path, an
   );
 });
 
-Deno.test("the API root is configurable for GitHub Enterprise", async () => {
+test("the API root is configurable for GitHub Enterprise", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(JSON.stringify({ permission: "read", role_name: "read" }))
   );

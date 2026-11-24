@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -78,7 +79,7 @@ class RuntimeTasksBuild extends Build {
   });
 }
 
-Deno.test("a build stages, runs and talks through core's runtime tasks", async () => {
+test("a build stages, runs and talks through core's runtime tasks", async () => {
   staging = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-runtime-"));
   seen.length = 0;
   Deno.env.set("ZUKE_RUNTIME_TASKS", "!");

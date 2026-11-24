@@ -8,6 +8,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
@@ -17,7 +18,7 @@ import {
 import { distOf, registrySource } from "../build/npm_registry.ts";
 import { SLSA } from "./_npm_verify.ts";
 
-Deno.test("distOf reads a version's integrity and attestations, null when absent, and throws when broken", () => {
+test("distOf reads a version's integrity and attestations, null when absent, and throws when broken", () => {
   const dist = {
     tarball: "u",
     integrity: "i",
@@ -52,7 +53,7 @@ Deno.test("distOf reads a version's integrity and attestations, null when absent
   assertEquals(distOf(wrongType, "1.0.0")?.attestations, null);
 });
 
-Deno.test("registrySource: 404 is not published, other errors fail, attestations are read", async () => {
+test("registrySource: 404 is not published, other errors fail, attestations are read", async () => {
   const answer = (status: number, body = "{}"): typeof fetch => () =>
     Promise.resolve(new Response(body, { status }));
   assertEquals(await registrySource(answer(404)).document("x"), null);

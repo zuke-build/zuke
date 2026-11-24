@@ -14,6 +14,7 @@
  * @module
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { type AgentContext, type AgentFixer, agentFixer } from "../mod.ts";
 import { type AiFixer, aiFixer, type Fix } from "../mod.ts";
@@ -34,7 +35,7 @@ const ON_CI = (name: string) => name === "GITHUB_ACTIONS" ? "true" : undefined;
 /** An env reader that looks like a developer's machine. */
 const OFF_CI = () => undefined;
 
-Deno.test("outOfScope answers for every scope on both hosts", () => {
+test("outOfScope answers for every scope on both hosts", () => {
   // "both" is the only scope that permits acting anywhere.
   assertEquals(outOfScope("both", ON_CI), undefined);
   assertEquals(outOfScope("both", OFF_CI), undefined);
@@ -104,7 +105,7 @@ function seams(env: (name: string) => string | undefined) {
   };
 }
 
-Deno.test('runOnly("ci"): off CI the fixer never calls the model or writes', async () => {
+test('runOnly("ci"): off CI the fixer never calls the model or writes', async () => {
   const s = seams(OFF_CI);
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s
@@ -125,7 +126,7 @@ Deno.test('runOnly("ci"): off CI the fixer never calls the model or writes', asy
   assertEquals(calls, []);
 });
 
-Deno.test('runOnly("ci"): on CI the same fixer applies and commits', async () => {
+test('runOnly("ci"): on CI the same fixer applies and commits', async () => {
   const s = seams(ON_CI);
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s
@@ -144,7 +145,7 @@ Deno.test('runOnly("ci"): on CI the same fixer applies and commits', async () =>
   assertEquals(s.git.some((argv) => argv.includes("commit")), true);
 });
 
-Deno.test('the default scope still diagnoses on CI — "ci" is the stronger refusal', async () => {
+test('the default scope still diagnoses on CI — "ci" is the stronger refusal', async () => {
   // The two refusals are deliberately different, and this pins the difference:
   // the default declines the write but still explains the failure on the pull
   // request, while "ci" off CI does not run at all.
@@ -161,7 +162,7 @@ Deno.test('the default scope still diagnoses on CI — "ci" is the stronger refu
   assertEquals(calls.length, 1);
 });
 
-Deno.test("the deprecated allowCI still selects both hosts", async () => {
+test("the deprecated allowCI still selects both hosts", async () => {
   // It is published API, so it keeps working exactly as it did — it is now a
   // one-line alias for the scope that says the same thing.
   const s = seams(OFF_CI);
@@ -176,7 +177,7 @@ Deno.test("the deprecated allowCI still selects both hosts", async () => {
   assertEquals(s.writes, ["src/app.ts"]);
 });
 
-Deno.test("one axis, so a later runOnly simply replaces the earlier scope", async () => {
+test("one axis, so a later runOnly simply replaces the earlier scope", async () => {
   // The reason for a single setter rather than an opposing pair: there is no
   // ordering in which a build ends up with a scope it did not name last, and
   // no combination that has to be documented as a special case.
@@ -224,7 +225,7 @@ function hermetic(f: AgentFixer, env: (name: string) => string | undefined) {
     .quiet();
 }
 
-Deno.test('agentFixer runOnly("ci"): the agent is never started off CI', async () => {
+test('agentFixer runOnly("ci"): the agent is never started off CI', async () => {
   const r = recorder();
   const fixer = hermetic(agentFixer(r.run).runOnly("ci").noComment(), OFF_CI);
 
@@ -236,7 +237,7 @@ Deno.test('agentFixer runOnly("ci"): the agent is never started off CI', async (
   assertEquals(r.calls, []);
 });
 
-Deno.test('agentFixer runOnly("ci"): the agent runs on CI', async () => {
+test('agentFixer runOnly("ci"): the agent runs on CI', async () => {
   const r = recorder();
   const fixer = hermetic(agentFixer(r.run).runOnly("ci").noComment(), ON_CI);
 
@@ -246,7 +247,7 @@ Deno.test('agentFixer runOnly("ci"): the agent runs on CI', async () => {
   assertEquals(r.calls.length, 1);
 });
 
-Deno.test("a CI system Zuke cannot generate pipelines for is still CI", () => {
+test("a CI system Zuke cannot generate pipelines for is still CI", () => {
   // This assertion used to run the other way, pinning the four-host test as
   // deliberate: Jenkins and a bare CI=true read as local, described as "failing
   // closed". Only "ci" failed closed there. The default scope is "local", and
@@ -273,7 +274,7 @@ Deno.test("a CI system Zuke cannot generate pipelines for is still CI", () => {
   }
 });
 
-Deno.test('CI="false" is the one value that still means a developer machine', () => {
+test('CI="false" is the one value that still means a developer machine', () => {
   // The conventional opt-out, and the only marker whose *value* is consulted
   // rather than its presence — so a shell that exports CI=false does not get
   // treated as a runner.

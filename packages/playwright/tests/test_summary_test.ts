@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   TargetSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("playwright test: the closing block yields every category", () => {
+test("playwright test: the closing block yields every category", () => {
   const text =
     "\n  1 failed\n    tests/a.spec.ts:3:1 › two ───\n  1 flaky\n    tests/a.spec.ts:9:1 › five ───\n  1 skipped\n  2 passed (1.5s)\n";
   assertEquals(parseTestSummary(out(1, text)), {
@@ -39,7 +40,7 @@ Deno.test("playwright test: the closing block yields every category", () => {
   );
 });
 
-Deno.test("playwright test: without a passed or failed line there is nothing to report", () => {
+test("playwright test: without a passed or failed line there is nothing to report", () => {
   assertEquals(parseTestSummary(out(0)), undefined);
   assertEquals(parseTestSummary(out(1, "Error: No tests found\n")), undefined);
   // A line further indented is a failure detail, not the closing block.
@@ -56,7 +57,7 @@ class Probe extends PlaywrightTestSettings {
   }
 }
 
-Deno.test("playwright test: the hook reports the shared shape onto the running target", async () => {
+test("playwright test: the hook reports the shared shape onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "  1 flaky\n  4 passed (3.1s)\n"));

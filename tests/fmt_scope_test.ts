@@ -10,6 +10,7 @@
  * build if the scope is narrowed back.
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 
 interface FmtConfig {
@@ -21,7 +22,7 @@ async function fmtConfig(): Promise<FmtConfig["fmt"]> {
   return root.fmt;
 }
 
-Deno.test("the formatter covers prose, not only code", async () => {
+test("the formatter covers prose, not only code", async () => {
   // These were outside the scope for a long time, which made `deno fmt` a
   // no-op over most of what the repository actually publishes: a contributor
   // who ran the formatter on a single doc got a diff of thirty unrelated
@@ -36,7 +37,7 @@ Deno.test("the formatter covers prose, not only code", async () => {
   }
 });
 
-Deno.test("release-please's changelogs are left alone", async () => {
+test("release-please's changelogs are left alone", async () => {
   // Both the root changelog and the per-package ones are written by
   // release-please on every release. Formatting one is undone by the next cut,
   // so the gate would fail on a release PR for a file no human wrote — which
@@ -51,7 +52,7 @@ Deno.test("release-please's changelogs are left alone", async () => {
   }
 });
 
-Deno.test("deno.json stays parseable as strict JSON", async () => {
+test("deno.json stays parseable as strict JSON", async () => {
   // Not a style rule: build/core_floor.ts, build/packages.ts and several tests
   // read these files with JSON.parse, which rejects the comments and trailing
   // commas Deno itself would accept. A JSONC-only deno.json fails those at a

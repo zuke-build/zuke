@@ -9,6 +9,7 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -73,7 +74,7 @@ function chain(store: StateStore, seen: boolean[]) {
   };
 }
 
-Deno.test("a run-held lock outlives its target and is released when the run settles", async () => {
+test("a run-held lock outlives its target and is released when the run settles", async () => {
   await withTempStore(async (store) => {
     const seen: boolean[] = [];
     const B = chain(store, seen);
@@ -91,7 +92,7 @@ Deno.test("a run-held lock outlives its target and is released when the run sett
   });
 });
 
-Deno.test("a target-scoped lock is still released when its own target ends", async () => {
+test("a target-scoped lock is still released when its own target ends", async () => {
   await withTempStore(async (store) => {
     const seen: boolean[] = [];
     class B extends Build {
@@ -107,7 +108,7 @@ Deno.test("a target-scoped lock is still released when its own target ends", asy
   });
 });
 
-Deno.test("a later target declaring the same run-held key reuses the lock", async () => {
+test("a later target declaring the same run-held key reuses the lock", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       stage = target()
@@ -129,7 +130,7 @@ Deno.test("a later target declaring the same run-held key reuses the lock", asyn
   });
 });
 
-Deno.test("a failed run releases its run-held lock", async () => {
+test("a failed run releases its run-held lock", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       stage = target()
@@ -178,7 +179,7 @@ async function parkRollout(store: StateStore): Promise<string> {
   return result.runId;
 }
 
-Deno.test("a parked run keeps its lock, and a resume finishes and releases it", async () => {
+test("a parked run keeps its lock, and a resume finishes and releases it", async () => {
   await withTempStore(async (store) => {
     const id = await parkRollout(store);
     // Parked: the lock is held and recorded, so a second rollout is refused.
@@ -201,7 +202,7 @@ Deno.test("a parked run keeps its lock, and a resume finishes and releases it", 
   });
 });
 
-Deno.test("a second run is refused the lock a parked run holds", async () => {
+test("a second run is refused the lock a parked run holds", async () => {
   await withTempStore(async (store) => {
     await parkRollout(store);
     const b = new Rollout();
@@ -215,7 +216,7 @@ Deno.test("a second run is refused the lock a parked run holds", async () => {
   });
 });
 
-Deno.test("cancelling a parked run releases its run-held lock", async () => {
+test("cancelling a parked run releases its run-held lock", async () => {
   await withTempStore(async (store) => {
     const id = await parkRollout(store);
     await cancelRun(new Rollout(), {
@@ -228,7 +229,7 @@ Deno.test("cancelling a parked run releases its run-held lock", async () => {
   });
 });
 
-Deno.test("a wait that times out with fail releases the run-held lock", async () => {
+test("a wait that times out with fail releases the run-held lock", async () => {
   await withTempStore(async (store) => {
     class Quick extends Build {
       stage = target()
@@ -254,7 +255,7 @@ Deno.test("a wait that times out with fail releases the run-held lock", async ()
   });
 });
 
-Deno.test("a resume re-takes a lock that lapsed while parked, if it is still free", async () => {
+test("a resume re-takes a lock that lapsed while parked, if it is still free", async () => {
   await withTempStore(async (store) => {
     const id = await parkRollout(store);
     const recorded = (await recordOf(store, id)).locks?.[0];
@@ -277,7 +278,7 @@ Deno.test("a resume re-takes a lock that lapsed while parked, if it is still fre
   });
 });
 
-Deno.test("a resume whose lapsed lock went to another run is refused and stays parked", async () => {
+test("a resume whose lapsed lock went to another run is refused and stays parked", async () => {
   await withTempStore(async (store) => {
     const id = await parkRollout(store);
     const recorded = (await recordOf(store, id)).locks?.[0];
@@ -302,7 +303,7 @@ Deno.test("a resume whose lapsed lock went to another run is refused and stays p
   });
 });
 
-Deno.test("reclaimRunLocks keeps renewed locks and gives back only re-taken ones on conflict", async () => {
+test("reclaimRunLocks keeps renewed locks and gives back only re-taken ones on conflict", async () => {
   await withTempStore(async (store) => {
     const me: LockHolder = { actor: "me", runId: "run-me", since: "t" };
     const kept = await store.acquireLock("a", me, 60_000);
@@ -328,7 +329,7 @@ Deno.test("reclaimRunLocks keeps renewed locks and gives back only re-taken ones
   });
 });
 
-Deno.test("reclaimRunLocks returns fresh tokens for the locks it re-took", async () => {
+test("reclaimRunLocks returns fresh tokens for the locks it re-took", async () => {
   await withTempStore(async (store) => {
     const me: LockHolder = { actor: "me", runId: "run-me", since: "t" };
     const held = await store.acquireLock("a", me, 60_000);
@@ -350,7 +351,7 @@ Deno.test("reclaimRunLocks returns fresh tokens for the locks it re-took", async
   });
 });
 
-Deno.test("RunLockHolder parks by renewing, and stop leaves the lock held", async () => {
+test("RunLockHolder parks by renewing, and stop leaves the lock held", async () => {
   await withTempStore(async (store) => {
     const me: LockHolder = { actor: "me", runId: "run-me", since: "t" };
     const held = await store.acquireLock("a", me, 60_000);
@@ -386,7 +387,7 @@ class NoLockRecords extends FileSystemStateStore {
   }
 }
 
-Deno.test("a run-held lock the record cannot carry is given back and fails the target", async () => {
+test("a run-held lock the record cannot carry is given back and fails the target", async () => {
   await withTemp(async (dir) => {
     const store = new NoLockRecords(`${dir}/runs`, defaultStateHost);
     let ran = false;
@@ -408,7 +409,7 @@ Deno.test("a run-held lock the record cannot carry is given back and fails the t
   });
 });
 
-Deno.test("the run record parses its locks strictly", () => {
+test("the run record parses its locks strictly", () => {
   const base = {
     id: "r",
     build: "B",
@@ -455,7 +456,7 @@ Deno.test("the run record parses its locks strictly", () => {
   );
 });
 
-Deno.test("parallel targets declaring the same run-held key take it once", async () => {
+test("parallel targets declaring the same run-held key take it once", async () => {
   await withTempStore(async (store) => {
     const slow = () => new Promise<void>((r) => setTimeout(r, 30));
     class B extends Build {
@@ -479,7 +480,7 @@ Deno.test("parallel targets declaring the same run-held key take it once", async
   });
 });
 
-Deno.test("a target-scoped lock on a key the run holds does not conflict with the run", async () => {
+test("a target-scoped lock on a key the run holds does not conflict with the run", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       stage = target()
@@ -514,7 +515,7 @@ function blocking(gate: Promise<void>, started: () => void) {
   };
 }
 
-Deno.test("cancelling a running run leaves its lock with the body until the body stops", async () => {
+test("cancelling a running run leaves its lock with the body until the body stops", async () => {
   await withTempStore(async (store) => {
     let open: () => void = () => {};
     const gate = new Promise<void>((r) => (open = r));
@@ -540,7 +541,7 @@ Deno.test("cancelling a running run leaves its lock with the body until the body
   });
 });
 
-Deno.test("settling a run whose owner is gone releases its locks with the settlement", async () => {
+test("settling a run whose owner is gone releases its locks with the settlement", async () => {
   await withTempStore(async (store) => {
     let open: () => void = () => {};
     const gate = new Promise<void>((r) => (open = r));
@@ -583,7 +584,7 @@ class ThrowingStore extends FileSystemStateStore {
   }
 }
 
-Deno.test("a lock the record failed to carry leaves no trace for a later write to persist", async () => {
+test("a lock the record failed to carry leaves no trace for a later write to persist", async () => {
   await withTemp(async (dir) => {
     const store = new ThrowingStore(`${dir}/runs`, defaultStateHost);
     store.failNextLockWrite = true;
@@ -612,7 +613,7 @@ Deno.test("a lock the record failed to carry leaves no trace for a later write t
   });
 });
 
-Deno.test("a resume that fails to move the run keeps the locks the parked run still owns", async () => {
+test("a resume that fails to move the run keeps the locks the parked run still owns", async () => {
   await withTemp(async (dir) => {
     const store = new ThrowingStore(`${dir}/runs`, defaultStateHost);
     const id = await parkRollout(store);
@@ -630,7 +631,7 @@ Deno.test("a resume that fails to move the run keeps the locks the parked run st
   });
 });
 
-Deno.test("a target-scoped sibling and a run-held one on the same key never wait on their own run", async () => {
+test("a target-scoped sibling and a run-held one on the same key never wait on their own run", async () => {
   for (const scopedFirst of [true, false]) {
     await withTempStore(async (store) => {
       const slow = () => new Promise<void>((r) => setTimeout(r, 30));
@@ -676,7 +677,7 @@ class StaleOnce extends FileSystemStateStore {
   }
 }
 
-Deno.test("a cancel that read a parked run which has since resumed leaves the lock with the body", async () => {
+test("a cancel that read a parked run which has since resumed leaves the lock with the body", async () => {
   await withTemp(async (dir) => {
     const store = new StaleOnce(`${dir}/runs`, defaultStateHost);
     let open: () => void = () => {};
@@ -723,7 +724,7 @@ Deno.test("a cancel that read a parked run which has since resumed leaves the lo
   });
 });
 
-Deno.test("a cancel that read a running run which has since parked releases its lock", async () => {
+test("a cancel that read a running run which has since parked releases its lock", async () => {
   await withTemp(async (dir) => {
     const store = new StaleOnce(`${dir}/runs`, defaultStateHost);
     const id = await parkRollout(store);
@@ -743,7 +744,7 @@ Deno.test("a cancel that read a running run which has since parked releases its 
   });
 });
 
-Deno.test("a run-held claim against a sibling's target-scoped hold names the run itself", async () => {
+test("a run-held claim against a sibling's target-scoped hold names the run itself", async () => {
   await withTempStore(async (store) => {
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     class B extends Build {
@@ -770,7 +771,7 @@ Deno.test("a run-held claim against a sibling's target-scoped hold names the run
   });
 });
 
-Deno.test("cancelling a run left running by a dead process releases its lock", async () => {
+test("cancelling a run left running by a dead process releases its lock", async () => {
   await withTempStore(async (store) => {
     const id = await parkRollout(store);
     // The run looks running, but no process holds its lease: whoever ran it

@@ -10,11 +10,12 @@
  * assert that a dependency works.
  */
 
+import { test } from "../../core/tests/_testing.ts";
 import { ConsoleTasks, type Sink } from "../src/console.ts";
 import { ZUKE_LOGO } from "@zuke/core";
 import { assertEquals } from "../../core/tests/_assert.ts";
 
-Deno.test("ConsoleTasks.logo prints the art through the sink", () => {
+test("ConsoleTasks.logo prints the art through the sink", () => {
   const out: string[] = [];
   const sink: Sink = { out: (l) => out.push(l), err: () => {} };
   ConsoleTasks.configure({ sink, color: false, level: "info" });
@@ -23,7 +24,7 @@ Deno.test("ConsoleTasks.logo prints the art through the sink", () => {
   ConsoleTasks.reset();
 });
 
-Deno.test("ConsoleTasks.logo is muted at level silent", () => {
+test("ConsoleTasks.logo is muted at level silent", () => {
   const out: string[] = [];
   const sink: Sink = { out: (l) => out.push(l), err: () => {} };
   ConsoleTasks.configure({ sink, color: false, level: "silent" });

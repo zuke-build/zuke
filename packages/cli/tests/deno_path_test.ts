@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -40,7 +41,7 @@ function envHost(
 /** A name no executable on any machine answers to. */
 const MISSING = "zuke-no-such-deno-8f3a1c";
 
-Deno.test("running under deno run, the running executable is the only candidate", () => {
+test("running under deno run, the running executable is the only candidate", () => {
   // Which executable is Deno is `denoExecutable`'s answer, shared with the
   // build CLI and the MCP registry rather than decided again here — so under
   // `deno test` it is this process, with nothing to look up.
@@ -49,34 +50,34 @@ Deno.test("running under deno run, the running executable is the only candidate"
   assertEquals(candidates, [denoExecutable(false)]);
 });
 
-Deno.test("compiled, the first candidate is the shared answer, not a local one", () => {
+test("compiled, the first candidate is the shared answer, not a local one", () => {
   // The bare name the OS resolves on PATH — the same string core returns for a
   // process that is not Deno, so the two cannot drift apart.
   assertEquals(denoCandidates(envHost({}))[0], denoExecutable(true));
 });
 
-Deno.test("compiled, PATH comes first and DENO_INSTALL second", () => {
+test("compiled, PATH comes first and DENO_INSTALL second", () => {
   const candidates = denoCandidates(
     envHost({ DENO_INSTALL: "/opt/zuke-deno", HOME: "/home/ana" }),
   );
   assertEquals(candidates, ["deno", "/opt/zuke-deno/bin/deno"]);
 });
 
-Deno.test("compiled, an unset DENO_INSTALL falls back to ~/.deno", () => {
+test("compiled, an unset DENO_INSTALL falls back to ~/.deno", () => {
   assertEquals(denoCandidates(envHost({ HOME: "/home/ana" })), [
     "deno",
     "/home/ana/.deno/bin/deno",
   ]);
 });
 
-Deno.test("compiled, an empty DENO_INSTALL falls back to ~/.deno", () => {
+test("compiled, an empty DENO_INSTALL falls back to ~/.deno", () => {
   assertEquals(
     denoCandidates(envHost({ DENO_INSTALL: "", HOME: "/home/ana" })),
     ["deno", "/home/ana/.deno/bin/deno"],
   );
 });
 
-Deno.test("compiled on windows, USERPROFILE stands in for HOME and the binary is deno.exe", () => {
+test("compiled on windows, USERPROFILE stands in for HOME and the binary is deno.exe", () => {
   assertEquals(
     denoCandidates(
       envHost({ USERPROFILE: "C:/Users/Ana" }, { windows: () => true }),
@@ -85,32 +86,32 @@ Deno.test("compiled on windows, USERPROFILE stands in for HOME and the binary is
   );
 });
 
-Deno.test("compiled with no home directory at all, PATH is the only candidate", () => {
+test("compiled with no home directory at all, PATH is the only candidate", () => {
   assertEquals(denoCandidates(envHost({})), ["deno"]);
 });
 
-Deno.test("compiled with an empty HOME, PATH is the only candidate", () => {
+test("compiled with an empty HOME, PATH is the only candidate", () => {
   assertEquals(denoCandidates(envHost({ HOME: "" })), ["deno"]);
 });
 
-Deno.test("a bare candidate overlays no PATH", () => {
+test("a bare candidate overlays no PATH", () => {
   assertEquals(pathWithDeno("deno", envHost({ PATH: "/usr/bin" })), {});
 });
 
-Deno.test("a resolved candidate puts its own directory first on PATH", () => {
+test("a resolved candidate puts its own directory first on PATH", () => {
   assertEquals(
     pathWithDeno("/home/ana/.deno/bin/deno", envHost({ PATH: "/usr/bin" })),
     { PATH: "/home/ana/.deno/bin:/usr/bin" },
   );
 });
 
-Deno.test("with no inherited PATH, the candidate's directory is the whole PATH", () => {
+test("with no inherited PATH, the candidate's directory is the whole PATH", () => {
   assertEquals(pathWithDeno("/home/ana/.deno/bin/deno", envHost({})), {
     PATH: "/home/ana/.deno/bin",
   });
 });
 
-Deno.test("a windows PATH is joined with semicolons", () => {
+test("a windows PATH is joined with semicolons", () => {
   assertEquals(
     pathWithDeno(
       "C:\\Users\\Ana\\.deno\\bin\\deno.exe",
@@ -120,7 +121,7 @@ Deno.test("a windows PATH is joined with semicolons", () => {
   );
 });
 
-Deno.test("spawnDeno skips a candidate that is not installed", async () => {
+test("spawnDeno skips a candidate that is not installed", async () => {
   // Only the second candidate can have produced this output, so the skip is
   // what the assertions prove.
   const child = await spawnDeno(
@@ -136,7 +137,7 @@ Deno.test("spawnDeno skips a candidate that is not installed", async () => {
   assertStringIncludes(stdout, "ok");
 });
 
-Deno.test("spawnDeno reports every candidate it tried when none is installed", async () => {
+test("spawnDeno reports every candidate it tried when none is installed", async () => {
   const error = await assertRejects(
     () => spawnDeno(["--version"], {}, [MISSING, `${MISSING}-2`]),
     DenoNotFoundError,
@@ -149,7 +150,7 @@ Deno.test("spawnDeno reports every candidate it tried when none is installed", a
   assertStringIncludes(error.message, "./zuke launcher");
 });
 
-Deno.test({
+test({
   name: "spawnDeno surfaces a failure that is not a missing binary",
   // Windows refuses a non-executable file differently, and the point of the
   // branch — do not report "not found" for a candidate that is there — is the
@@ -172,13 +173,13 @@ Deno.test({
   },
 });
 
-Deno.test("the default host answers from the running process", () => {
+test("the default host answers from the running process", () => {
   assertEquals(defaultDenoHost.standalone(), false);
   assertEquals(defaultDenoHost.windows(), Deno.build.os === "windows");
   assertEquals(defaultDenoHost.env("PATH"), Deno.env.get("PATH"));
 });
 
-Deno.test("compiled, a relative DENO_INSTALL is refused rather than resolved", () => {
+test("compiled, a relative DENO_INSTALL is refused rather than resolved", () => {
   // `absolutePath` refuses a path with no root instead of guessing a base, so
   // the candidate cannot be built — and a crash on the way to spawning a build
   // would be worse than falling back to PATH alone.
@@ -187,11 +188,11 @@ Deno.test("compiled, a relative DENO_INSTALL is refused rather than resolved", (
   ]);
 });
 
-Deno.test("compiled, a relative HOME is refused rather than resolved", () => {
+test("compiled, a relative HOME is refused rather than resolved", () => {
   assertEquals(denoCandidates(envHost({ HOME: "relative" })), ["deno"]);
 });
 
-Deno.test("an empty inherited PATH is not joined onto", () => {
+test("an empty inherited PATH is not joined onto", () => {
   // A zero-length PATH element is the POSIX spelling of "the current
   // directory", so `"<binDir>:"` would put the build's own working directory
   // on every child's PATH.
@@ -203,7 +204,7 @@ Deno.test("an empty inherited PATH is not joined onto", () => {
   );
 });
 
-Deno.test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
+test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
   await Deno.remove(dir);
   const error = await assertRejects(() =>
@@ -213,7 +214,7 @@ Deno.test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
   assertEquals(error instanceof Deno.errors.NotFound, true);
 });
 
-Deno.test("spawnDeno does not blame Deno for a cwd that is a file", async () => {
+test("spawnDeno does not blame Deno for a cwd that is a file", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
   try {
     const file = `${dir}/not-a-directory`;
@@ -227,7 +228,7 @@ Deno.test("spawnDeno does not blame Deno for a cwd that is a file", async () => 
   }
 });
 
-Deno.test("the compiled order is the one the launchers use in shell", () => {
+test("the compiled order is the one the launchers use in shell", () => {
   // The module doc says the compiled resolution mirrors the launchers. They
   // answer the same question in bash and PowerShell — before Deno exists, so
   // there is no module for either side to import and the two statements of
@@ -258,7 +259,7 @@ Deno.test("the compiled order is the one the launchers use in shell", () => {
   ]);
 });
 
-Deno.test("every spawned Deno skips its update check, so its notice cannot land in our output", async () => {
+test("every spawned Deno skips its update check, so its notice cannot land in our output", async () => {
   await withEnv({ DENO_NO_UPDATE_CHECK: undefined }, async () => {
     const child = await spawnDeno(
       ["eval", "console.log(Deno.env.get('DENO_NO_UPDATE_CHECK'))"],
@@ -275,7 +276,7 @@ Deno.test("every spawned Deno skips its update check, so its notice cannot land 
   assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
 });
 
-Deno.test("a caller's env reaches the spawned Deno, but cannot turn the update check back on", async () => {
+test("a caller's env reaches the spawned Deno, but cannot turn the update check back on", async () => {
   const child = await spawnDeno(
     [
       "eval",

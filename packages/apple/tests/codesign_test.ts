@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -20,14 +21,14 @@ import {
 } from "../src/codesign.ts";
 import { parseCodesignDisplay } from "../src/codesign_display.ts";
 
-Deno.test("codesign sign: the minimal invocation is identity then file", () => {
+test("codesign sign: the minimal invocation is identity then file", () => {
   assertEquals(
     new CodesignSignSettings().identity("-").file("dist/a.app").argv(),
     ["codesign", "--sign", "-", "dist/a.app"],
   );
 });
 
-Deno.test("codesign sign: every option renders, files last", () => {
+test("codesign sign: every option renders, files last", () => {
   const argv = new CodesignSignSettings()
     .identity("Developer ID Application: Example (ABCDE12345)")
     .force().deep().options("runtime").options("library")
@@ -55,7 +56,7 @@ Deno.test("codesign sign: every option renders, files last", () => {
   ]);
 });
 
-Deno.test("codesign sign: a timestamp server and a verbosity level are one token", () => {
+test("codesign sign: a timestamp server and a verbosity level are one token", () => {
   assertEquals(
     new CodesignSignSettings().identity("X").timestamp("http://ts.example")
       .verbose(4).file("a").argv(),
@@ -70,7 +71,7 @@ Deno.test("codesign sign: a timestamp server and a verbosity level are one token
   );
 });
 
-Deno.test("codesign sign: no identity is refused, not sent", () => {
+test("codesign sign: no identity is refused, not sent", () => {
   assertThrows(
     () => new CodesignSignSettings().file("a").argv(),
     Error,
@@ -78,7 +79,7 @@ Deno.test("codesign sign: no identity is refused, not sent", () => {
   );
 });
 
-Deno.test("codesign: no file is refused for every operation", () => {
+test("codesign: no file is refused for every operation", () => {
   assertThrows(
     () => new CodesignSignSettings().identity("-").argv(),
     Error,
@@ -96,14 +97,14 @@ Deno.test("codesign: no file is refused for every operation", () => {
   );
 });
 
-Deno.test("codesign: a file that looks like a flag is passed as ./ so it stays a file", () => {
+test("codesign: a file that looks like a flag is passed as ./ so it stays a file", () => {
   assertEquals(
     new CodesignVerifySettings().file("--deep", "/abs/-x", "-").argv(),
     ["codesign", "--verify", "./--deep", "/abs/-x", "./-"],
   );
 });
 
-Deno.test("codesign verify: strict and deep render", () => {
+test("codesign verify: strict and deep render", () => {
   assertEquals(
     new CodesignVerifySettings().strict().deep().verbose(2).file("a.app")
       .argv(),
@@ -115,14 +116,14 @@ Deno.test("codesign verify: strict and deep render", () => {
   );
 });
 
-Deno.test("codesign display: verbosity and file", () => {
+test("codesign display: verbosity and file", () => {
   assertEquals(
     new CodesignDisplaySettings().verbose(4).file("a.app").argv(),
     ["codesign", "--display", "--verbose=4", "a.app"],
   );
 });
 
-Deno.test("codesign display output is read from stderr, where codesign writes it", () => {
+test("codesign display output is read from stderr, where codesign writes it", () => {
   const stderr = [
     "Executable=/dist/a.app/Contents/MacOS/a",
     "Identifier=com.example.app",
@@ -145,7 +146,7 @@ Deno.test("codesign display output is read from stderr, where codesign writes it
   assertEquals(display.text, stderr);
 });
 
-Deno.test("codesign display joins stderr and stdout, and tolerates neither field", () => {
+test("codesign display joins stderr and stdout, and tolerates neither field", () => {
   const display = parseCodesignDisplay(
     new CommandOutput(0, "Identifier=from-stdout\n", "Executable=/x\n"),
   );
@@ -158,7 +159,7 @@ Deno.test("codesign display joins stderr and stdout, and tolerates neither field
   );
 });
 
-Deno.test("CodesignTasks reach execution", async () => {
+test("CodesignTasks reach execution", async () => {
   await assertRejects(
     () => CodesignTasks.sign((s) => missingTool(s).identity("-").file("a")),
     ToolNotFoundError,
@@ -173,7 +174,7 @@ Deno.test("CodesignTasks reach execution", async () => {
   );
 });
 
-Deno.test("codesign wrappers resolve their binary from PATH", async () => {
+test("codesign wrappers resolve their binary from PATH", async () => {
   await assertWrapperConformance(
     () => new CodesignSignSettings().identity("-").file("a"),
     "codesign",

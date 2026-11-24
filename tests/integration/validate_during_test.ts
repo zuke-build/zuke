@@ -7,6 +7,7 @@
  * the build at once, rather than after the body would have finished.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -38,7 +39,7 @@ class Bake extends Build {
     );
 }
 
-Deno.test("a failing check stops the body's child process and fails the build", async () => {
+test("a failing check stops the body's child process and fails the build", async () => {
   const started = performance.now();
   const { code, err } = await runCli(Bake, ["bake"]);
   assertEquals(code, 1);

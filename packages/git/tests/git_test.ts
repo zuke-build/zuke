@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -28,7 +29,7 @@ import {
   GitTasks,
 } from "../mod.ts";
 
-Deno.test("the default binary is git and global options precede the subcommand", () => {
+test("the default binary is git and global options precede the subcommand", () => {
   assertEquals(new GitStatusSettings().argv(), ["git", "status"]);
   const argv = new GitStatusSettings()
     .dir("repo").config("user.name", "CI").short().argv();
@@ -43,14 +44,14 @@ Deno.test("the default binary is git and global options precede the subcommand",
   ]);
 });
 
-Deno.test("status: --porcelain and --branch render alongside --short", () => {
+test("status: --porcelain and --branch render alongside --short", () => {
   assertEquals(
     new GitStatusSettings().porcelain().branch().argv(),
     ["git", "status", "--porcelain", "--branch"],
   );
 });
 
-Deno.test("init and clone render their options", () => {
+test("init and clone render their options", () => {
   assertEquals(
     new GitInitSettings().bare().initialBranch("main").argv(),
     ["git", "init", "--bare", "-b", "main"],
@@ -73,7 +74,7 @@ Deno.test("init and clone render their options", () => {
   assertThrows(() => new GitCloneSettings().argv(), Error, ".repository()");
 });
 
-Deno.test("add and commit render their options", () => {
+test("add and commit render their options", () => {
   assertEquals(new GitAddSettings().all().paths("src", "mod.ts").argv(), [
     "git",
     "add",
@@ -110,7 +111,7 @@ Deno.test("add and commit render their options", () => {
   );
 });
 
-Deno.test("checkout requires a ref and supports -b/-f", () => {
+test("checkout requires a ref and supports -b/-f", () => {
   // `--force` precedes `-b`: `git checkout -b --force feature` makes git read
   // `--force` as the branch name and fails; `--force -b feature` is valid.
   assertEquals(
@@ -120,7 +121,7 @@ Deno.test("checkout requires a ref and supports -b/-f", () => {
   assertThrows(() => new GitCheckoutSettings().argv(), Error, ".ref()");
 });
 
-Deno.test("checkout restores paths with a `--` separator", () => {
+test("checkout restores paths with a `--` separator", () => {
   // Restore paths from the index (discard working-tree changes): no ref.
   assertEquals(
     new GitCheckoutSettings().paths("src/a.ts", "src/b.ts").argv(),
@@ -144,7 +145,7 @@ Deno.test("checkout restores paths with a `--` separator", () => {
   );
 });
 
-Deno.test("branch and tag render their options", () => {
+test("branch and tag render their options", () => {
   assertEquals(new GitBranchSettings().all().argv(), [
     "git",
     "branch",
@@ -166,7 +167,7 @@ Deno.test("branch and tag render their options", () => {
   ]);
 });
 
-Deno.test("push, pull, and fetch render their options", () => {
+test("push, pull, and fetch render their options", () => {
   assertEquals(
     new GitPushSettings().setUpstream().tags().forceWithLease()
       .remote("origin").ref("main").argv(),
@@ -190,7 +191,7 @@ Deno.test("push, pull, and fetch render their options", () => {
   );
 });
 
-Deno.test("fetch: a shallow refspec fetch without tags renders in git's own order", () => {
+test("fetch: a shallow refspec fetch without tags renders in git's own order", () => {
   // What a CI job needs to diff against a base branch it never cloned: one
   // commit of the base, no tags, and a refspec that also updates the
   // remote-tracking ref so `origin/master` resolves afterwards.
@@ -215,7 +216,7 @@ Deno.test("fetch: a shallow refspec fetch without tags renders in git's own orde
   );
 });
 
-Deno.test("fetch: refspecs are repeatable and always follow the remote", () => {
+test("fetch: refspecs are repeatable and always follow the remote", () => {
   assertEquals(
     new GitFetchSettings().remote("upstream").refspec("main").refspec("dev")
       .argv(),
@@ -223,87 +224,87 @@ Deno.test("fetch: refspecs are repeatable and always follow the remote", () => {
   );
 });
 
-Deno.test("push: --delete renders the remote ref removal", () => {
+test("push: --delete renders the remote ref removal", () => {
   assertEquals(
     new GitPushSettings().deleteRef().remote("origin").ref("stale").argv(),
     ["git", "push", "--delete", "origin", "stale"],
   );
 });
 
-Deno.test("run executes an arbitrary command", () => {
+test("run executes an arbitrary command", () => {
   assertEquals(
     new GitRunSettings().command("rev-parse", "--short", "HEAD").argv(),
     ["git", "rev-parse", "--short", "HEAD"],
   );
 });
 
-Deno.test("GitTasks.status reaches execution", async () => {
+test("GitTasks.status reaches execution", async () => {
   await assertRejects(() => GitTasks.status(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.init reaches execution", async () => {
+test("GitTasks.init reaches execution", async () => {
   await assertRejects(() => GitTasks.init(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.clone reaches execution", async () => {
+test("GitTasks.clone reaches execution", async () => {
   await assertRejects(
     () => GitTasks.clone((s) => missingTool(s).repository("git@host:r.git")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("GitTasks.add reaches execution", async () => {
+test("GitTasks.add reaches execution", async () => {
   await assertRejects(() => GitTasks.add(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.commit reaches execution", async () => {
+test("GitTasks.commit reaches execution", async () => {
   await assertRejects(
     () => GitTasks.commit((s) => missingTool(s).message("msg")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("GitTasks.checkout reaches execution", async () => {
+test("GitTasks.checkout reaches execution", async () => {
   await assertRejects(
     () => GitTasks.checkout((s) => missingTool(s).ref("main")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("GitTasks.branch reaches execution", async () => {
+test("GitTasks.branch reaches execution", async () => {
   await assertRejects(() => GitTasks.branch(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.tag reaches execution", async () => {
+test("GitTasks.tag reaches execution", async () => {
   await assertRejects(() => GitTasks.tag(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.push reaches execution", async () => {
+test("GitTasks.push reaches execution", async () => {
   await assertRejects(() => GitTasks.push(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.pull reaches execution", async () => {
+test("GitTasks.pull reaches execution", async () => {
   await assertRejects(() => GitTasks.pull(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.fetch reaches execution", async () => {
+test("GitTasks.fetch reaches execution", async () => {
   await assertRejects(() => GitTasks.fetch(missingTool), ToolNotFoundError);
 });
 
-Deno.test("GitTasks.run reaches execution", async () => {
+test("GitTasks.run reaches execution", async () => {
   await assertRejects(
     () => GitTasks.run((s) => missingTool(s).command("rev-parse", "HEAD")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("git: conforms to the wrapper contract", async () => {
+test("git: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new GitInitSettings(), "git", {
     resolution: "path",
   });
 });
 
-Deno.test("clone renders the flags a CI checkout needs", () => {
+test("clone renders the flags a CI checkout needs", () => {
   assertEquals(
     new GitCloneSettings().repository("git@host:r.git").singleBranch()
       .filter("blob:none").recurseSubmodules().argv(),
@@ -318,7 +319,7 @@ Deno.test("clone renders the flags a CI checkout needs", () => {
   );
 });
 
-Deno.test("commit renders the author, hook skip, and pathspecs", () => {
+test("commit renders the author, hook skip, and pathspecs", () => {
   assertEquals(
     new GitCommitSettings().noVerify().author("CI <ci@example.test>")
       .message("chore: regen").paths("docs").argv(),
@@ -335,14 +336,14 @@ Deno.test("commit renders the author, hook skip, and pathspecs", () => {
   );
 });
 
-Deno.test("checkout can detach at a ref", () => {
+test("checkout can detach at a ref", () => {
   assertEquals(
     new GitCheckoutSettings().detach().ref("v1.2.3").argv(),
     ["git", "checkout", "--detach", "v1.2.3"],
   );
 });
 
-Deno.test("switch renders creation, tracking, and the start point", () => {
+test("switch renders creation, tracking, and the start point", () => {
   assertEquals(
     new GitSwitchSettings().create().branch("feature").startPoint("origin/main")
       .argv(),
@@ -373,7 +374,7 @@ Deno.test("switch renders creation, tracking, and the start point", () => {
   );
 });
 
-Deno.test("branch renders creation, renaming, upstreams, and listings", () => {
+test("branch renders creation, renaming, upstreams, and listings", () => {
   assertEquals(
     new GitBranchSettings().name("release/1.2").startPoint("origin/main")
       .argv(),
@@ -411,7 +412,7 @@ Deno.test("branch renders creation, renaming, upstreams, and listings", () => {
   );
 });
 
-Deno.test("tag lists as well as creates, and refuses to do both", () => {
+test("tag lists as well as creates, and refuses to do both", () => {
   assertEquals(
     new GitTagSettings().list("v1.*").sort("-v:refname").argv(),
     ["git", "tag", "--sort=-v:refname", "--list", "v1.*"],
@@ -428,7 +429,7 @@ Deno.test("tag lists as well as creates, and refuses to do both", () => {
   );
 });
 
-Deno.test("push renders the release flags and server options", () => {
+test("push renders the release flags and server options", () => {
   assertEquals(
     new GitPushSettings().followTags().atomic().dryRun()
       .pushOption("ci.skip").remote("origin").ref("main").argv(),
@@ -445,7 +446,7 @@ Deno.test("push renders the release flags and server options", () => {
   );
 });
 
-Deno.test("pull can pin merging, and refuses both rebase answers at once", () => {
+test("pull can pin merging, and refuses both rebase answers at once", () => {
   assertEquals(
     new GitPullSettings().noRebase().depth(1).tags().prune().remote("origin")
       .argv(),
@@ -467,7 +468,7 @@ Deno.test("pull can pin merging, and refuses both rebase answers at once", () =>
   );
 });
 
-Deno.test("fetch can deepen a shallow clone, but not while truncating it", () => {
+test("fetch can deepen a shallow clone, but not while truncating it", () => {
   assertEquals(
     new GitFetchSettings().unshallow().force().remote("origin").argv(),
     ["git", "fetch", "--force", "--unshallow", "origin"],

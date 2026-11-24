@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -24,7 +25,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("get-metric-data renders typed queries to the API's JSON", () => {
+test("get-metric-data renders typed queries to the API's JSON", () => {
   const argv = args(
     new AwsCloudwatchGetMetricDataSettings()
       .metricStat(
@@ -101,7 +102,7 @@ Deno.test("get-metric-data renders typed queries to the API's JSON", () => {
   ]);
 });
 
-Deno.test("get-metric-data takes explicit times as Date or text", () => {
+test("get-metric-data takes explicit times as Date or text", () => {
   const argv = args(
     new AwsCloudwatchGetMetricDataSettings().expression("e", "1")
       .startTime("2026-10-07T00:00:00Z").endTime(END),
@@ -112,7 +113,7 @@ Deno.test("get-metric-data takes explicit times as Date or text", () => {
   ]);
 });
 
-Deno.test("get-metric-data refuses what CloudWatch would refuse", () => {
+test("get-metric-data refuses what CloudWatch would refuse", () => {
   assertThrows(
     () => new AwsCloudwatchGetMetricDataSettings().window("5m").argv(),
     Error,
@@ -152,7 +153,7 @@ Deno.test("get-metric-data refuses what CloudWatch would refuse", () => {
   );
 });
 
-Deno.test("get-metric-statistics with every option", () => {
+test("get-metric-statistics with every option", () => {
   assertEquals(
     args(
       new AwsCloudwatchGetMetricStatisticsSettings().namespace("AWS/Lambda")
@@ -213,7 +214,7 @@ Deno.test("get-metric-statistics with every option", () => {
   );
 });
 
-Deno.test("describe-alarms with every option", () => {
+test("describe-alarms with every option", () => {
   assertEquals(args(new AwsCloudwatchDescribeAlarmsSettings()), [
     "cloudwatch",
     "describe-alarms",
@@ -272,7 +273,7 @@ function valueOf(
   );
 }
 
-Deno.test("metricValue pins the results query and reads the latest datapoint", async () => {
+test("metricValue pins the results query and reads the latest datapoint", async () => {
   const fake = new FakeAws(
     json({ MetricDataResults: [series("errors", POINTS)] }),
   );
@@ -291,7 +292,7 @@ Deno.test("metricValue pins the results query and reads the latest datapoint", a
   assertEquals(fake.flag(0, "--output"), "json");
 });
 
-Deno.test("metricValue aggregates over the window", async () => {
+test("metricValue aggregates over the window", async () => {
   const results = [series("e", POINTS)];
   assertEquals(await valueOf(results, (s) => s.aggregate("sum")), 12);
   assertEquals(await valueOf(results, (s) => s.aggregate("average")), 4);
@@ -306,7 +307,7 @@ Deno.test("metricValue aggregates over the window", async () => {
   assertEquals(await valueOf(rising, (s) => s.aggregate("maximum")), 5);
 });
 
-Deno.test("metricValue merges a series split across pages", async () => {
+test("metricValue merges a series split across pages", async () => {
   const results = [
     series("e", [["2026-10-07T11:50:00Z", 1]]),
     series("e", [["2026-10-07T11:55:00Z", 3]]),
@@ -315,7 +316,7 @@ Deno.test("metricValue merges a series split across pages", async () => {
   assertEquals(await valueOf(results, (s) => s.aggregate("sum")), 4);
 });
 
-Deno.test("metricValue picks the series by id when there are several", async () => {
+test("metricValue picks the series by id when there are several", async () => {
   const results = [
     series("a", [["2026-10-07T11:50:00Z", 1]]),
     series("b", [[
@@ -336,7 +337,7 @@ Deno.test("metricValue picks the series by id when there are several", async () 
   );
 });
 
-Deno.test("metricValue fails clearly on no data, unless told what it means", async () => {
+test("metricValue fails clearly on no data, unless told what it means", async () => {
   const empty = [series("e", [])];
   await assertRejects(
     () => valueOf(empty),
@@ -351,7 +352,7 @@ Deno.test("metricValue fails clearly on no data, unless told what it means", asy
   );
 });
 
-Deno.test("metricValue refuses a response it cannot trust", async () => {
+test("metricValue refuses a response it cannot trust", async () => {
   await assertRejects(
     () => valueOf({ Messages: [] }),
     AwsOutputError,
@@ -393,7 +394,7 @@ Deno.test("metricValue refuses a response it cannot trust", async () => {
   assertEquals(await valueOf([series("e", POINTS, "PartialData")]), 6);
 });
 
-Deno.test("alarmState reads a metric or composite alarm's state", async () => {
+test("alarmState reads a metric or composite alarm's state", async () => {
   const fake = new FakeAws(json([
     { AlarmName: "other", StateValue: "ALARM" },
     null,
@@ -424,7 +425,7 @@ Deno.test("alarmState reads a metric or composite alarm's state", async () => {
   ]);
 });
 
-Deno.test("alarmState fails on a missing alarm or an unknown state", async () => {
+test("alarmState fails on a missing alarm or an unknown state", async () => {
   const read = (answer: unknown) =>
     AwsTasks.alarmState("a", (s) => s.runner(new FakeAws(json(answer)).run));
   await assertRejects(() => read([]), AwsOutputError, 'no alarm named "a"');

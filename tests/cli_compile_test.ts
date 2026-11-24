@@ -11,6 +11,7 @@
  * @module
  */
 
+import { test } from "../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -42,7 +43,7 @@ async function denoVersionLine(): Promise<string> {
   return new TextDecoder().decode(stdout).split("\n")[0];
 }
 
-Deno.test("the binaries are compiled from the published JSR release", () => {
+test("the binaries are compiled from the published JSR release", () => {
   assertEquals(cliSpecifier("1.14.0"), "jsr:@zuke/cli@1.14.0");
 });
 
@@ -58,7 +59,7 @@ class InDirectory extends DenoBundleSettings {
   }
 }
 
-Deno.test("compileCliBinaries bundles the entry, compiles the bundle, and runs the host's binary", async () => {
+test("compileCliBinaries bundles the entry, compiles the bundle, and runs the host's binary", async () => {
   await withTemp(async (dir) => {
     const bin = absolutePath(dir, "bin");
     const bundles: string[][] = [];
@@ -110,7 +111,7 @@ Deno.test("compileCliBinaries bundles the entry, compiles the bundle, and runs t
   });
 });
 
-Deno.test("assertReportsVersion accepts exactly the version asked for", async () => {
+test("assertReportsVersion accepts exactly the version asked for", async () => {
   await assertReportsVersion(deno, await denoVersionLine());
   await assertRejects(
     () => assertReportsVersion(deno, "1.14.0"),
@@ -119,7 +120,7 @@ Deno.test("assertReportsVersion accepts exactly the version asked for", async ()
   );
 });
 
-Deno.test("assertReportsVersion names the binary and what it reported", async () => {
+test("assertReportsVersion names the binary and what it reported", async () => {
   const error = await assertRejects(
     () => assertReportsVersion(deno, "9.9.9"),
     Error,
@@ -128,7 +129,7 @@ Deno.test("assertReportsVersion names the binary and what it reported", async ()
   assertStringIncludes(error.message, JSON.stringify(await denoVersionLine()));
 });
 
-Deno.test("assertReportsVersion runs a binary named relative to the build's directory", async () => {
+test("assertReportsVersion runs a binary named relative to the build's directory", async () => {
   // The signing job names the binary under `dist/cli/bin`, relative to the
   // checkout; the check runs it from a temporary directory, so the path must
   // be resolved against the checkout first.
@@ -176,14 +177,14 @@ function clock(waits: number[]): (ms: number) => Promise<void> {
   };
 }
 
-Deno.test("awaitJsrListing returns at once when the registry already lists the version", async () => {
+test("awaitJsrListing returns at once when the registry already lists the version", async () => {
   const { fetcher, urls, waits } = registry([["1.0.0", "2.1.0"]]);
   await awaitJsrListing("cli", "2.1.0", fetcher, clock(waits));
   assertEquals(urls, ["https://jsr.io/@zuke/cli/meta.json"]);
   assertEquals(waits, []);
 });
 
-Deno.test("awaitJsrListing polls until the version appears, through a registry hiccup", async () => {
+test("awaitJsrListing polls until the version appears, through a registry hiccup", async () => {
   const { fetcher, urls, waits } = registry([["1.0.0"], 503, [
     "1.0.0",
     "2.1.0",
@@ -194,7 +195,7 @@ Deno.test("awaitJsrListing polls until the version appears, through a registry h
   assertEquals(waits, [5000, 5000]);
 });
 
-Deno.test("awaitJsrListing gives up after the deadline, naming the last answer", async () => {
+test("awaitJsrListing gives up after the deadline, naming the last answer", async () => {
   const { fetcher, waits } = registry([["1.0.0"]]);
   await assertRejects(
     () => awaitJsrListing("cli", "2.1.0", fetcher, clock(waits)),

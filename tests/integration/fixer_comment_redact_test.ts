@@ -18,6 +18,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { aiFixer } from "../../packages/ai/mod.ts";
@@ -64,7 +65,7 @@ interface Sent {
   body: string;
 }
 
-Deno.test("the AI fixer never puts a declared secret in a PR comment", async () => {
+test("the AI fixer never puts a declared secret in a PR comment", async () => {
   const sent: Sent[] = [];
   const writes: string[] = [];
 

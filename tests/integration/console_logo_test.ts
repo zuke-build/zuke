@@ -9,6 +9,7 @@
  * not just in isolation.
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
@@ -18,7 +19,7 @@ import { BrowserOpenSettings, Build, target } from "../../packages/core/mod.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "../../packages/console/mod.ts";
 import { GhApiSettings } from "../../packages/gh/mod.ts";
 
-Deno.test("a build target prints the logo and shapes the star commands", async () => {
+test("a build target prints the logo and shapes the star commands", async () => {
   const seen: string[] = [];
   const argvs: string[][] = [];
 

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AiReviewError } from "../mod.ts";
 import { parseVerdicts } from "../src/verdicts.ts";
 
-Deno.test("parseVerdicts keeps only well-formed, in-vocabulary verdicts", () => {
+test("parseVerdicts keeps only well-formed, in-vocabulary verdicts", () => {
   const text = JSON.stringify({
     verdicts: [
       { id: "a", verdict: "confirmed", reason: "traced the path" },
@@ -24,7 +25,7 @@ Deno.test("parseVerdicts keeps only well-formed, in-vocabulary verdicts", () => 
   assertEquals(verdicts.get("b")?.reason, undefined);
 });
 
-Deno.test("parseVerdicts tolerates fenced JSON and a missing array", () => {
+test("parseVerdicts tolerates fenced JSON and a missing array", () => {
   const fenced = "```json\n" +
     JSON.stringify({ verdicts: [{ id: "x", verdict: "upheld" }] }) + "\n```";
   assertEquals(parseVerdicts(fenced, ["upheld", "dismissed"]).size, 1);
@@ -35,7 +36,7 @@ Deno.test("parseVerdicts tolerates fenced JSON and a missing array", () => {
   );
 });
 
-Deno.test("parseVerdicts throws AiReviewError on invalid JSON", async () => {
+test("parseVerdicts throws AiReviewError on invalid JSON", async () => {
   await assertRejects(
     () => Promise.resolve(parseVerdicts("not json at all", ["confirmed"])),
     AiReviewError,

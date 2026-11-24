@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../core/tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
@@ -18,7 +19,7 @@ import {
   GeminiTasks,
 } from "../src/gemini.ts";
 
-Deno.test("run: the default binary is gemini and --prompt carries the prompt", () => {
+test("run: the default binary is gemini and --prompt carries the prompt", () => {
   assertEquals(new GeminiRunSettings().prompt("hi").argv(), [
     "gemini",
     "--prompt",
@@ -26,7 +27,7 @@ Deno.test("run: the default binary is gemini and --prompt carries the prompt", (
   ]);
 });
 
-Deno.test("run: a prompt is required", () => {
+test("run: a prompt is required", () => {
   assertThrows(
     () => new GeminiRunSettings().argv(),
     Error,
@@ -34,7 +35,7 @@ Deno.test("run: a prompt is required", () => {
   );
 });
 
-Deno.test("run: every typed option renders in order", () => {
+test("run: every typed option renders in order", () => {
   const argv = new GeminiRunSettings()
     .prompt("do it")
     .model("gemini-2.5-pro")
@@ -87,11 +88,11 @@ Deno.test("run: every typed option renders in order", () => {
   ]);
 });
 
-Deno.test("mcp: minimal runs just the group", () => {
+test("mcp: minimal runs just the group", () => {
   assertEquals(new GeminiMcpSettings().argv(), ["gemini", "mcp"]);
 });
 
-Deno.test("mcp: command then flags", () => {
+test("mcp: command then flags", () => {
   const argv = new GeminiMcpSettings()
     .command("add", "fs")
     .flag("transport", "stdio")
@@ -106,7 +107,7 @@ Deno.test("mcp: command then flags", () => {
   ]);
 });
 
-Deno.test("extensions: numeric operands and bare/valued flags", () => {
+test("extensions: numeric operands and bare/valued flags", () => {
   const argv = new GeminiExtensionsSettings()
     .command("install", 1)
     .flag("force")
@@ -123,28 +124,28 @@ Deno.test("extensions: numeric operands and bare/valued flags", () => {
   ]);
 });
 
-Deno.test("GeminiTasks.run reaches execution", async () => {
+test("GeminiTasks.run reaches execution", async () => {
   await assertRejects(
     () => GeminiTasks.run((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("GeminiTasks.mcp reaches execution", async () => {
+test("GeminiTasks.mcp reaches execution", async () => {
   await assertRejects(
     () => GeminiTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("GeminiTasks.extensions reaches execution", async () => {
+test("GeminiTasks.extensions reaches execution", async () => {
   await assertRejects(
     () => GeminiTasks.extensions((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("gemini: conforms to the wrapper contract", async () => {
+test("gemini: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new GeminiRunSettings().prompt("hi"),
     "gemini",

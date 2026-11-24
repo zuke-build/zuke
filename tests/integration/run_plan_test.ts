@@ -12,6 +12,7 @@
  * @module
  */
 
+import { test } from "../../packages/core/tests/_testing.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
@@ -22,7 +23,7 @@ import {
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("a body reads the run's planned targets and their dependencies", async () => {
+test("a body reads the run's planned targets and their dependencies", async () => {
   const seen: string[] = [];
   class B extends Build {
     lint = target().executes(() => {});
@@ -42,7 +43,7 @@ Deno.test("a body reads the run's planned targets and their dependencies", async
   ]);
 });
 
-Deno.test("the plan covers only what this run's root reaches", async () => {
+test("the plan covers only what this run's root reaches", async () => {
   // The question a body actually asks — "was `deploy` asked for?" — has to be
   // answered for *this* run, not for everything the build could do.
   const seen: string[] = [];
@@ -63,7 +64,7 @@ Deno.test("the plan covers only what this run's root reaches", async () => {
   assertEquals(seen, ["deploy=false", "deploy=true"]);
 });
 
-Deno.test("a condition reads the same plan its target's body does", async () => {
+test("a condition reads the same plan its target's body does", async () => {
   const fromCondition: string[] = [];
   const fromBody: string[] = [];
   class B extends Build {
@@ -84,7 +85,7 @@ Deno.test("a condition reads the same plan its target's body does", async () => 
   assertEquals(fromBody, ["gated,setup"]);
 });
 
-Deno.test("a skip-dependencies condition sees one plan at both evaluations", async () => {
+test("a skip-dependencies condition sees one plan at both evaluations", async () => {
   // The reason the plan reports graph facts and not "will this run": a
   // `whenSkipped("skip-dependencies")` condition is evaluated once up front to
   // decide what the run prunes, and again when the scheduler reaches the
@@ -111,7 +112,7 @@ Deno.test("a skip-dependencies condition sees one plan at both evaluations", asy
   assertEquals(seen[1], "gated,helper");
 });
 
-Deno.test("a zero-argument condition still compiles and runs", async () => {
+test("a zero-argument condition still compiles and runs", async () => {
   // The compatibility promise: widening the callback's parameter list must not
   // disturb the conditions every existing build already declares.
   let ran = false;
@@ -127,7 +128,7 @@ Deno.test("a zero-argument condition still compiles and runs", async () => {
   assertEquals(ran, true);
 });
 
-Deno.test("a fan-out's sub-targets are not in the plan, though they have outcomes", async () => {
+test("a fan-out's sub-targets are not in the plan, though they have outcomes", async () => {
   // The one place the plan reports LESS than the outcomes do. `.forEach()`
   // expands while the run executes, after the graph is planned — so a
   // sub-target has a summary row and an outcome, but was never in the plan.
@@ -158,7 +159,7 @@ Deno.test("a fan-out's sub-targets are not in the plan, though they have outcome
   ]);
 });
 
-Deno.test("a compensation run by `zuke cancel` reads the run's plan", async () => {
+test("a compensation run by `zuke cancel` reads the run's plan", async () => {
   // The wiring a unit test cannot reach: `cancelRun` re-plans the graph in the
   // cancelling process and hands that plan to the walk. Driving
   // `runCompensations` directly with a plan the test built proves nothing about
@@ -200,7 +201,7 @@ Deno.test("a compensation run by `zuke cancel` reads the run's plan", async () =
   });
 });
 
-Deno.test("a compensation run by an in-process cancel reads the run's plan", async () => {
+test("a compensation run by an in-process cancel reads the run's plan", async () => {
   // The other cancel path: Ctrl-C / an aborted signal settles the run in the
   // executing process, through `settleCancelledRun` rather than `cancelRun`.
   // It is wired separately, so it needs its own proof.
