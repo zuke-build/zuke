@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/zuke-build/zuke/compare/otel-v1.0.2...otel-v1.0.3) (2026-11-24)
+
+
+### Bug Fixes
+
+* release the wrappers the Node binary embeds, now that they run on Node ([#1139](https://github.com/zuke-build/zuke/issues/1139)) ([ca08239](https://github.com/zuke-build/zuke/commit/ca082392f2b51c6b26aaf9baa8eb86e61d7a9497))
+
 ## [1.0.2](https://github.com/zuke-build/zuke/compare/otel-v1.0.1...otel-v1.0.2) (2026-08-13)
 
 
