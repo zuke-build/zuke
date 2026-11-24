@@ -47,6 +47,13 @@ Deno.test("denoCalls reads past regular expressions holding quotes and backticks
   assertEquals(await denoCalls(root), ["src/a.ts:3", "src/a.ts:4"]);
 });
 
+Deno.test("denoCalls reads a regular expression after a condition or a keyword", async () => {
+  const root = await fixture(
+    "if (ok(a)) /`/.test(s);\nwhile (x) /* c */ /'/.exec(t);\nconst t = typeof /`/;\nconst r = (a) / 2;\nDeno.cwd();\n",
+  );
+  assertEquals(await denoCalls(root), ["src/a.ts:5"]);
+});
+
 Deno.test("denoCalls skips whole comment lines", async () => {
   const root = await fixture(
     "/**\n * Defaults to `Deno.env.get`.\n */\n// Deno.readFile once\nexport const x = 1;\n",

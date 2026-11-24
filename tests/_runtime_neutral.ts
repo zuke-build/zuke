@@ -64,11 +64,16 @@ export function codeOnly(source: string): string {
       }
     }
   };
+  const parens: boolean[] = []; // per open `(`: whether it is a statement's condition
+  let afterCondition = false; // the last code was the `)` closing such a condition
   /** Whether a `/` at this point starts a regular expression, not a division. */
   const regexCanStart = () => {
     const before = out.trimEnd();
-    return before === "" || /[(,=:[!&|?{};+\-*%<>~^]$/.test(before) ||
-      /\breturn$/.test(before);
+    return before === "" || afterCondition ||
+      /[(,=:[!&|?{};+\-*%<>~^]$/.test(before) ||
+      /\b(return|typeof|void|delete|in|of|case|do|else|yield|await)$/.test(
+        before,
+      );
   };
   /** Skip a regular-expression literal's body from `i`, after its opening `/`. */
   const regexBody = () => {
@@ -97,10 +102,12 @@ export function codeOnly(source: string): string {
       const stop = end === -1 ? source.length : end + 2;
       while (i < stop) out += blank(source[i++]);
     } else if (c === "/" && regexCanStart()) {
+      afterCondition = false;
       out += " ";
       i++;
       regexBody();
     } else if (c === "'" || c === '"') {
+      afterCondition = false;
       out += " ";
       i++;
       while (i < source.length && source[i] !== c && source[i] !== "\n") {
@@ -114,6 +121,7 @@ export function codeOnly(source: string): string {
         i++;
       }
     } else if (c === "`") {
+      afterCondition = false;
       out += " ";
       i++;
       templateText();
@@ -126,8 +134,15 @@ export function codeOnly(source: string): string {
     } else {
       if (c === "{") depth++;
       else if (c === "}") depth--;
+      else if (c === "(") {
+        parens.push(/\b(if|while|for|with)\s*$/.test(out));
+      }
+      const closesCondition = c === ")" && parens.pop() === true;
       out += c;
       i++;
+      if (closesCondition) afterCondition = true;
+      else if (!/\s/.test(c)) afterCondition = false;
+      continue;
     }
   }
   return out;
