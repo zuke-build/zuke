@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   AwsCloudwatchDescribeAlarmsSettings,
   AwsCloudwatchGetMetricDataSettings,
@@ -16,7 +16,7 @@ import {
   AwsTasks,
 } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
-import { FakeAws, json } from "./_fake.ts";
+import { FakeAws, json } from "../../../tests/support/aws/_fake.ts";
 
 const END = new Date("2026-10-07T12:00:00.000Z");
 

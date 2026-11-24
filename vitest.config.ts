@@ -3,7 +3,7 @@
 
 /**
  * The Node lane's test run: every `*_test.ts` of the packages and of
- * `tests/`, registered through `packages/core/tests/_testing.ts`, except the
+ * `tests/`, registered through `tests/_testing.ts`, except the
  * files `tests/node_pending.json` lists. Those still call Deno's APIs
  * directly, and each leaves the list once it is ported; the Deno lane runs
  * every file meanwhile.

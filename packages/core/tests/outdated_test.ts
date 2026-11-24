@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   findOutdated,
   formatOutdated,
@@ -10,7 +10,7 @@ import {
   lockedJsrSpecifiers,
   minDepAgeCutoff,
 } from "../src/outdated.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A `fetch` that answers `meta.json` from a name → latest-version map. */
 function registryFetch(

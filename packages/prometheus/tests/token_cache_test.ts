@@ -7,11 +7,15 @@
  * and by `fetch` seam.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { TokenCache } from "../src/token_cache.ts";
-import { type Clock, context, T0 } from "./_auth.ts";
-import { fakeFetch } from "./_fetch.ts";
+import {
+  type Clock,
+  context,
+  T0,
+} from "../../../tests/support/prometheus/_auth.ts";
+import { fakeFetch } from "../../../tests/support/prometheus/_fetch.ts";
 
 const MINUTE = 60_000;
 

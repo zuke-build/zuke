@@ -13,11 +13,8 @@
  * Excluded from the fast unit gate (`*_e2e.ts`); run by the `integration` target.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,

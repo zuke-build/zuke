@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import {
   aggregateRunCounts,
@@ -15,9 +15,9 @@ import {
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord, RunStatus, RunSummary } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { capture as captureLines } from "./_console.ts";
-import { withTempStore as withStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { capture as captureLines } from "../../../tests/_console.ts";
+import { withTempStore as withStore } from "../../../tests/_store.ts";
 
 /** A trivial build; `runsCommand` only reads `build.stateStore()` from it. */
 class B extends Build {}

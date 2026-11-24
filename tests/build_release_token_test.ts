@@ -6,12 +6,12 @@
  * `GITHUB_TOKEN`, so a release tag may differ from master in workflow files.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 import type { AppTokenMint } from "../build/app_token.ts";
 import { mintReleaseToken } from "../build/release_token.ts";

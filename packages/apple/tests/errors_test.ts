@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   CommandError,
   CommandOutput,
@@ -17,7 +17,7 @@ import type { NotarytoolIssue } from "../src/notarytool_result.ts";
 import { maskSecrets, runMasked } from "../src/secrets.ts";
 import { printable } from "../src/text.ts";
 import { operand } from "../src/operand.ts";
-import { rejection } from "./_fake_tool.ts";
+import { rejection } from "../../../tests/support/apple/_fake_tool.ts";
 
 test("a notarization error without a log says how to read it", () => {
   const error = new NotarizationError({ id: "abc" }, undefined);

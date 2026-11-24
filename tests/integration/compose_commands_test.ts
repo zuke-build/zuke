@@ -12,11 +12,8 @@
  * drives the missing-binary path rather than a real daemon.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import {

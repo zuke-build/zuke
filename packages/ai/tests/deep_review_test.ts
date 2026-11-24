@@ -1,15 +1,15 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AiReviewError, genericReviewer, securityReviewer } from "../mod.ts";
 import { changedPaths } from "../src/diff.ts";
 import { buildFileContext } from "../src/file_context.ts";
 import { findingFingerprint } from "../src/suppress.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { noRedactionContext } from "./_context.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

@@ -5,15 +5,19 @@
  * The readers: what each pins, what it returns, and how it fails.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { AzOutputError, AzTasks } from "../mod.ts";
-import { FakeAz, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAz,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/az/_fake.ts";
 
 test("subscriptionId and tenantId pin a tsv projection after the lambda", async () => {
   const fake = new FakeAz("00000000-1111\n", "tenant-2222\n");

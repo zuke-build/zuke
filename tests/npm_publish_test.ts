@@ -9,12 +9,8 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 import {
   NPM_BIN_FILE,

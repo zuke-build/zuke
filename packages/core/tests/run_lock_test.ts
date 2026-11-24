@@ -9,13 +9,13 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
@@ -33,8 +33,8 @@ import {
 } from "../src/state/types.ts";
 import { reclaimRunLocks, RunLockHolder } from "../src/run_locks.ts";
 import { defaultStateHost } from "../src/state/store.ts";
-import { withTempStore } from "./_store.ts";
-import { withTemp } from "./_temp.ts";
+import { withTempStore } from "../../../tests/_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 const KEY = "deploy-api";
 

@@ -16,9 +16,9 @@
  * launchers' `DENO_INSTALL` bootstrap directory when `PATH` has none.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import {
   buildWorkspaceNodeBinary,
   MUST_HAVE_SEA_NODE,

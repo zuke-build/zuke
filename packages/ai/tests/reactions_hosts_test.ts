@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { githubHost } from "../src/hosts/github.ts";
 import { gitlabHost } from "../src/hosts/gitlab.ts";
 import { azureHost, bitbucketHost } from "../src/hosts.ts";

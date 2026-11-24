@@ -18,7 +18,7 @@
  */
 
 import { CommandOutput } from "@zuke/core/shell";
-import type { AzSettings, AzSettingsRunner } from "../mod.ts";
+import type { AzSettings, AzSettingsRunner } from "../../../packages/az/mod.ts";
 
 /** One ingress traffic entry, as the service stores it. */
 export interface ModelTraffic {

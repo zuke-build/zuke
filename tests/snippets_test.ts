@@ -11,11 +11,8 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   CHECK_MARKER,
   checkSnippets,
@@ -28,7 +25,7 @@ import {
   reduceTempPath,
   type SnippetChecker,
 } from "../build/snippets.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 test("extract: a marked ts block is captured with jsr specifiers rewritten", () => {
   const md = [

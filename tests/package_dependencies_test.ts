@@ -7,8 +7,8 @@
  * AGENTS.md states, enforced here so it cannot erode one import at a time.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 
 /** The `@zuke/*` packages a `deno.json` imports, core excluded, sorted. */

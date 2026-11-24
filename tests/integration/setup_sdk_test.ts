@@ -12,17 +12,14 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
 import { defaultProjectHost } from "../../packages/cli/src/project.ts";
-import { pinRegistry, testPin } from "../../packages/cli/tests/_fakes.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { pinRegistry, testPin } from "../support/cli/_fakes.ts";
+import { withEnv } from "../_env.ts";
 
 /** Run `fn` with the process cwd set to a fresh temp dir, cleaning up after. */
 async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {

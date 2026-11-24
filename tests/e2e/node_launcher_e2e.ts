@@ -11,9 +11,9 @@
  * a checksum mismatch installs nothing, and a failing npm stops the run.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { sha256Hex } from "@zuke/core";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { assertEquals } from "../_assert.ts";
 import { nodeLauncherBash } from "../../packages/cli/src/node_launcher.ts";
 import { NODE_PIN } from "../../packages/cli/src/node_pin.ts";
 

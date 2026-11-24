@@ -5,12 +5,12 @@
  * The pure argv of every typed command, and each task reaching execution.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {

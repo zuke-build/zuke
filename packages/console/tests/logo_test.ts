@@ -10,10 +10,10 @@
  * assert that a dependency works.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { ConsoleTasks, type Sink } from "../src/console.ts";
 import { ZUKE_LOGO } from "@zuke/core";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 test("ConsoleTasks.logo prints the art through the sink", () => {
   const out: string[] = [];

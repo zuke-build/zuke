@@ -12,9 +12,9 @@
  * lives in the e2e suite; skipped on Windows, which has no SIGTERM.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 
 const CORE = new URL("../../packages/core/mod.ts", import.meta.url).href;
 const CLI = new URL("../../packages/cli/mod.ts", import.meta.url).pathname;

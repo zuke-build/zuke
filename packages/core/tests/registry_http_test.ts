@@ -7,8 +7,8 @@
  * injectable `fetch` seam (no network). Mirrors the HttpStateStore tests.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { HttpError } from "../src/http.ts";
 import type { CliDescription } from "../src/describe.ts";
 import {

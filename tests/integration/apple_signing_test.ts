@@ -22,17 +22,14 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { NotarytoolTasks, SecurityTasks } from "../../packages/apple/mod.ts";
 import {
   fakeNotarytool,
   writeFakeSecurity,
-} from "../../packages/apple/tests/_fake_tool.ts";
+} from "../support/apple/_fake_tool.ts";
 import {
   defaultKeychainHost,
   type KeychainHost,

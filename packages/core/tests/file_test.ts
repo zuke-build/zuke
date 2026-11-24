@@ -1,10 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { FileTasks } from "../src/file.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** Run `fn` with HOME/USERPROFILE set to `values`, restoring them afterwards. */
 function withHomeEnv(

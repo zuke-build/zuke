@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { discoverParameters } from "../src/params.ts";
 import { installCompletions } from "../src/completions_install.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 class Sample extends Build {
   build = target().description("Compile").executes(() => {});

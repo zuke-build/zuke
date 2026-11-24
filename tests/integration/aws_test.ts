@@ -10,11 +10,8 @@
  * nothing is spawned and no account is needed.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { CommandOutput } from "../../packages/core/src/shell.ts";
 import {
@@ -23,8 +20,8 @@ import {
   cloudwatch,
 } from "../../packages/aws/mod.ts";
 import { canary } from "../../packages/canary/mod.ts";
-import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { FakePlatform } from "../support/canary/_platform.ts";
+import { withEnv } from "../_env.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 /** The datapoints the fake CloudWatch answers with; set per test. */

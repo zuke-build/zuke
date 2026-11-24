@@ -1,20 +1,20 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { VERSION } from "../src/version.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   FakeHost,
   FakePrompter,
   noProjectProbe,
   pinRegistry,
   testPin,
-} from "./_fakes.ts";
+} from "../../../tests/support/cli/_fakes.ts";
 import { main, parseImportFlags } from "../mod.ts";
 import {
   generateBuild,

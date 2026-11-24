@@ -11,8 +11,8 @@
  * @module
  */
 
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import { FileSystemStateStore } from "../packages/core/src/state/fs_store.ts";
+import { defaultStateHost } from "../packages/core/src/state/store.ts";
 import { withTemp } from "./_temp.ts";
 
 /**

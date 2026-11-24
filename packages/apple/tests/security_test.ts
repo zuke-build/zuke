@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
@@ -31,7 +31,10 @@ import {
   SecurityListKeychainsSettings,
 } from "../src/security_search.ts";
 import { SecurityTasks } from "../src/security.ts";
-import { rejection, writeFakeSecurity } from "./_fake_tool.ts";
+import {
+  rejection,
+  writeFakeSecurity,
+} from "../../../tests/support/apple/_fake_tool.ts";
 
 const PW = "secret-keychain-password";
 const HASH = "0123456789ABCDEF0123456789ABCDEF01234567";

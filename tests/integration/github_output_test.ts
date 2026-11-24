@@ -16,11 +16,8 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   appendJobSummary,
   Build,
@@ -29,7 +26,7 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withEnv } from "../_env.ts";
 
 /** Zuke's own workflow commands, which are supposed to open with `::`. */
 const OWN_COMMAND = /^::(?:endgroup::|group::|error title=|add-mask::)/;

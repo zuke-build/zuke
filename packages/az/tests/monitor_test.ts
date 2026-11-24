@@ -6,12 +6,12 @@
  * `monitor metrics list`.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   AzMonitorActivityLogListSettings,
   AzMonitorMetricsAlertListSettings,
@@ -23,7 +23,7 @@ import {
   AzTasks,
 } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
-import { FakeAz, json } from "./_fake.ts";
+import { FakeAz, json } from "../../../tests/support/az/_fake.ts";
 
 /** The argv after the binary. */
 function args(settings: { argv(): string[] }): string[] {

@@ -10,8 +10,8 @@
  * build if the scope is narrowed back.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 
 interface FmtConfig {
   fmt: { include: string[]; exclude: string[] };

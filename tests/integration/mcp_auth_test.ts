@@ -20,11 +20,8 @@
  * which exits before binding anything, does go through `runCli`.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -46,7 +43,7 @@ import type {
   RegistryRunner,
   RegistryRunOptions,
 } from "../../packages/core/src/mcp/registry_server.ts";
-import { silence } from "../../packages/core/tests/_console.ts";
+import { silence } from "../_console.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The key the fixture trusts — a stand-in for a verified credential. */

@@ -8,11 +8,8 @@
  * to assert status transitions, and pre-seeds a lock to force a conflict.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,

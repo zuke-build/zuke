@@ -1,11 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { AiCache, aiCache } from "../src/cache.ts";
 import type { CacheEntry, CacheStore } from "../src/cache.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** An in-memory {@link CacheStore} (a Map) so tests touch no real filesystem. */
 function memoryStore(): CacheStore & { entries: Map<string, CacheEntry> } {

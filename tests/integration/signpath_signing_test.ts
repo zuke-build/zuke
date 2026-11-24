@@ -12,11 +12,8 @@
  * plain string the build's own redactor knows nothing about.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import {
   type SignPathConnectionSettings,
@@ -31,7 +28,7 @@ import {
   STATUS_URL,
   TOKEN,
   WEB_URL,
-} from "../../packages/signpath/tests/_fetch.ts";
+} from "../support/signpath/_fetch.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 /** SignPath's hosted GitHub connector endpoint for {@link ORG}. */

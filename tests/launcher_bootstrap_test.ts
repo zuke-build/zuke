@@ -1,10 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { defaultHost, runSetup } from "../packages/cli/src/setup.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 /**
  * Guards against the launchers' Deno bootstrap regressing back to an

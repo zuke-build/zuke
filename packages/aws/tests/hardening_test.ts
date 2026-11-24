@@ -7,13 +7,13 @@
  * failed against the code before its fix.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   AwsCloudformationDeleteStackSettings,
@@ -44,7 +44,11 @@ import {
   AwsTasks,
   cloudwatch,
 } from "../mod.ts";
-import { FakeAws, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAws,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/aws/_fake.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AwsSettings>(settings: S): {

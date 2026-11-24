@@ -8,14 +8,14 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 import { gunzip, sha256Hex, untar, unzip } from "@zuke/core";
 import {
   archiveName,

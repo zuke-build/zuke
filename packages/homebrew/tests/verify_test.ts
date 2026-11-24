@@ -9,15 +9,18 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { HomebrewTasks } from "../mod.ts";
-import { FAKE_BREW_UNSUPPORTED, fakeBrew } from "./_fake_brew.ts";
+import {
+  FAKE_BREW_UNSUPPORTED,
+  fakeBrew,
+} from "../../../tests/support/homebrew/_fake_brew.ts";
 
 /** A formula file on disk, in a temp dir. */
 function formulaFile(): string {

@@ -8,11 +8,8 @@
  * target is wired (see `build.ts` and `build/pr_body_lint.ts`).
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { lintPrBody } from "../../build/pr_body_lint.ts";
 import { runCli } from "./_harness.ts";

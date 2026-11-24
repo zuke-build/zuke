@@ -1,8 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import {
   assert,
   assertDirectoryExists,
@@ -11,7 +15,7 @@ import {
   AssertionError,
   fail,
 } from "../src/assert.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 test("fail always throws an AssertionError with the message", () => {
   assertThrows(() => fail("nope"), AssertionError, "nope");

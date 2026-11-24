@@ -8,13 +8,13 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import { HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import { distOf, registrySource } from "../build/npm_registry.ts";
 import { SLSA } from "./_npm_verify.ts";
 

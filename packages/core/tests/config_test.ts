@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { absolutePath } from "../src/path.ts";
 import {
   CONFIG_FILE,
@@ -11,7 +11,7 @@ import {
   repoRoot,
   repoRootFrom,
 } from "../src/config.ts";
-import { withTempCwd } from "./_temp.ts";
+import { withTempCwd } from "../../../tests/_temp.ts";
 
 test("findConfigDir returns the directory holding zuke.json", () => {
   const dir = findConfigDir(

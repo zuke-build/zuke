@@ -7,13 +7,13 @@
  * status — see `packages/core/src/state/settle.ts`.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   settleTargetRow,
   settleUnreachedTargets,
 } from "../src/state/settle.ts";
-import { runRecord } from "./_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 import type { TargetRunState } from "../src/state/types.ts";
 
 /** A target row parked on a signal gate with an hour left on its deadline. */

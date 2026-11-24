@@ -1,11 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { OtlpHttpExporter } from "../src/exporter.ts";
 import { buildMetrics, buildTraces, type RunSpanIds } from "../src/otlp.ts";
-import { makeRecord, RESOURCE } from "./_fixtures.ts";
+import { makeRecord, RESOURCE } from "../../../tests/support/otel/_fixtures.ts";
 
 const IDS: RunSpanIds = {
   traceId: "0123456789abcdef0123456789abcdef",

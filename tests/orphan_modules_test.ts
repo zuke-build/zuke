@@ -25,9 +25,9 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 
 /** The fields of a package's `deno.json` this test reads. */
 interface PackageConfig {

@@ -3,7 +3,7 @@
 
 /** Tests for the specification tables and the capacities derived from them. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   alignmentPatternPositions,
   blockLayout,
@@ -11,7 +11,7 @@ import {
   numRawDataModules,
   sizeOf,
 } from "../src/tables.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 test("sizeOf grows by four modules per version", () => {
   assertEquals(sizeOf(1), 21);

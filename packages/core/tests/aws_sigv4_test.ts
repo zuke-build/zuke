@@ -19,8 +19,8 @@
  * (botocore's `SigV4Auth`); that rule is tested on its own below.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { sha256Hex } from "../src/internal.ts";
 import { signSigV4 } from "../src/aws_sigv4.ts";
 

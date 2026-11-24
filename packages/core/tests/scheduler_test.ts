@@ -12,9 +12,9 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { RunLockHolder } from "../src/run_locks.ts";
-import { assertEquals, messageOf } from "./_assert.ts";
+import { assertEquals, messageOf } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type TargetOutcomeView } from "../src/target.ts";
 import { type RunContext, runSequential } from "../src/scheduler.ts";
@@ -30,9 +30,9 @@ import type { RunRecord } from "../src/state/types.ts";
 import { execute } from "../src/executor.ts";
 import { resumeRun } from "../src/resume.ts";
 import { externalSignal } from "../src/wait.ts";
-import { withTemp } from "./_temp.ts";
-import { runRecord, testPlan } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { runRecord, testPlan } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 

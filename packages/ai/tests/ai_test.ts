@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   AiReviewError,
   type Assessment,
@@ -12,10 +12,10 @@ import {
   secretsReviewer,
   securityReviewer,
 } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
-import { reacted, REACTIONS } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
+import { reacted, REACTIONS } from "../../../tests/support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

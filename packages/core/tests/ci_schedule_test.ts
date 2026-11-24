@@ -6,8 +6,12 @@
  * and DST shifting, the friendly-error boundaries, and the generated guard shell.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import {
   anyScheduleNeedsGuard,
   guardShell,

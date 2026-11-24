@@ -11,12 +11,12 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { type GhReactionSettings, GhTasks } from "../mod.ts";
 import { GhApiError } from "../src/api.ts";
 

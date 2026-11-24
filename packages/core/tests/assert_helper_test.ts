@@ -9,8 +9,8 @@
  * those built-ins and a loud failure for any type the helper can't compare.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 
 test("assertEquals compares Sets by membership, not vacuously", () => {
   assertEquals(new Set(["a", "b"]), new Set(["b", "a"])); // order-independent

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AppStoreConnectError, AppStoreConnectSettings } from "../mod.ts";
 import {
   AppStoreConnectClient,
@@ -10,8 +10,8 @@ import {
   stringAt,
 } from "../src/app_store_connect_client.ts";
 import { signToken } from "../src/app_store_connect_token.ts";
-import { apiKey, fakeAsc } from "./_asc.ts";
-import { rejection } from "./_fake_tool.ts";
+import { apiKey, fakeAsc } from "../../../tests/support/apple/_asc.ts";
+import { rejection } from "../../../tests/support/apple/_fake_tool.ts";
 
 const NOW = Date.parse("2026-06-01T00:00:00Z");
 

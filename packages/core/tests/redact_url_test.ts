@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { HttpError, redactUrl, redactUrls } from "../mod.ts";
 import { urlPasswords } from "../src/redact_url.ts";
 

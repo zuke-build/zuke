@@ -11,19 +11,19 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import { gunzip, untar } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import {
   buildGeminiArchive,
   GEMINI_ASSET_NAMES,
   geminiArchiveFiles,
 } from "../build/gemini_archive.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 /** Lay out a minimal extension root (manifest, license, two skills). */
 async function extensionFixture(): Promise<string> {

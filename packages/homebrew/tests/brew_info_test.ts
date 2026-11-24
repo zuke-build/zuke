@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { parseBrewInfo } from "../src/brew_info.ts";
 
 /** A trimmed `brew info --json=v2 --formula jq app` document. */

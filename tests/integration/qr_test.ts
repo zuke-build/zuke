@@ -7,11 +7,8 @@
  * page, a setup build showing a pairing token, or any other data to scan.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { runCli } from "./_harness.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { QrTasks } from "../../packages/qr/mod.ts";

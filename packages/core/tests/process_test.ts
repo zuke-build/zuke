@@ -1,8 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { isNotFound } from "../src/internal.ts";
 import {
   type ChildProcess,

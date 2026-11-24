@@ -10,9 +10,9 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { testPlan } from "./_fakes.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { conditionSkips, defaultPrompt } from "../src/execute_plan.ts";

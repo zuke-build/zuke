@@ -11,12 +11,9 @@
  * `zuke` on Windows (`tests/e2e/embedded_engine_e2e.ts`).
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 import { gzip, sha256Hex, tar } from "@zuke/core";
 import {
   BINARY_LAUNCHER_MARKER,
@@ -28,7 +25,7 @@ import {
   BINARY_POSIX_TARGETS,
   type BinaryPin,
 } from "../src/binary_pin.ts";
-import { testPin } from "./_fakes.ts";
+import { testPin } from "../../../tests/support/cli/_fakes.ts";
 
 const DOWNLOAD = { download: true };
 const PLAIN = { download: false };

@@ -11,11 +11,8 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { runtimeNamed } from "../../packages/cli/src/runtime_field.ts";

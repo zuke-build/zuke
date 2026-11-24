@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { joinShellArgs } from "../src/join_args.ts";
 import { joinShellArgs as fromShell, splitShellArgs } from "../src/shell.ts";
 

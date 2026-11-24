@@ -7,8 +7,8 @@
  * they are run side by side on the same inputs.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   alreadyExists,
   appendTextSync,
@@ -37,7 +37,7 @@ import {
   writeFile,
   writeStream,
 } from "../src/fs.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** What a failed call threw: its class name and its code. */
 interface Failure {

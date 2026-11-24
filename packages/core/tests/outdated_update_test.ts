@@ -9,13 +9,13 @@
  * so nothing here touches the network or spawns `deno`.
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   dropLockEntries,
   formatUpdate,
   updateOutdated,
 } from "../src/outdated_update.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 
 /** A lock resolving two JSR packages, one of them pinned exactly. */
 function lockText(git = "1.2.0", yaml = "1.0.5"): string {

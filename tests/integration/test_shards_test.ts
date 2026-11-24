@@ -9,11 +9,8 @@
  * shard's, and a failing shard fails the target while the others still report.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
 import { runShards } from "../../build/test_shards.ts";
@@ -21,16 +18,16 @@ import { runCli } from "./_harness.ts";
 
 // Addressed by `file://` URL, which is byte-identical on every OS.
 const PASSING = new URL(
-  "../../packages/deno/tests/fixtures/passing_suite.ts",
+  "../support/deno/fixtures/passing_suite.ts",
   import.meta.url,
 ).href;
 const FAILING = new URL(
-  "../../packages/deno/tests/fixtures/failing_suite.ts",
+  "../support/deno/fixtures/failing_suite.ts",
   import.meta.url,
 ).href;
 // No such file: deno exits before running any test, as it did on #852's runner.
 const MISSING = new URL(
-  "../../packages/deno/tests/fixtures/no_such_suite.ts",
+  "../support/deno/fixtures/no_such_suite.ts",
   import.meta.url,
 ).href;
 

@@ -10,11 +10,8 @@
  * Unlike the unit tests, nothing here hand-builds a descriptor.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   denoExecutable,
@@ -27,8 +24,8 @@ import {
   RegistryMcpServer,
   type RegistryRunner,
 } from "../../packages/core/src/mcp/registry_server.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { silence } from "../../packages/core/tests/_console.ts";
+import { withTemp } from "../_temp.ts";
+import { silence } from "../_console.ts";
 
 /** A parameterized deploy build, including a secret that must never surface. */
 class Deploy extends Build {

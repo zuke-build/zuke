@@ -8,12 +8,12 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,

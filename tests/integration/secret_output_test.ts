@@ -10,15 +10,12 @@
  * in a later command line. Neither may reach the build's output.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import type { CommandOutput } from "../../packages/core/src/shell.ts";
 import { ToolSettings } from "../../packages/core/src/tooling.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withEnv } from "../_env.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 /** The password inside the fake secret — low-entropy and obviously fake. */

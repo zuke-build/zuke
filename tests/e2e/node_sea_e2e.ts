@@ -13,10 +13,10 @@
  * pinned one) and skips without it; on CI the skip is refused.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import {
   adHocSign,
   type BuildSea,

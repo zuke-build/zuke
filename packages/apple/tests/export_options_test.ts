@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { ExportOptionsSettings, XcodebuildTasks } from "../mod.ts";
 
 const HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n' +

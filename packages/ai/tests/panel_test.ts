@@ -10,12 +10,12 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { Validation, ValidationContext } from "@zuke/core";
 import {
   AiReviewError,
@@ -25,9 +25,9 @@ import {
   type Reviewer,
   securityReviewer,
 } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { silence } from "../../core/tests/_console.ts";
-import { reacted, REACTIONS } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { silence } from "../../../tests/_console.ts";
+import { reacted, REACTIONS } from "../../../tests/support/ai/_reactions.ts";
 import { decodeState, encodeState, stateNames } from "../src/state.ts";
 import { Panel, renderPanel, seatOf } from "../src/panel.ts";
 

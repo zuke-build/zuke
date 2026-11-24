@@ -11,8 +11,8 @@
  * arrived with it. Driven through the real CLI `main()` (via {@link runCli}).
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,

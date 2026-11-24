@@ -8,12 +8,9 @@
  * without touching the real `docs/graph.md`.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import { Build, discoverTargets, target } from "@zuke/core";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   canonicalGraphDoc,
   checkGraphDoc,

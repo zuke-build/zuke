@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { DenoHost } from "../src/deno_path.ts";
 import { NODE_PIN } from "../src/node_pin.ts";
 import { npmCandidates, runNpm } from "../src/npm_path.ts";

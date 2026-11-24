@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -14,8 +14,14 @@ import { DenoTasks } from "../src/deno.ts";
 // The fixtures are addressed by `file://` URL, which is byte-identical on
 // every OS — a URL's `pathname` is not: on Windows it reads `/D:/…`, which
 // deno cannot open.
-const PASSING = new URL("./fixtures/passing_suite.ts", import.meta.url).href;
-const FAILING = new URL("./fixtures/failing_suite.ts", import.meta.url).href;
+const PASSING = new URL(
+  "../../../tests/support/deno/fixtures/passing_suite.ts",
+  import.meta.url,
+).href;
+const FAILING = new URL(
+  "../../../tests/support/deno/fixtures/failing_suite.ts",
+  import.meta.url,
+).href;
 
 test("parseTestSummary reads the pretty/dot result line in each of its shapes", () => {
   assertEquals(parseTestSummary("ok | 5 passed | 0 failed (12ms)\n"), {

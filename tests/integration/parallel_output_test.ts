@@ -11,8 +11,8 @@
  * capture console lines and raw child bytes into one ordered transcript.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, group, target } from "../../packages/core/mod.ts";
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Plugin } from "../../packages/core/src/plugin.ts";

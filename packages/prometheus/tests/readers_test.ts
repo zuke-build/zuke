@@ -3,12 +3,12 @@
 
 /** Unit: the `value` and `samples` readers and their edge cases. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   type PrometheusQueryData,
   type PrometheusResponse,

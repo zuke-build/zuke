@@ -1,12 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import type { Plugin, RunRecord } from "@zuke/core";
 import { createOtelPlugin, DEDUP_CAP, otel, otelWith } from "../src/plugin.ts";
 import type { OtlpTransport } from "../src/exporter.ts";
-import { fakeTransport, makeRecord, RESOURCE, target } from "./_fixtures.ts";
+import {
+  fakeTransport,
+  makeRecord,
+  RESOURCE,
+  target,
+} from "../../../tests/support/otel/_fixtures.ts";
 
 /** Deliver a record to the plugin's `onRunStateChange`, failing if it has none. */
 async function deliver(plugin: Plugin, record: RunRecord): Promise<void> {

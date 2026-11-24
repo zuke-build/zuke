@@ -1,11 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   Budget,
   budget,

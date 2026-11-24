@@ -7,8 +7,12 @@
  * where dropping them would change what the pipeline runs or guards.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import {
   cicd,
   type CiJob,

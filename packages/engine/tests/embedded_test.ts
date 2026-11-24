@@ -6,8 +6,8 @@
  * version, and the resolver over the releases compiled in.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { embeddedTools, servesRelease } from "../src/embedded.ts";
 
 test("servesRelease: the same major, at the version asked for or newer", () => {

@@ -10,12 +10,12 @@
 
 // cspell:ignore Fprometheus uami
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import { PrometheusAzureSettings, PrometheusTasks } from "../mod.ts";
 import { azureCredentials } from "../src/azure.ts";
@@ -27,8 +27,8 @@ import {
   routes,
   type Seams,
   T0,
-} from "./_auth.ts";
-import { vector } from "./_fetch.ts";
+} from "../../../tests/support/prometheus/_auth.ts";
+import { vector } from "../../../tests/support/prometheus/_fetch.ts";
 
 const TENANT = "00000000-0000-0000-0000-000000000001";
 const TOKEN_URL =

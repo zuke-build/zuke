@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   defaultDenoHost,
   denoCandidates,
@@ -18,7 +18,7 @@ import {
 } from "../src/deno_path.ts";
 import { launcherBash, launcherPwsh } from "../src/launcher.ts";
 import { denoExecutable } from "@zuke/core";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** A {@link DenoHost} whose three answers the test dictates. */
 function host(overrides: Partial<DenoHost> = {}): DenoHost {

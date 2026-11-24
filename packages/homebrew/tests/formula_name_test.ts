@@ -9,8 +9,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { formulaClassName } from "../src/formula_name.ts";
 
 test("formula name: class names match Homebrew's derivation", () => {

@@ -3,7 +3,7 @@
 
 /** Tests for the `QrTasks` surface and the package entrypoint. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   type ErrorCorrectionLevel,
   QrCapacityError,
@@ -11,12 +11,12 @@ import {
   QrSettings,
   QrTasks,
 } from "../mod.ts";
-import { toRows, ZUKE_BUILD_M } from "./_golden.ts";
+import { toRows, ZUKE_BUILD_M } from "../../../tests/support/qr/_golden.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 
 test("QrTasks.encode returns the module matrix", () => {
   const code: QrCode = QrTasks.encode("https://zuke.build");

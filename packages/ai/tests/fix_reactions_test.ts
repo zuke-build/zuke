@@ -6,11 +6,11 @@
  * for both the AI fixer and the agent fixer, against a fake GitHub.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import type { RemediationContext } from "@zuke/core";
 import { type AgentFixer, agentFixer, type AiFixer, aiFixer } from "../mod.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { fakeReactions } from "../../../tests/support/ai/_reactions.ts";
 
 const CTX: RemediationContext = {
   target: "test",

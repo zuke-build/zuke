@@ -1,7 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   box,
   isStyleName,
@@ -16,7 +16,7 @@ import {
   table,
   visibleWidth,
 } from "../src/render.ts";
-import { assertEquals } from "./_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 const plain: Style = { github: false, color: false, width: 20 };
 const colored: Style = { github: false, color: true, width: 20 };

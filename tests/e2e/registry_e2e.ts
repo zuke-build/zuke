@@ -10,16 +10,13 @@
  * `integration` OS matrix where Windows filesystem-lock semantics get coverage.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemBuildRegistry,
 } from "../../packages/core/mod.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/register_build.ts", import.meta.url);

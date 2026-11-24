@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { PassThrough } from "node:stream";
-import { assertEquals } from "./_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   awaitedWriter,
   flushOutput,

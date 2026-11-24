@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   AiReviewError,
   budget,
@@ -23,10 +23,17 @@ import {
 } from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
 import { sha256Hex } from "@zuke/core";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines as captured } from "../../core/tests/_console.ts";
-import { maskingContext, noRedactionContext } from "./_context.ts";
-import { collaborator, reacted, REACTIONS } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines as captured } from "../../../tests/_console.ts";
+import {
+  maskingContext,
+  noRedactionContext,
+} from "../../../tests/support/ai/_context.ts";
+import {
+  collaborator,
+  reacted,
+  REACTIONS,
+} from "../../../tests/support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

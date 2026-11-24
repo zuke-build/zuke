@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   SignPathApiError,
@@ -26,7 +26,7 @@ import {
   STATUS_URL,
   TOKEN,
   WEB_URL,
-} from "./_fetch.ts";
+} from "../../../tests/support/signpath/_fetch.ts";
 
 test("status: reads the documented answer, with the token as a bearer", async () => {
   const net = routes({ [`GET ${STATUS_URL}`]: [status("WaitingForApproval")] });

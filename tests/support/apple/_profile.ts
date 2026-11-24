@@ -10,7 +10,7 @@
  * @module
  */
 
-import type { ProvisioningHost } from "../src/provisioning_host.ts";
+import type { ProvisioningHost } from "../../../packages/apple/src/provisioning_host.ts";
 
 /** What a fake profile holds; every field has a default. */
 export interface FakeProfile {

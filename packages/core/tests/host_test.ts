@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   archName,
   type CiHost,
@@ -15,7 +15,7 @@ import {
   operatingSystem,
   platformLabel,
 } from "../src/host.ts";
-import { withEnv as withScopedEnv } from "./_env.ts";
+import { withEnv as withScopedEnv } from "../../../tests/_env.ts";
 
 /** All CI-host env signals, for clearing the ambient environment in a test. */
 const HOST_VARS = [

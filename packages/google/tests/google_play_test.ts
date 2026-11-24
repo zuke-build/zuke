@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore Здравей
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   GooglePlayError,
   type GooglePlaySettings,
@@ -19,7 +19,7 @@ import {
   type PlayCall,
   type PlayRoute,
   serviceAccountKey,
-} from "./_play.ts";
+} from "../../../tests/support/google/_play.ts";
 
 const KEY = await serviceAccountKey();
 const PACKAGE = "com.example.app";

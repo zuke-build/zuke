@@ -11,15 +11,15 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { postCheckRun } from "../src/check_run.ts";
 import { GhApiError } from "../src/api.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** A full commit SHA — the only shape the API accepts. */
 const SHA = "a".repeat(40);

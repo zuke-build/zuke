@@ -1,10 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { appendJobSummary } from "../src/job_summary.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 import { withAmbientRedactor } from "../src/ambient_redactor.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
 

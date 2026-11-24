@@ -9,8 +9,8 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 
 test("every file the Node lane skips is a test file, listed once and in order", async () => {
   const pending: unknown = JSON.parse(

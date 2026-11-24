@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { resolveDocSpec } from "../src/doc_spec.ts";
 
 /** A stand-in working directory, so nothing here depends on where it runs. */

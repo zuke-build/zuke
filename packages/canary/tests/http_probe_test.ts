@@ -3,14 +3,17 @@
 
 /** Unit tests for `httpProbe(...)`, answered by a fake `fetch`. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { httpProbe } from "../mod.ts";
-import { analysisContext, fakeFetch } from "./_context.ts";
+import {
+  analysisContext,
+  fakeFetch,
+} from "../../../tests/support/canary/_context.ts";
 
 test("a healthy URL passes every sample", async () => {
   const fetcher = fakeFetch(() => new Response("ok"));

@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   cicd,
   CiFile,
@@ -19,7 +19,7 @@ import {
 } from "../src/ci.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A small pipeline exercised across providers. */
 const pipeline: CiPipeline = {

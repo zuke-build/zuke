@@ -8,11 +8,11 @@
  * survive as text, and what must not happen is it opening a command.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { capture } from "../../core/tests/_console.ts";
-import { consoleWriters, ENC } from "../../core/tests/_escaping.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { capture } from "../../../tests/_console.ts";
+import { consoleWriters, ENC } from "../../../tests/_escaping.ts";
 import { neutralise, output } from "../src/output.ts";
 import { cliReporter } from "@zuke/core";
 

@@ -9,16 +9,13 @@
  * unhealthy one.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { PrometheusTasks } from "../../packages/prometheus/mod.ts";
 import { canary, prometheus } from "../../packages/canary/mod.ts";
-import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
-import { fakeFetch, vector } from "../../packages/prometheus/tests/_fetch.ts";
+import { FakePlatform } from "../support/canary/_platform.ts";
+import { fakeFetch, vector } from "../support/prometheus/_fetch.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 /** What the fake Prometheus answers; set per test. */

@@ -12,12 +12,12 @@
 
 // cspell:ignore AKIDCI AKIDDEFAULT AKIDDEV AKIDFROMCONFIG AKIDHALF AKIDOTHER AKIDSTAGING ASIDEXAMPLETEMP
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   PrometheusAwsSettings,
@@ -34,8 +34,8 @@ import {
   routes,
   type Seams,
   T0,
-} from "./_auth.ts";
-import { fakeFetch, vector } from "./_fetch.ts";
+} from "../../../tests/support/prometheus/_auth.ts";
+import { fakeFetch, vector } from "../../../tests/support/prometheus/_fetch.ts";
 
 const ID = "AKIDEXAMPLE";
 const SECRET = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";

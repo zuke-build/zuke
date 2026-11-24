@@ -3,11 +3,15 @@
 
 /** Unit: series, labels, label values (and the label-name path guard), metadata. */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { PrometheusRequestError, PrometheusTasks } from "../mod.ts";
 import { escapeLabelName } from "../src/metadata.ts";
-import { BASE, fakeFetch, success } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  success,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 test("series POSTs repeated match[] with its range and limit", async () => {
   const fetcher = fakeFetch(() =>

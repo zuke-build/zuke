@@ -7,12 +7,12 @@
  * CLI runner — plus the wire protocol-version handshake on the HTTP client.
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   checkBuildRegistry,
   checkStateStore,
@@ -31,7 +31,7 @@ import {
   type BuildQuery,
   toBuildSummary,
 } from "../src/registry/descriptor.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A short TTL keeps the lock-takeover scenarios fast in the test lane. */
 const FAST = { lockTtlMs: 50 };

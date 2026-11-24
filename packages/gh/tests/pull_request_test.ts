@@ -11,18 +11,18 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   findPullRequest,
   type GhPullRequestSettings,
   openPullRequest,
 } from "../src/pull_request.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** One recorded request. */
 interface Call {

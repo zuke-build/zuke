@@ -3,7 +3,7 @@
 
 /** A {@link CanaryAnalysisContext} for analysis unit tests. */
 
-import type { CanaryAnalysisContext } from "../mod.ts";
+import type { CanaryAnalysisContext } from "../../../packages/canary/mod.ts";
 
 /** A context whose redactor masks `s3cr3t`, optionally with a signal. */
 export function analysisContext(signal?: AbortSignal): CanaryAnalysisContext {

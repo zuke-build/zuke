@@ -12,16 +12,13 @@
  * `integration` target on the OS matrix.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/cancel_build.ts", import.meta.url);

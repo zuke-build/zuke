@@ -10,15 +10,15 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   checkHclWrappers,
   generateHclWrappers,
   type HclTarget,
   renderHcl,
 } from "../build/hcl_gen.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 test("renderHcl substitutes body placeholders and injects the module doc last", () => {
   const template = '__MODULE_DOC__\nclass __NAME__X { tool = "__TOOL__"; }';

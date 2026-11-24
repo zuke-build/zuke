@@ -11,13 +11,13 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp, withTempCwd } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp, withTempCwd } from "./_temp.ts";
 import { absolutePath, RuntimeTasks } from "@zuke/core";
 import { DenoBundleSettings } from "@zuke/deno";
 import {

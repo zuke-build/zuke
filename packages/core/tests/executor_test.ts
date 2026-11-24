@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   messageOf,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { GraphError, type OrderingEdge } from "../src/graph.ts";
 import {
   Build,
@@ -51,10 +51,10 @@ import { externalSignal, resumeWhen } from "../src/wait.ts";
 import type { HeldLease } from "../src/state/run_lease.ts";
 import { buildRunRecord } from "../src/state/record.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { withTemp } from "./_temp.ts";
-import { MemCacheStore } from "./_fakes.ts";
-import { silence } from "./_console.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { MemCacheStore } from "../../../tests/_fakes.ts";
+import { silence } from "../../../tests/_console.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 const silent: ExecuteOptions = { silent: true };
 

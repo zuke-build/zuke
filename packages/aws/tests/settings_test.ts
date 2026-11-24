@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -14,7 +14,7 @@ import {
   missingTool,
 } from "@zuke/core/tooling/conformance";
 import { AwsSettings, AwsTasks } from "../mod.ts";
-import { FakeAws } from "./_fake.ts";
+import { FakeAws } from "../../../tests/support/aws/_fake.ts";
 
 test("the default binary is aws", () => {
   assertEquals(new AwsSettings().argv(), ["aws"]);

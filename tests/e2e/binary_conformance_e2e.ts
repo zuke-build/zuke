@@ -13,7 +13,7 @@
  * directory, whose `zuke.json` names the fake worker as the build's SDK.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { type ConformanceRunner, conformanceSuite } from "../_conformance.ts";
 import {
   buildWorkspaceNodeBinary,

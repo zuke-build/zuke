@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -34,7 +34,7 @@ import {
   KubectlWaitSettings,
   parseNamespaces,
 } from "../mod.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 test("the default binary is kubectl", () => {
   assertEquals(new KubectlApplySettings().file("x.yaml").argv()[0], "kubectl");

@@ -7,7 +7,7 @@
  * unmodified core engine, with every subprocess spawned by the engine.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import {
   Build,
   cicd,
@@ -20,8 +20,8 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
-import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
+} from "../_assert.ts";
+import { FakeGraphHost } from "../_fakes.ts";
 import { embeddedTools } from "../../packages/engine/src/embedded.ts";
 import { WorkerHost } from "../../packages/engine/src/host.ts";
 import { hostedBuild } from "../../packages/engine/src/hosted.ts";
@@ -32,12 +32,11 @@ import {
   ambientEcho,
   type EchoSink,
 } from "../../packages/core/src/ambient_echo.ts";
-import { withEnv as withEnvs } from "../../packages/core/tests/_env.ts";
+import { withEnv as withEnvs } from "../_env.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
-const FAKE =
-  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
-    .href;
+const FAKE = new URL("../support/engine/_fake_worker.ts", import.meta.url)
+  .href;
 
 interface PlanTarget {
   name: string;
@@ -1056,7 +1055,7 @@ test("a pre-warm that fails is the next run's to meet, not the finished run's", 
 });
 
 const FAKE_TOOL =
-  new URL("../../packages/engine/tests/_fake_tool.ts", import.meta.url).href;
+  new URL("../support/engine/_fake_tool.ts", import.meta.url).href;
 
 /** A worker call of the fake wrapper's task with `args`. */
 function toolCall(

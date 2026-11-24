@@ -10,11 +10,8 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertRejects,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertRejects } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 

@@ -11,13 +11,13 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import { absolutePath, HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import type { ExpectedProvenance } from "../build/npm_provenance.ts";
 import {
   auditSignatures,

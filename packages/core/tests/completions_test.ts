@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { discoverParameters } from "../src/params.ts";

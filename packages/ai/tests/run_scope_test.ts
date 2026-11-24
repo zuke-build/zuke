@@ -14,8 +14,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { type AgentContext, type AgentFixer, agentFixer } from "../mod.ts";
 import { type AiFixer, aiFixer, type Fix } from "../mod.ts";
 // Internal to the package: the public surface is `.runOnly("both")` / `.runOnly("ci")` on

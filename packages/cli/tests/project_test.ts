@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { stripAnsi } from "@zuke/core/render";
 import type { BuildProbe } from "../src/dispatch.ts";
 import { PLAIN_PAINT } from "../src/paint.ts";
@@ -24,7 +24,7 @@ import {
   parseDependencyArgs,
   runDependencies,
 } from "../src/dependencies.ts";
-import { noProjectProbe } from "./_fakes.ts";
+import { noProjectProbe } from "../../../tests/support/cli/_fakes.ts";
 
 /** The fake project's root. */
 const ROOT = "/work/app";

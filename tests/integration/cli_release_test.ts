@@ -11,12 +11,9 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
-import { withTemp, withTempCwd } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
+import { withTemp, withTempCwd } from "../_temp.ts";
 import {
   absolutePath,
   Build,

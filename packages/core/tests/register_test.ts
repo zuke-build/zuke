@@ -7,12 +7,12 @@
  * with conflict retry, `--json` output, and the no-registry error path.
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
@@ -26,7 +26,7 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { redactModuleUrl, registerCommand } from "../src/registry/register.ts";
-import { capture as captureLines } from "./_console.ts";
+import { capture as captureLines } from "../../../tests/_console.ts";
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
 async function capture(

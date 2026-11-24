@@ -9,11 +9,11 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AiReviewError, AiTasks, ReviewSettings } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

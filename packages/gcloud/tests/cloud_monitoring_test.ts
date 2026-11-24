@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { HttpError } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import {
@@ -16,7 +16,13 @@ import {
   CloudMonitoringTimeSeriesSettings,
   type GcloudSettings,
 } from "../mod.ts";
-import { NOW, pages, point, series, TOKEN } from "./_monitoring.ts";
+import {
+  NOW,
+  pages,
+  point,
+  series,
+  TOKEN,
+} from "../../../tests/support/gcloud/_monitoring.ts";
 
 /** A read of the Cloud Run 5xx count, with the fakes the tests share. */
 function fiveXx<S extends CloudMonitoringTimeSeriesSettings>(

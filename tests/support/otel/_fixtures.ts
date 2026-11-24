@@ -12,9 +12,9 @@ import type {
   OtlpMetricsPayload,
   OtlpResource,
   OtlpTracePayload,
-} from "../src/otlp.ts";
-import type { OtlpTransport } from "../src/exporter.ts";
-import { runRecord } from "../../core/tests/_fakes.ts";
+} from "../../../packages/otel/src/otlp.ts";
+import type { OtlpTransport } from "../../../packages/otel/src/exporter.ts";
+import { runRecord } from "../../_fakes.ts";
 
 /** A fixed resource/scope identity for tests. */
 export const RESOURCE: OtlpResource = {

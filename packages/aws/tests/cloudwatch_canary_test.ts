@@ -1,16 +1,16 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import { type AwsCloudwatchAnalysisSettings, cloudwatch } from "../mod.ts";
-import { FakeAws, json } from "./_fake.ts";
+import { FakeAws, json } from "../../../tests/support/aws/_fake.ts";
 
 /** A context whose redactor masks one secret. */
 const context = {

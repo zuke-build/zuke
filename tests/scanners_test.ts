@@ -11,13 +11,13 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   type InstallPlatform,
   type Platform,
   ToolInstallSettings,
 } from "@zuke/core";
-import { assertEquals, assertThrows } from "../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "./_assert.ts";
 import {
   ACTIONLINT_VERSION,
   actionlintTool,

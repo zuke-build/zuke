@@ -10,9 +10,9 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { testPlan } from "./_fakes.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { settleCancelledRun } from "../src/execute_cancel.ts";
@@ -23,7 +23,7 @@ import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 

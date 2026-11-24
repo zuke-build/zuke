@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, target } from "../mod.ts";
 import { forceTarget } from "../src/force.ts";
 import { buildRunRecord } from "../src/state/record.ts";
 import { parseRunRecord, type RunRecord } from "../src/state/types.ts";
-import { withTempStore } from "./_store.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 
 /** A build with one ordinary target and one the author declared off-limits. */

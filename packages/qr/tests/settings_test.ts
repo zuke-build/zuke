@@ -3,9 +3,9 @@
 
 /** Tests for the fluent `QrSettings`. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { MAX_QUIET_ZONE, QrSettings } from "../src/settings.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 
 test("QrSettings defaults favour a compact, level-M code with a small border", () => {
   const s = new QrSettings();

@@ -8,15 +8,12 @@
  * ({@link runCli}), so the whole parse → resolve → execute path is exercised.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, gzip, tar, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import { withTempCwd } from "../../packages/core/tests/_temp.ts";
+import { withEnv } from "../_env.ts";
+import { withTempCwd } from "../_temp.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 

@@ -3,15 +3,15 @@
 
 /** Unit tests for the canary plan: what it builds and what it refuses. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { LockSettings } from "@zuke/core";
 import { planCanary } from "../src/plan.ts";
-import { FakePlatform } from "./_platform.ts";
+import { FakePlatform } from "../../../tests/support/canary/_platform.ts";
 
 test("steps become phases with their bakes, overrides included", () => {
   const plan = planCanary((c) =>

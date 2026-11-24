@@ -3,14 +3,18 @@
 
 /** Unit: targets, rules, alerts, build information and the health probes. */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   PrometheusApiError,
   PrometheusRequestError,
   PrometheusTasks,
 } from "../mod.ts";
-import { BASE, fakeFetch, success } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  success,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 /** An active target as the API reference's example shows it. */
 const ACTIVE = {

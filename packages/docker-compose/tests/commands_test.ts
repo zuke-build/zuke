@@ -8,8 +8,8 @@
  * CLI accepts rather than only argvs this wrapper happens to produce.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   DockerComposeCommitSettings,
   DockerComposeCpSettings,

@@ -8,8 +8,8 @@
  * empty in-memory handle per `stateOf` call, silently dropping reads and writes.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 

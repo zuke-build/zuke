@@ -9,13 +9,13 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 import { gzip, tar } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import {

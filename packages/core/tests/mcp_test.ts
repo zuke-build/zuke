@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { METHOD_NOT_FOUND, serveStdio } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";

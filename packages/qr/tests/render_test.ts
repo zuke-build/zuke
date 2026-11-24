@@ -3,11 +3,11 @@
 
 /** Tests for the terminal renderer: half blocks, full blocks, borders, inversion. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { renderLines } from "../src/render.ts";
 import { QrSettings } from "../src/settings.ts";
 import type { QrCode } from "../src/symbol.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 /** A fake 3×3 "code" whose modules spell a diagonal, enough to see every glyph. */
 function diagonal(size: number): QrCode {

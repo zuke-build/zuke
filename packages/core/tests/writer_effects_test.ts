@@ -9,16 +9,16 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { execute } from "../src/executor.ts";
 import { target } from "../src/target.ts";
 import { Redactor } from "../src/redact.ts";
 import { RunNotActiveError, RunStateWriter } from "../src/state/writer.ts";
 import type { EffectState, RunRecord, RunStatus } from "../src/state/types.ts";
-import { MemStateStore } from "./_fakes.ts";
-import { runRecord } from "./_fakes.ts";
+import { MemStateStore } from "../../../tests/_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 
 const NOW = "2026-08-10T10:00:00.000Z";
 

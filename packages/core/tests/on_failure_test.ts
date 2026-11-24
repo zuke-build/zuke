@@ -9,15 +9,15 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
 import { resolveFailureDispositions } from "../src/on_failure.ts";
 import { cancelRun } from "../src/cancel.ts";
 import { messageOf } from "../src/internal.ts";
-import { withTempStore } from "./_store.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 test("resolveFailureDispositions keeps only the cancelling dispositions", () => {
   class B extends Build {

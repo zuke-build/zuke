@@ -6,9 +6,9 @@
  * through `deno fmt` so a generated file and the formatter cannot disagree.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
-import { withTempCwd } from "../packages/core/tests/_temp.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
+import { withTempCwd } from "./_temp.ts";
 import { formatText } from "../build/fmt_text.ts";
 
 test("formatText formats TypeScript with the repository's rules", async () => {

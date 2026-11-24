@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { tapRepository } from "../src/tap.ts";
 
 test("tap: the short and the repository spelling name the same repository", () => {

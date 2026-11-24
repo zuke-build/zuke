@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   initiatorOf,
   parseRunRecord,
@@ -51,11 +51,11 @@ import {
   parseLockRecord,
   stringifyLockRecord,
 } from "../src/state/lock.ts";
-import { withTemp } from "./_temp.ts";
-import { FakeStateHost } from "./_fakes.ts";
-import { MemStateStore } from "./_fakes.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
+import { MemStateStore } from "../../../tests/_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /** A minimal, valid run record for tests: parameterised and never degraded. */
 function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {

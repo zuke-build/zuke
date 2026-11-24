@@ -14,8 +14,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { DockerLoginSettings } from "../src/registry.ts";
 
 /** The password these tests hand the wrapper. */

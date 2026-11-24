@@ -9,12 +9,12 @@
  * refuse one of those fields stopping the command with the reason.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+} from "../_assert.ts";
 import { Build, cicd, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 

@@ -9,12 +9,9 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withTempStore } from "../../core/tests/_store.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 import {
   Build,
   cancelRun,
@@ -33,7 +30,7 @@ import {
   type CanarySettings,
 } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
-import { FakePlatform } from "./_platform.ts";
+import { FakePlatform } from "../../../tests/support/canary/_platform.ts";
 
 /** A build whose `rollout` is the canary `configure` describes. */
 function rolloutOf(

@@ -16,7 +16,10 @@
  */
 
 import { CommandOutput } from "@zuke/core/shell";
-import type { AwsSettings, AwsSettingsRunner } from "../mod.ts";
+import type {
+  AwsSettings,
+  AwsSettingsRunner,
+} from "../../../packages/aws/mod.ts";
 
 /** An alias as the model keeps it. */
 export interface ModelAlias {

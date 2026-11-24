@@ -8,8 +8,8 @@
  * calls it, so a resolver that forgets the check fails here.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   ALLOW_INSECURE_ENV,
   assertSecureBackendUrl,

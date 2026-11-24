@@ -8,12 +8,12 @@
  * output, and refusals a runner could bypass.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   AzAccountGetAccessTokenSettings,
@@ -37,7 +37,7 @@ import {
   AzWebappConfigAppsettingsSetSettings,
   AzWebappDeploySettings,
 } from "../mod.ts";
-import { FakeAz, json } from "./_fake.ts";
+import { FakeAz, json } from "../../../tests/support/az/_fake.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AzSettings>(settings: S): {

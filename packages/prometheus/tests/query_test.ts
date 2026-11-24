@@ -3,14 +3,20 @@
 
 /** Unit: instant and range queries — the exact request, and every result type. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { PrometheusRequestError, PrometheusTasks } from "../mod.ts";
-import { BASE, fakeFetch, queryResult, success, vector } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  queryResult,
+  success,
+  vector,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 test("query POSTs a form with every parameter it was given", async () => {
   const fetcher = fakeFetch(() => vector([{ job: "api" }, "1"]));

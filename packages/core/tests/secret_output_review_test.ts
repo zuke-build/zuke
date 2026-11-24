@@ -9,8 +9,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { secretsInOutput } from "../src/secret_output.ts";
 import { SecretOutputSettings } from "../src/tooling.ts";
 import { maskPatterns, Redactor } from "../src/redact.ts";

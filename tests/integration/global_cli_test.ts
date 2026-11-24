@@ -11,8 +11,8 @@
  * code coming back.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
 import {
   type BuildProbe,
@@ -33,10 +33,10 @@ import {
   defaultProjectHost,
   type ProjectHost,
 } from "../../packages/cli/src/project.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import { capture } from "../../packages/core/tests/_console.ts";
-import { ENC } from "../../packages/core/tests/_escaping.ts";
+import { withTemp } from "../_temp.ts";
+import { withEnv } from "../_env.ts";
+import { capture } from "../_console.ts";
+import { ENC } from "../_escaping.ts";
 import { stripAnsi } from "../../packages/core/src/render.ts";
 import { ZUKE_LOGO } from "../../packages/core/src/logo.ts";
 

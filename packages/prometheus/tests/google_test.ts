@@ -8,12 +8,12 @@
  * server, the quota project, caching, and every failure scrubbed.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import { PrometheusGoogleSettings, PrometheusTasks } from "../mod.ts";
 import { googleCredentials } from "../src/google.ts";
@@ -28,8 +28,8 @@ import {
   rsaKey,
   type Seams,
   T0,
-} from "./_auth.ts";
-import { fakeFetch, vector } from "./_fetch.ts";
+} from "../../../tests/support/prometheus/_auth.ts";
+import { fakeFetch, vector } from "../../../tests/support/prometheus/_fetch.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const METADATA =

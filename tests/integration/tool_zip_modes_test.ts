@@ -8,11 +8,11 @@
  * executable, and its symlink comes back as a symlink.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
-import { makeZip } from "../../packages/core/tests/_zip.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { makeZip } from "../_zip.ts";
+import { withTemp } from "../_temp.ts";
 import { runCli } from "./_harness.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);

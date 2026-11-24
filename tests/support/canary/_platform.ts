@@ -15,7 +15,7 @@ import type {
   CanaryContext,
   CanaryPlatform,
   ExposureKind,
-} from "../mod.ts";
+} from "../../../packages/canary/mod.ts";
 
 /** The calls a {@link FakePlatform} can be told to fail. */
 export type FakeCall = "stage" | "expose" | "promote" | "abort";

@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   archiveOutputs,
   envCacheStore,
@@ -23,8 +23,8 @@ import { HttpError } from "../src/http.ts";
 import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
 import { S3CacheStore } from "../src/s3_cache.ts";
 import { byteStream, gzip, tar } from "../src/compression.ts";
-import { withTemp } from "./_temp.ts";
-import { sealHeader } from "./_tar.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { sealHeader } from "../../../tests/_tar.ts";
 import { defaultCacheHost } from "../src/cache.ts";
 import { messageOf } from "../src/internal.ts";
 

@@ -1,14 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import process from "node:process";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   absolutePath,
   Build,
@@ -27,7 +27,7 @@ import {
   run,
 } from "../src/cli.ts";
 import { discoverGroups, discoverTargets } from "../src/build.ts";
-import { FakeGraphHost } from "./_fakes.ts";
+import { FakeGraphHost } from "../../../tests/_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { discoverParameters, parameter } from "../src/params.ts";
 import {
@@ -39,9 +39,9 @@ import {
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { withTemp } from "./_temp.ts";
-import { capture } from "./_console.ts";
-import { withEnv } from "./_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { capture } from "../../../tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { VERSION } from "../src/version.ts";
 import { cliPaint } from "../src/cli_paint.ts";
 import { stripAnsi } from "../src/render.ts";

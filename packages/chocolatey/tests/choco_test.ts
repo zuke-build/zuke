@@ -9,14 +9,14 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { CommandError, CommandTimeoutError } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -32,7 +32,10 @@ import {
   ChocoTasks,
   ChocoUninstallSettings,
 } from "../mod.ts";
-import { FAKE_CHOCO_UNSUPPORTED, fakeChoco } from "./_fake_choco.ts";
+import {
+  FAKE_CHOCO_UNSUPPORTED,
+  fakeChoco,
+} from "../../../tests/support/chocolatey/_fake_choco.ts";
 
 test("choco pack: the nuspec, then the options as --name=value", () => {
   assertEquals(new ChocoPackSettings().argv(), ["choco", "pack"]);

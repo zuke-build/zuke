@@ -8,11 +8,8 @@
  * promotion or rollback — runs here as a reader would run it, on a free port.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Release } from "../../examples/canary-release/build.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 

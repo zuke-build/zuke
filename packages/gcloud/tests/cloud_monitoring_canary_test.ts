@@ -1,19 +1,24 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import {
   cloudMonitoring,
   CloudMonitoringAnalysisSettings,
   type GcloudSettings,
 } from "../mod.ts";
-import { NOW, pages, series, TOKEN } from "./_monitoring.ts";
+import {
+  NOW,
+  pages,
+  series,
+  TOKEN,
+} from "../../../tests/support/gcloud/_monitoring.ts";
 
 /** A context whose redactor masks nothing. */
 const plain = { redact: (text: string) => text };

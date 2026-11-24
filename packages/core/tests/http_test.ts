@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   httpDownload,
   HttpError,
@@ -10,7 +10,7 @@ import {
   type HttpOptions,
   httpText,
 } from "../src/http.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A fake `fetch` returning `body` with `status`, recording the call. */
 function fakeFetch(

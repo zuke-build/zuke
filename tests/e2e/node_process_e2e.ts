@@ -16,9 +16,9 @@
  * never reaches this file (it is `*_e2e.ts`).
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { fileURLToPath } from "node:url";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { assertEquals } from "../_assert.ts";
 
 const CANARY = fileURLToPath(
   new URL("./fixtures/node_process_canary.mjs", import.meta.url),

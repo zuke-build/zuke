@@ -12,11 +12,8 @@
  * revision every update changes.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -26,7 +23,7 @@ import {
 import { splitShellArgs } from "../../packages/core/src/shell.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { lambdaCanary } from "../../packages/aws/mod.ts";
-import { LambdaModel } from "../../packages/aws/tests/_lambda_model.ts";
+import { LambdaModel } from "../support/aws/_lambda_model.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The modelled Lambda, fresh for each test. */

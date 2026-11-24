@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { planGraph } from "../src/graph.ts";

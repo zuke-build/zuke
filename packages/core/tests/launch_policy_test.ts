@@ -10,8 +10,8 @@
  * primitive for anyone who can write a file on the host.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   hostLaunchFileSystem,
   LAUNCH_COMMANDS_ENV,

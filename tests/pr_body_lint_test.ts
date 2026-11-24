@@ -10,11 +10,8 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { lintPrBody } from "../build/pr_body_lint.ts";
 
 const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");

@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -22,7 +22,11 @@ import {
 // Internal to the package: the public surface is the task-shaped readers, so
 // these are imported from their modules rather than re-exported by mod.ts.
 import { readJson, readScalar } from "../src/scalar_output.ts";
-import { FakeAws, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAws,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/aws/_fake.ts";
 
 const CAP = 8388608;
 

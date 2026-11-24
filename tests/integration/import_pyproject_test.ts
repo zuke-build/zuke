@@ -13,16 +13,13 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
-import { pinRegistry, testPin } from "../../packages/cli/tests/_fakes.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { pinRegistry, testPin } from "../support/cli/_fakes.ts";
+import { withEnv } from "../_env.ts";
 
 /** The production host with its log captured. */
 function quietHost(lines: string[]): SetupHost {

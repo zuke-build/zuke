@@ -10,10 +10,10 @@
  * behaviour rather than the renderer's.
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { logoLines, ZUKE_LOGO } from "../src/logo.ts";
 import { SGR, stripAnsi } from "../src/render.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 
 test("logoLines without colour is the raw art, line by line", () => {
   assertEquals(logoLines(false), ZUKE_LOGO.split("\n"));

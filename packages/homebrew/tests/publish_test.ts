@@ -10,13 +10,13 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { GhApiError } from "@zuke/gh";
 import { type HomebrewPublishSettings, HomebrewTasks } from "../mod.ts";
 

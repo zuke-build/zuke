@@ -7,8 +7,12 @@
  * and {@link resolveBuildRegistry} precedence. Mirrors the state-layer tests.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { type CliDescription, describeCli } from "../src/describe.ts";
 import { Build, parameter, target } from "../mod.ts";
@@ -25,8 +29,8 @@ import {
   envBuildRegistry,
   resolveBuildRegistry,
 } from "../src/registry/resolve.ts";
-import { withTemp } from "./_temp.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 
 /** A minimal CLI surface for a descriptor. */
 function sampleSurface(): CliDescription {

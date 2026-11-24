@@ -11,10 +11,10 @@
  * `jsr:@zuke/core@^1` import resolves to this workspace, as the examples do.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { main } from "../../packages/cli/mod.ts";
-import { FakePrompter } from "../../packages/cli/tests/_fakes.ts";
+import { FakePrompter } from "../support/cli/_fakes.ts";
 
 /** A JSON-RPC request line for the stdio transport. */
 function request(id: number, method: string): string {

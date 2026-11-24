@@ -10,11 +10,8 @@
  * target rather than being swallowed by the executor.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { NpmTasks } from "../../packages/npm/mod.ts";

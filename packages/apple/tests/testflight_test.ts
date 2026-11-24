@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore paiement
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   TestFlightError,
   type TestFlightSettings,
   TestFlightTasks,
 } from "../mod.ts";
-import { apiKey, type AscCall, type AscRoute, fakeAsc } from "./_asc.ts";
+import {
+  apiKey,
+  type AscCall,
+  type AscRoute,
+  fakeAsc,
+} from "../../../tests/support/apple/_asc.ts";
 
 const PEM = (await apiKey()).pem;
 

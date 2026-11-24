@@ -1,10 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { publishFile } from "../src/state/json_file_cas.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 import type { StateHost } from "../src/state/store.ts";
 
 /**

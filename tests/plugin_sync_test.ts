@@ -10,14 +10,14 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   checkPluginSkillsSync,
   SKILLS_SOURCE,
   syncPluginSkills,
 } from "../build/plugin_sync.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 test("the committed plugin skills copy matches skills/ exactly", async () => {
   assertEquals(await checkPluginSkillsSync(), []);

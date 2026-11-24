@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { outcomesFromRecord, outcomeView } from "../src/run_support.ts";
 import type { TargetRunState } from "../src/state/types.ts";
 import { parseRunRecord } from "../src/state/types.ts";

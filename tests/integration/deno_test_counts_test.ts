@@ -10,11 +10,8 @@
  * executing the suite (the wrapper's default binary), so it stays hermetic.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -22,11 +19,11 @@ import { runCli } from "./_harness.ts";
 // Addressed by `file://` URL, which is byte-identical on every OS — a URL's
 // `pathname` is not: on Windows it reads `/D:/…`, which deno cannot open.
 const PASSING = new URL(
-  "../../packages/deno/tests/fixtures/passing_suite.ts",
+  "../support/deno/fixtures/passing_suite.ts",
   import.meta.url,
 ).href;
 const FAILING = new URL(
-  "../../packages/deno/tests/fixtures/failing_suite.ts",
+  "../support/deno/fixtures/failing_suite.ts",
   import.meta.url,
 ).href;
 

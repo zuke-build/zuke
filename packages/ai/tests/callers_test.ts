@@ -7,8 +7,8 @@
  * commenter before it spends anything.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   type CommandCaller,
   commandCaller,
@@ -17,10 +17,10 @@ import {
 } from "../src/callers.ts";
 import { authorizeGithubCommand } from "../src/hosts/github.ts";
 import { AiReviewError, securityReviewer } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
+import { fakeReactions } from "../../../tests/support/ai/_reactions.ts";
 
 /** A lookup answering `standing`, counting its calls. */
 function lookup(standing: Standing) {

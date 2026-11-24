@@ -15,17 +15,14 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   checkSkillDoc,
   checkSkillTree,
   parseFrontmatter,
 } from "../build/skill_check.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 /** A conforming SKILL.md body for the given name. */
 function doc(name: string, description = "Does a thing."): string {

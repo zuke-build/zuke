@@ -9,11 +9,8 @@
  * not just in isolation.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { runCli } from "./_harness.ts";
 import { BrowserOpenSettings, Build, target } from "../../packages/core/mod.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "../../packages/console/mod.ts";

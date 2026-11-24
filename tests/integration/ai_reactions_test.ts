@@ -9,16 +9,13 @@
  * run acknowledges its command with 👍.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { genericReviewer, securityReviewer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import {
-  collaborator,
-  fakeReactions,
-} from "../../packages/ai/tests/_reactions.ts";
+import { withEnv } from "../_env.ts";
+import { collaborator, fakeReactions } from "../support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

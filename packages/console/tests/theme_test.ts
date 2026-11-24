@@ -1,14 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   defaultTheme,
   LEVEL_MARKS,
   type Theme,
   themeTags,
 } from "../src/theme.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 test("themeTags exposes every palette token as a markup tag", () => {
   const custom: Theme = { ...defaultTheme, success: ["blue", "bold"] };

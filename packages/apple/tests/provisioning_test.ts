@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore frob
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
-import { rejection } from "./_fake_tool.ts";
+} from "../../../tests/_assert.ts";
+import { rejection } from "../../../tests/support/apple/_fake_tool.ts";
 import { ProvisioningProfileError, ProvisioningProfileTasks } from "../mod.ts";
 import { readProvisioningProfile } from "../src/provisioning_profile.ts";
-import { base64, MemoryHost, profileBytes, profilePlist } from "./_profile.ts";
+import {
+  base64,
+  MemoryHost,
+  profileBytes,
+  profilePlist,
+} from "../../../tests/support/apple/_profile.ts";
 
 const UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const NOW = Date.parse("2026-06-01T00:00:00Z");

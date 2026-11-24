@@ -6,7 +6,7 @@
  * mask selection, checked against golden symbols from an independent encoder.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   choosePlacement,
   dataCodewords,
@@ -20,8 +20,8 @@ import {
   toRows,
   ZUKE_BUILD_M,
   ZUKE_L,
-} from "./_golden.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+} from "../../../tests/support/qr/_golden.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 /** Encode `text` at `level` with boosting, the way `QrTasks.encode` does. */
 function encode(text: string, level: ErrorCorrectionLevel): QrCode {

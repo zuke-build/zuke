@@ -1,14 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { ConsoleTasks, type Sink } from "../src/console.ts";
 import { defaultTheme } from "../src/theme.ts";
 import { SGR, stripAnsi, visibleWidth } from "@zuke/core/render";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 
 /** Capture output with colour off and a fixed width, at the given level. */
 function capture(

@@ -1,14 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target, toolchain } from "../../packages/core/mod.ts";
 import type { DownloadFn } from "../../packages/core/mod.ts";
-import { makeZip } from "../../packages/core/tests/_zip.ts";
+import { makeZip } from "../_zip.ts";
 import { runCli } from "./_harness.ts";
 
 // A build that provisions a zip-packaged tool. The fixture zip and install root

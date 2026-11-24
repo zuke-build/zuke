@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { absolutePath, Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withTemp } from "../_temp.ts";
+import { withEnv } from "../_env.ts";
 import { VERSION } from "../../packages/core/src/version.ts";
 
 // The `doc` command is build-independent; any build serves to reach it.

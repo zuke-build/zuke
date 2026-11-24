@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   execSecret,
   ExecSecretSettings,
@@ -14,7 +14,7 @@ import {
   FileSecretSettings,
   SecretError,
 } from "../src/secret.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** The running `deno`, used as a hermetic, always-present subprocess. */
 const deno = Deno.execPath();

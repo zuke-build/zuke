@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   SignPathApiError,
   SignPathRequestError,
@@ -10,7 +10,7 @@ import {
   SignPathTimeoutError,
   SignPathValidationError,
 } from "../mod.ts";
-import { REQUEST, WEB_URL } from "./_fetch.ts";
+import { REQUEST, WEB_URL } from "../../../tests/support/signpath/_fetch.ts";
 
 test("errors: each names what failed and how to find it", () => {
   const api = new SignPathApiError("GET", "/v1/o/x", 401, undefined);

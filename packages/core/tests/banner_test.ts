@@ -9,8 +9,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { type BannerFacts, bannerLines } from "../src/banner.ts";
 import { ZUKE_LOGO } from "../src/logo.ts";
 

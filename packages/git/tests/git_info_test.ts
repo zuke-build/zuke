@@ -1,10 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { gitInfo, type GitRunner } from "../src/git_info.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** Build a fake {@link GitRunner} from a map of `git <args>` → output (or null). */
 function fakeRun(responses: Record<string, string | null>): GitRunner {

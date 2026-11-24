@@ -11,18 +11,15 @@
  * printed.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   type PrometheusConnectionSettings,
   PrometheusTasks,
 } from "../../packages/prometheus/mod.ts";
-import { vector } from "../../packages/prometheus/tests/_fetch.ts";
-import { routes, rsaKey } from "../../packages/prometheus/tests/_auth.ts";
+import { vector } from "../support/prometheus/_fetch.ts";
+import { routes, rsaKey } from "../support/prometheus/_auth.ts";
 import { runCli } from "./_harness.ts";
 
 const { pem } = await rsaKey();

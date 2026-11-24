@@ -9,10 +9,10 @@
  * check, cache reuse, publication race and install retry all run as shipped.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { sha256Hex } from "@zuke/core";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import { nodeLauncherPowerShell } from "../../packages/cli/src/node_launcher.ts";
 
 const WINDOWS = Deno.build.os === "windows";

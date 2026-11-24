@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   SignPathApiError,
   SignPathRequestError,
@@ -21,7 +21,7 @@ import {
   status,
   STATUS_URL,
   TOKEN,
-} from "./_fetch.ts";
+} from "../../../tests/support/signpath/_fetch.ts";
 
 /** Read {@link REQUEST}'s status through `net`, recording the sleeps. */
 function read(net: typeof fetch, sleeps: number[] = []) {

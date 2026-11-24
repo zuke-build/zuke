@@ -7,12 +7,12 @@
  * size cap, error details, and that no secret reaches an error.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   answerSeconds,
@@ -23,8 +23,8 @@ import {
   type AuthStep,
   readAuthFile,
 } from "../src/auth_http.ts";
-import { context } from "./_auth.ts";
-import { fakeFetch } from "./_fetch.ts";
+import { context } from "../../../tests/support/prometheus/_auth.ts";
+import { fakeFetch } from "../../../tests/support/prometheus/_fetch.ts";
 
 /** The step every test request is named by. */
 const STEP: AuthStep = {

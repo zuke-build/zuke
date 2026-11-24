@@ -7,12 +7,12 @@
  * no error ever carries a credential.
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   PrometheusApiError,
@@ -20,7 +20,11 @@ import {
   PrometheusRequestError,
   PrometheusTasks,
 } from "../mod.ts";
-import { BASE, fakeFetch, vector } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  vector,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 /** An env reader over a record. */
 const env = (vars: Record<string, string>) => (name: string) => vars[name];

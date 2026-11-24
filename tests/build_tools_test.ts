@@ -11,14 +11,14 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import { Build } from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import {
   localVersion,
   packageEntrypoints,
@@ -65,7 +65,7 @@ import {
   crossPackageTypesOf,
   docsOptions,
 } from "../build/docs.ts";
-import { withTempCwd } from "../packages/core/tests/_temp.ts";
+import { withTempCwd } from "./_temp.ts";
 
 // ---------------------------------------------------------------------------
 // build/packages.ts

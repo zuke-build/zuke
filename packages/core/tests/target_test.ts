@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { testPlan } from "./_fakes.ts";
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
 import { parameter } from "../src/params.ts";

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -14,7 +14,7 @@ import {
   missingTool,
 } from "@zuke/core/tooling/conformance";
 import { type AzOutputFormat, AzSettings, AzTasks } from "../mod.ts";
-import { FakeAz } from "./_fake.ts";
+import { FakeAz } from "../../../tests/support/az/_fake.ts";
 
 test("the default binary is az", () => {
   assertEquals(new AzSettings().argv(), ["az"]);

@@ -19,16 +19,16 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   ProvisioningProfileTasks,
   TestFlightTasks,
   XcodebuildTasks,
 } from "../../packages/apple/mod.ts";
-import { apiKey } from "../../packages/apple/tests/_asc.ts";
-import { base64, profileBytes } from "../../packages/apple/tests/_profile.ts";
+import { apiKey } from "../support/apple/_asc.ts";
+import { base64, profileBytes } from "../support/apple/_profile.ts";
 import { runCli } from "./_harness.ts";
 
 /**

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { DenoTasks, parseCacheInfo, parseModuleGraph } from "../mod.ts";
@@ -134,7 +134,10 @@ test("moduleGraph: the real deno info reports a self-contained module", async ()
   // rather than by a built path — that string is identical on every OS, where
   // an interpolated path is not, which is what made an earlier version of this
   // test read a not-found module on Windows.
-  const entry = new URL("./fixtures/self_contained.ts", import.meta.url).href;
+  const entry = new URL(
+    "../../../tests/support/deno/fixtures/self_contained.ts",
+    import.meta.url,
+  ).href;
   const graph = await DenoTasks.moduleGraph((s) => s.path(entry));
   assertEquals(graph.roots.length, 1);
   assertEquals(graph.roots[0].endsWith("/fixtures/self_contained.ts"), true);
@@ -152,7 +155,9 @@ test("moduleGraph: a module deno cannot load comes back as an error entry", asyn
   // deno info exits 0 for a module it could not resolve and reports the
   // failure as data, so the reader must surface it rather than the run
   // throwing — a build reading the graph needs to see which module is broken.
-  const missing = new URL("./fixtures/not_here.ts", import.meta.url).href;
+  const missing =
+    new URL("../../../tests/support/deno/fixtures/not_here.ts", import.meta.url)
+      .href;
   const graph = await DenoTasks.moduleGraph((s) => s.path(missing));
   assertEquals(graph.modules.length, 1);
   assertEquals(graph.modules[0].specifier.endsWith("/not_here.ts"), true);

@@ -9,13 +9,13 @@
  * runner or `fetch` ignores what it is handed and would answer "success".
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   cloudMonitoring,
@@ -27,7 +27,13 @@ import {
   type GcloudSettings,
   GcloudTasks,
 } from "../mod.ts";
-import { NOW, pages, point, series, TOKEN } from "./_monitoring.ts";
+import {
+  NOW,
+  pages,
+  point,
+  series,
+  TOKEN,
+} from "../../../tests/support/gcloud/_monitoring.ts";
 
 /** A context whose redactor masks nothing. */
 const plain = { redact: (text: string) => text };

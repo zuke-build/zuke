@@ -12,8 +12,8 @@
  * the re-capture recipe).
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { ConsoleTasks } from "../packages/console/mod.ts";
 import { main } from "../packages/cli/mod.ts";
 import { VERSION } from "../packages/cli/src/version.ts";
@@ -21,7 +21,7 @@ import {
   FakeHost,
   FakePrompter,
   FakeStarActions,
-} from "../packages/cli/tests/_fakes.ts";
+} from "./support/cli/_fakes.ts";
 
 /**
  * Every terminal control sequence, including cursor movement and mode toggles

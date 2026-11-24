@@ -9,13 +9,13 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import {
   type ChocolateyPackage,
   ChocolateyTasks,
@@ -26,7 +26,7 @@ import {
   FAKE_CHOCO_UNSUPPORTED,
   type FakeChoco,
   fakeChoco,
-} from "./_fake_choco.ts";
+} from "../../../tests/support/chocolatey/_fake_choco.ts";
 
 /** A rendered package to verify. */
 const PKG: ChocolateyPackage = ChocolateyTasks.package((s) =>

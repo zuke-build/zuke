@@ -13,8 +13,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
@@ -25,8 +25,8 @@ import { acquireLease, RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { LockConflictError } from "../src/state/lock.ts";
 import type { StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore as withStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore as withStore } from "../../../tests/_store.ts";
 
 /** A JSON-RPC request with id 1. */
 function req(method: string, params?: unknown): Record<string, unknown> {

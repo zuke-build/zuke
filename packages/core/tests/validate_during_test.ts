@@ -8,15 +8,15 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type Validation } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
 import { execute } from "../src/executor.ts";
 import { runWhileValidating } from "../src/validate_during.ts";
 import { messageOf } from "../src/internal.ts";
-import { withTempStore } from "./_store.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /** Resolve after `ms`, or as soon as `signal` fires. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

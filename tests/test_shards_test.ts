@@ -8,13 +8,13 @@
  * is spawned here — `tests/integration/test_shards_test.ts` runs real ones.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 import { envCacheStore } from "../packages/core/mod.ts";
 import {
   discoverTestFiles,

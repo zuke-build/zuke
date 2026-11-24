@@ -10,9 +10,9 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
-import { captureLines } from "../../core/tests/_console.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
+import { captureLines } from "../../../tests/_console.ts";
 import { parameter } from "../../core/mod.ts";
 import { GhTasks } from "../mod.ts";
 import {

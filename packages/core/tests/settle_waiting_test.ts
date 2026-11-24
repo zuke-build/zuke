@@ -13,16 +13,16 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { execute } from "../src/executor.ts";
 import { target } from "../src/target.ts";
 import { externalSignal } from "../src/wait.ts";
 import { Redactor } from "../src/redact.ts";
 import { RunStateWriter } from "../src/state/writer.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 test("an in-process cancellation settles the gate it was parked on", async () => {
   await withTempStore(async (store) => {

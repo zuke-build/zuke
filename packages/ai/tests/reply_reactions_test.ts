@@ -9,18 +9,18 @@
  * against a fake GitHub; the host adapters are covered as units at the end.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { type Reviewer, securityReviewer } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
 import { findingFingerprint } from "../src/suppress.ts";
 import { commentMarker } from "../src/hosts/types.ts";
 import { githubHost } from "../src/hosts/github.ts";
 import { gitlabHost } from "../src/hosts/gitlab.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
+import { fakeReactions } from "../../../tests/support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

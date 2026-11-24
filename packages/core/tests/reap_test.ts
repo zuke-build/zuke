@@ -12,8 +12,8 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { reapAbandoned, recoverStranded } from "../src/reap.ts";
@@ -22,8 +22,8 @@ import { RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { lockKey } from "../src/state/lock.ts";
 import type { Reporter } from "../src/executor.ts";
 import type { RunRecord, RunStatus } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 

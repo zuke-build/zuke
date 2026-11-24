@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { unxz } from "../src/xz.ts";
 import { crc32 } from "../src/internal.ts";
 import {
@@ -12,7 +12,7 @@ import {
   NONE_XZ,
   STRESS_XZ,
   stressPayload,
-} from "./_xz.ts";
+} from "../../../tests/_xz.ts";
 
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 const HELLO = "hello from xz\n".repeat(3);

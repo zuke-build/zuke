@@ -3,11 +3,14 @@
 
 /** Test doubles for the core CLI's injectable seams. */
 
-import type { GraphHost } from "../src/graph_view.ts";
-import type { StateHost, StateStore } from "../src/state/store.ts";
-import type { RunRecord } from "../src/state/types.ts";
-import type { RunPlan } from "../src/run_plan.ts";
-import type { RemoteCacheStore } from "../src/remote_cache.ts";
+import type { GraphHost } from "../packages/core/src/graph_view.ts";
+import type {
+  StateHost,
+  StateStore,
+} from "../packages/core/src/state/store.ts";
+import type { RunRecord } from "../packages/core/src/state/types.ts";
+import type { RunPlan } from "../packages/core/src/run_plan.ts";
+import type { RemoteCacheStore } from "../packages/core/src/remote_cache.ts";
 
 /**
  * An in-memory {@link GraphHost} that records writes, directories, browser

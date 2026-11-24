@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
@@ -15,8 +15,11 @@ import {
   AzOutputError,
   containerAppCanary,
 } from "../mod.ts";
-import { withEmptyPath } from "./_fake.ts";
-import { ContainerAppModel, flagValue } from "./_containerapp_model.ts";
+import { withEmptyPath } from "../../../tests/support/az/_fake.ts";
+import {
+  ContainerAppModel,
+  flagValue,
+} from "../../../tests/support/az/_containerapp_model.ts";
 
 /** A state handle backed by a plain object, as the engine's in-memory one is. */
 function memoryState(accept = true): TargetStateHandle {

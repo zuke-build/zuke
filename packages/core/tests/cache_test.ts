@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { target } from "../src/target.ts";
 import {
   type BuildCache,
@@ -18,8 +18,8 @@ import {
 } from "../src/cache.ts";
 import { archiveOutputs, remoteCacheKey } from "../src/remote_cache.ts";
 import { byteStream, gzip, tar } from "../src/compression.ts";
-import { withTemp } from "./_temp.ts";
-import { MemCacheStore } from "./_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { MemCacheStore } from "../../../tests/_fakes.ts";
 import { signedKey, signingStream } from "../src/cache_signing.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);

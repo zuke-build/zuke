@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import { Build, glob, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 

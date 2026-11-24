@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { Readable } from "node:stream";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { fromWebStream, streamOf, toWebStream } from "../src/web_stream.ts";
 
 /** Everything `stream` yields, in order. */

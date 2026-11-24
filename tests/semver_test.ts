@@ -11,8 +11,8 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { compareSemver, isNewerSemver, parseSemver } from "../build/semver.ts";
 
 test("a plain triple parses, and anything else does not", () => {

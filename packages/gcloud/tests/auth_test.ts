@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import { gcloudAccessToken, resolveAccessToken } from "../src/auth.ts";

@@ -3,8 +3,8 @@
 
 /** Unit tests for the inline bake and the durable bake trigger. */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle, WaitContext } from "@zuke/core";
 import { bakeElapsed, bakeFor } from "../src/bake.ts";
 

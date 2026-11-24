@@ -1,14 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { RunLockHolder } from "../src/run_locks.ts";
-import { testPlan } from "./_fakes.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { acquireTargetLock } from "../src/lock.ts";
 import { target } from "../src/target.ts";
 import { LockConflictError, type LockHolder } from "../src/state/lock.ts";

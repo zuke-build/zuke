@@ -6,8 +6,8 @@
  * once, in plan order, stopping at the first refusal.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type Validation } from "../src/target.ts";
 import { runPreflights } from "../src/preflight.ts";

@@ -8,14 +8,17 @@
  * pull request, which is the point of it, so tests must not share one.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { AiReviewError, type Reviewer, securityReviewer } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
-import { collaborator, fakeReactions } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
+import {
+  collaborator,
+  fakeReactions,
+} from "../../../tests/support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";

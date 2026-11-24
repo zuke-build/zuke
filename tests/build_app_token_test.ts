@@ -6,8 +6,8 @@
  * caller's scope, and the credential reader every minting target starts from.
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects } from "./_assert.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 import { mintAppToken, resolveAppCredentials } from "../build/app_token.ts";
 

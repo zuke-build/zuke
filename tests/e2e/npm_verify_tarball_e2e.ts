@@ -17,12 +17,9 @@
  * @module
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { absolutePath, gunzip, gzip, untar } from "../../packages/core/mod.ts";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../_assert.ts";
 import { RELEASE_PROVENANCE } from "../../build/npm_provenance.ts";
 import {
   type NpmProbe,

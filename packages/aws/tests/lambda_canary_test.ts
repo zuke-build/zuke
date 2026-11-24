@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
@@ -15,8 +15,11 @@ import {
   lambdaCanary,
 } from "../mod.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { withEmptyPath } from "./_fake.ts";
-import { flagValue, LambdaModel } from "./_lambda_model.ts";
+import { withEmptyPath } from "../../../tests/support/aws/_fake.ts";
+import {
+  flagValue,
+  LambdaModel,
+} from "../../../tests/support/aws/_lambda_model.ts";
 
 /** A state handle backed by a plain object, as the engine's in-memory one is. */
 function memoryState(accept = true): TargetStateHandle & {

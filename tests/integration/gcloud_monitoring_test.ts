@@ -11,11 +11,8 @@
  * injected runner, so nothing is spawned and no project is needed.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { CommandOutput } from "../../packages/core/src/shell.ts";
 import {
@@ -26,7 +23,7 @@ import {
   GcloudTasks,
 } from "../../packages/gcloud/mod.ts";
 import { canary } from "../../packages/canary/mod.ts";
-import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
+import { FakePlatform } from "../support/canary/_platform.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 /** The obviously fake bearer token the fake API expects. */

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { type NetConnection, NetTasks } from "@zuke/core";
 import { MAX_LINE, Peer, RpcFailure } from "../src/peer.ts";
-import { connect } from "./_conn.ts";
+import { connect } from "../../../tests/support/engine/_conn.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 
 /** The RPC code of a rejection, or NaN when it was not an RpcFailure. */

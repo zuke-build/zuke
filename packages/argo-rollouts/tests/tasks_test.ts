@@ -9,8 +9,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { withAmbientEcho } from "../../core/src/ambient_echo.ts";

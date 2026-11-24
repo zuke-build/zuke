@@ -10,11 +10,8 @@
  * function), with an injected changed-files list instead of a real git repo.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   affectedTargets,
   Build,
@@ -28,7 +25,7 @@ import { runCli, withStateDir } from "./_harness.ts";
 // must isolate the cwd the way `packages/core/tests/executor_test.ts` does —
 // otherwise a run through the real CLI would write its cache store into this
 // repository's own `.zuke/` directory.
-import { withTempCwd } from "../../packages/core/tests/_temp.ts";
+import { withTempCwd } from "../_temp.ts";
 import { gzip, tar } from "../../packages/core/src/compression.ts";
 
 /** Encode test fixture text as archive bytes. */

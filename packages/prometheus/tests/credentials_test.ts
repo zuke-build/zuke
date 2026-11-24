@@ -7,8 +7,8 @@
  * a failing source.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { Redactor } from "@zuke/core";
 import {
   PrometheusApiError,
@@ -19,7 +19,11 @@ import {
   PrometheusTasks,
 } from "../mod.ts";
 import { registerSecrets } from "../src/credentials.ts";
-import { BASE, fakeFetch, vector } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  vector,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 test("bearerToken, basicAuth and header each add their header", async () => {
   const fetcher = fakeFetch(() => vector());

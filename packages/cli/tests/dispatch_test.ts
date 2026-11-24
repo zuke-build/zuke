@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { BUILD_FILE } from "../src/build_file.ts";
 import {
   buildLabel,
@@ -28,8 +28,8 @@ import {
 } from "../src/dispatch.ts";
 import { EMBEDDED_ENGINE_ENV } from "../src/embedded_engine.ts";
 import { CONFIG_FILE } from "@zuke/core";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** What a fake filesystem knows: which paths exist, and who owns what. */
 interface Fixture {

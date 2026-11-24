@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   SignPathApiError,
   type SignPathDownloadSettings,
@@ -20,7 +20,7 @@ import {
   REQUEST,
   routes,
   TOKEN,
-} from "./_fetch.ts";
+} from "../../../tests/support/signpath/_fetch.ts";
 
 /** A fresh temp directory and the file the download writes into it. */
 async function target(

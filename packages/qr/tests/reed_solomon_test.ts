@@ -3,9 +3,9 @@
 
 /** Tests for the Reed–Solomon generator and remainder over GF(2⁸). */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { generator, remainder } from "../src/reed_solomon.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 test("generator(2) is the textbook (x + α⁰)(x + α¹) polynomial", () => {
   // (x + 1)(x + 2) = x² + 3x + 2 over GF(2⁸).

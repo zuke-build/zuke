@@ -3,16 +3,16 @@
 
 /** Unit tests for `metricThreshold(...)` and the shared bounds check. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { metricThreshold, type MetricThresholdSettings } from "../mod.ts";
 import { checkThreshold } from "../src/threshold.ts";
-import { analysisContext } from "./_context.ts";
+import { analysisContext } from "../../../tests/support/canary/_context.ts";
 
 test("a metric within bounds passes, and the reader sees the rollout", async () => {
   let seen = 0;

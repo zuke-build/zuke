@@ -3,14 +3,17 @@
 
 /** Unit tests for `prometheus(...)`, answered by a fake `fetch`. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { prometheus, type PrometheusSettings } from "../mod.ts";
-import { analysisContext, fakeFetch } from "./_context.ts";
+import {
+  analysisContext,
+  fakeFetch,
+} from "../../../tests/support/canary/_context.ts";
 
 /** A successful instant-query response. */
 function result(resultType: string, result: unknown): Response {

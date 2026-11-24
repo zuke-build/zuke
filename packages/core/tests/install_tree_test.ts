@@ -1,15 +1,19 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { type DownloadFn, installTree } from "../src/install.ts";
 import { gzip, tar, type TarEntry } from "../src/compression.ts";
 import { sha256Hex } from "../src/internal.ts";
-import { makeZip, STORED } from "./_zip.ts";
-import { GNU, longLink, ustarArchive } from "./_tar.ts";
-import { withTemp } from "./_temp.ts";
-import { ESCAPING_TAR_XZ, fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
+import { makeZip, STORED } from "../../../tests/_zip.ts";
+import { GNU, longLink, ustarArchive } from "../../../tests/_tar.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import {
+  ESCAPING_TAR_XZ,
+  fixture,
+  FLUTTER_TAR_XZ,
+} from "../../../tests/_xz.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const POSIX = Deno.build.os !== "windows";

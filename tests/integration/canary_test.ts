@@ -8,11 +8,8 @@
  * approval signal, in a later `main()` that reads what the first one staged.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -20,7 +17,7 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { canary } from "../../packages/canary/mod.ts";
-import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
+import { FakePlatform } from "../support/canary/_platform.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The platform every build below drives; reset per test. */

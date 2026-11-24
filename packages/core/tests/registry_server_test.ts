@@ -7,9 +7,9 @@
  * authz tiers keyed on the qualified `<buildId>:<target>` name, and auditing.
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import { type JsonRpcResponse, METHOD_NOT_FOUND } from "../src/mcp/jsonrpc.ts";
 import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
@@ -32,7 +32,7 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 
 // ---- fakes ------------------------------------------------------------------
 

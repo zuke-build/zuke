@@ -7,8 +7,8 @@
  * here (no key is committed), PKCS#1 and PKCS#8 input, and the named failures.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { signJwtEs256, signJwtRs256 } from "../mod.ts";
 
 /** Base64-encode bytes into 64-column PEM lines. */

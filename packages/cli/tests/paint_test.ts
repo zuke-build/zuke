@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { stripAnsi } from "@zuke/core/render";
 import { cliPaint, invocationPaint, PLAIN_PAINT } from "../src/paint.ts";
 import * as core from "@zuke/core/render";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 const KINDS = [
   "heading",

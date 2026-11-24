@@ -3,7 +3,7 @@
 
 /** Tests for version selection, the padded bit stream, and block interleaving. */
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   choosePlacement,
   dataCodewords,
@@ -12,7 +12,7 @@ import {
   QrCapacityError,
 } from "../src/codewords.ts";
 import { numDataCodewords } from "../src/tables.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 

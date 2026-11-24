@@ -12,12 +12,8 @@
  * @module
  */
 
-import { test } from "../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-  assertThrows,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   ACTION_VERSION_FILE,
   actionDigest,

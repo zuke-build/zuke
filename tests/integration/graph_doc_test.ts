@@ -9,12 +9,9 @@
  * discovered graph feeding the generator, and the failing-check exit code).
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
+import { test } from "../_testing.ts";
 import { Build, discoverTargets, target } from "../../packages/core/mod.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { checkGraphDoc, writeGraphDoc } from "../../build/graph_doc.ts";
 import { runCli } from "./_harness.ts";
 

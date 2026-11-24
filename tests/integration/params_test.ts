@@ -9,11 +9,8 @@
  * whole parse → resolve → execute path is exercised, not a unit seam.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 

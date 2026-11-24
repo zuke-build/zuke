@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { consoleRenderer, createConsoleRenderer } from "../src/renderer.ts";
 import { defaultTheme, type Theme } from "../src/theme.ts";
 import { defaultRenderer, type TargetReport } from "@zuke/core";
 import { SGR, type Style } from "@zuke/core/render";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 const plain: Style = { github: false, color: false, width: 10 };
 const colored: Style = { github: false, color: true, width: 10 };

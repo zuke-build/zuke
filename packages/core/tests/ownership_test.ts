@@ -13,8 +13,12 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import {
   assertOwnsRun,
   ForeignRunError,
@@ -22,7 +26,7 @@ import {
   resolveBuildId,
 } from "../src/ownership.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 

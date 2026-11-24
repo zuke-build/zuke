@@ -1,8 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { AiFixer, aiFixer, type Fix } from "../mod.ts";
 import { applyEdits, checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";

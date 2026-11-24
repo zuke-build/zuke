@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -22,7 +22,10 @@ import {
   NotarytoolTasks,
 } from "../src/notarytool.ts";
 import { NotarizationError, NotarytoolOutputError } from "../src/errors.ts";
-import { fakeNotarytool, rejection } from "./_fake_tool.ts";
+import {
+  fakeNotarytool,
+  rejection,
+} from "../../../tests/support/apple/_fake_tool.ts";
 
 const ID = "2efe2717-52ef-43a5-96dc-0797e4ca1041";
 const KEY = ["--key", "AuthKey_ABC.p8", "--key-id", "ABC"];

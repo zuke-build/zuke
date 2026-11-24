@@ -3,8 +3,8 @@
 
 // cspell:ignore linuxbrew libexec
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   type InstallHost,
   installLabel,

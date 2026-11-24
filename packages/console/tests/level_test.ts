@@ -1,9 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { isLogLevel, LEVEL_ORDER, resolveLevel } from "../src/level.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 test("isLogLevel recognises the severity ladder", () => {
   assertEquals(isLogLevel("trace"), true);

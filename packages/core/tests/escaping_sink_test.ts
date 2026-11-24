@@ -14,14 +14,14 @@
  * `includes("::stop-commands::")` would pass whether or not the fix is there.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { cliReporter } from "../mod.ts";
-import { capture as captureConsole } from "./_console.ts";
+import { capture as captureConsole } from "../../../tests/_console.ts";
 import { escapeLineIf } from "../src/render.ts";
 import { printJson } from "../src/reporter.ts";
-import { withEnv } from "./_env.ts";
-import { consoleWriters, ENC } from "./_escaping.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { consoleWriters, ENC } from "../../../tests/_escaping.ts";
 import {
   escapingReporter,
   type Reporter,

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   defaultHost,
   delegatesImportMap,
@@ -27,8 +27,8 @@ import {
   starterSdkConfig,
   zukeDependency,
 } from "../src/starter.ts";
-import { FakeHost, testPin } from "./_fakes.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { FakeHost, testPin } from "../../../tests/support/cli/_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 test("isRecord distinguishes plain objects", () => {
   assertEquals(isRecord({}), true);

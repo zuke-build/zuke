@@ -1,8 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute, type Reporter } from "../src/executor.ts";
@@ -13,7 +17,7 @@ import {
   resolveParameters,
 } from "../src/params.ts";
 import { externalSignal } from "../src/wait.ts";
-import { withTempStore as withStore } from "./_store.ts";
+import { withTempStore as withStore } from "../../../tests/_store.ts";
 
 /** The message of a failed `execute` result. */
 function errorMessage(error: unknown): string {

@@ -18,13 +18,13 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   messageOf,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ForeignRunError } from "../src/ownership.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
@@ -32,7 +32,7 @@ import { execute } from "../src/executor.ts";
 import { cancelRun } from "../src/cancel.ts";
 import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import type { RunEvent, RunRecord } from "../src/state/types.ts";
-import { withTempStore } from "./_store.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /** The single run in `store`. */
 async function onlyRun(store: FileSystemStateStore): Promise<RunRecord> {

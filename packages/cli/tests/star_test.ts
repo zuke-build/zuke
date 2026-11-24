@@ -1,10 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { promptStar, realStarActions, ZUKE_REPO_URL } from "../src/star.ts";
-import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
+import {
+  FakeHost,
+  FakePrompter,
+  FakeStarActions,
+} from "../../../tests/support/cli/_fakes.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { GhApiSettings } from "@zuke/gh";
 

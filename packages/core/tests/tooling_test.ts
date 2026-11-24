@@ -1,13 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
   messageOf,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   defineTool,
   DynamicToolSettings,
@@ -25,7 +25,7 @@ import {
   type CommandOutput,
   CommandTimeoutError,
 } from "../src/shell.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** Minimal concrete settings: runs `deno eval <script>` — hermetic. */
 class EvalSettings extends ToolSettings {

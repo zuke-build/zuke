@@ -1,11 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   binaryMain,
   type BuildProbe,
@@ -26,11 +23,11 @@ import {
   noProjectProbe,
   pinRegistry,
   testPin,
-} from "./_fakes.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { capture } from "../../core/tests/_console.ts";
-import { ENC } from "../../core/tests/_escaping.ts";
+} from "../../../tests/support/cli/_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { capture } from "../../../tests/_console.ts";
+import { ENC } from "../../../tests/_escaping.ts";
 import { defaultHost } from "../src/setup.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
 import { absolutePath } from "@zuke/core";

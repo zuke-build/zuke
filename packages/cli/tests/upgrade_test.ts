@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { defaultPrompter, main, type UpgradeHost } from "../mod.ts";
 import {
   acceptsMinimumDependencyAge,
@@ -21,10 +21,10 @@ import {
   FakeStarActions,
   noProjectProbe,
   testPin,
-} from "./_fakes.ts";
+} from "../../../tests/support/cli/_fakes.ts";
 import type { BinaryPin } from "../src/binary_pin.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { absolutePath } from "@zuke/core";
 
 /** The main module Deno reports for an installed CLI. */

@@ -17,15 +17,15 @@
  * rather than merely undisplayed.
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
 import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
 import type { RunEvent } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /**
  * A build with a real dependency chain. `release` → `deploy` → `lint`, plus an

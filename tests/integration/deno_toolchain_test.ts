@@ -16,11 +16,8 @@
  * this test read a not-found module on Windows.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
@@ -28,7 +25,7 @@ import { runCli } from "./_harness.ts";
 
 /** The import-free fixture whose graph the reader target reports on. */
 const FIXTURE = new URL(
-  "../../packages/deno/tests/fixtures/self_contained.ts",
+  "../support/deno/fixtures/self_contained.ts",
   import.meta.url,
 ).href;
 

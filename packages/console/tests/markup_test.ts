@@ -1,13 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import { escapeMarkup, renderMarkup } from "../src/markup.ts";
 import { SGR } from "@zuke/core/render";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 
 test("renderMarkup strips tags when colour is off", () => {
   assertEquals(renderMarkup("[red]hi[/]", { color: false }), "hi");

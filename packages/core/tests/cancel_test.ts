@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "./_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { parameter } from "../src/params.ts";
 import { target } from "../src/target.ts";
@@ -30,9 +30,9 @@ import { lockKey } from "../src/state/lock.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
-import { withTemp } from "./_temp.ts";
-import { runRecord, testPlan } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { runRecord, testPlan } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /**
  * The percent-encoded `::`, kept as its own constant so the encoded prefix

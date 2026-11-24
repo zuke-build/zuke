@@ -8,8 +8,8 @@
  * @module
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { base64 } from "../src/base64.ts";
 
 test("base64: bytes of every range encode as the standard alphabet", () => {

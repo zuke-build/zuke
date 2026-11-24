@@ -1,12 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { test } from "../../core/tests/_testing.ts";
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   type BuildProbe,
   defaultPrompter,
@@ -14,7 +14,11 @@ import {
   type ProjectHost,
 } from "../mod.ts";
 import { parseEnginePinFlags } from "../src/engine_pin.ts";
-import { FakeHost, pinRegistry, testPin } from "./_fakes.ts";
+import {
+  FakeHost,
+  pinRegistry,
+  testPin,
+} from "../../../tests/support/cli/_fakes.ts";
 import { launcherBash, launcherPwsh } from "../src/launcher.ts";
 import {
   binaryLauncherBash,

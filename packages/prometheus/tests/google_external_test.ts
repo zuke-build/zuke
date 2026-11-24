@@ -8,11 +8,18 @@
  * sources, and the subject token kept out of every error.
  */
 
-import { test } from "../../core/tests/_testing.ts";
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { PrometheusGoogleSettings } from "../mod.ts";
 import { googleCredentials } from "../src/google.ts";
-import { context, form, REQUEST, routes, type Seams, T0 } from "./_auth.ts";
+import {
+  context,
+  form,
+  REQUEST,
+  routes,
+  type Seams,
+  T0,
+} from "../../../tests/support/prometheus/_auth.ts";
 
 const STS = "https://sts.googleapis.com/v1/token";
 const IMPERSONATE =

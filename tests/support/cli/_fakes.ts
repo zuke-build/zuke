@@ -3,10 +3,14 @@
 
 /** Test doubles for the CLI's injectable seams. */
 
-import type { SetupHost } from "../src/setup.ts";
-import type { BuildProbe, Prompter, UpgradeHost } from "../mod.ts";
-import { defaultUpgradeHost } from "../src/upgrade.ts";
-import type { BinaryPin } from "../src/binary_pin.ts";
+import type { SetupHost } from "../../../packages/cli/src/setup.ts";
+import type {
+  BuildProbe,
+  Prompter,
+  UpgradeHost,
+} from "../../../packages/cli/mod.ts";
+import { defaultUpgradeHost } from "../../../packages/cli/src/upgrade.ts";
+import type { BinaryPin } from "../../../packages/cli/src/binary_pin.ts";
 
 /**
  * A pin of `zuke` `version`, carrying `engine`, with a distinct well-formed

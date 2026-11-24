@@ -11,11 +11,11 @@
  * @module
  */
 
-import { test } from "./_testing.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Redactor } from "../src/redact.ts";
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
-import { MemStateStore, runRecord } from "./_fakes.ts";
+import { MemStateStore, runRecord } from "../../../tests/_fakes.ts";
 import type { TargetStateHandle } from "../src/target.ts";
 
 const NOW = "2026-09-08T12:00:00.000Z";

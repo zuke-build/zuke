@@ -12,11 +12,8 @@
  * traffic that `ingress traffic set` rescales as the CLI does.
  */
 
-import { test } from "../../packages/core/tests/_testing.ts";
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -26,7 +23,7 @@ import {
 import { splitShellArgs } from "../../packages/core/src/shell.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { containerAppCanary } from "../../packages/az/mod.ts";
-import { ContainerAppModel } from "../../packages/az/tests/_containerapp_model.ts";
+import { ContainerAppModel } from "../support/az/_containerapp_model.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The modelled Container Apps, fresh for each test. */
