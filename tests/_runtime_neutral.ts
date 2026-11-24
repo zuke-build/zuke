@@ -23,11 +23,13 @@ async function sources(dir: URL): Promise<URL[]> {
   return found;
 }
 
-/** `text` without its comments, each block comment kept as its newlines. */
-function code(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ""))
-    .replace(/(^|\s)\/\/.*$/gm, "$1");
+/**
+ * Whether `line` is a whole comment line. Only whole lines are skipped, never a
+ * comment after code, so a comment marker inside a string cannot hide a call;
+ * a trailing comment that names `Deno.` is reported, which fails safe.
+ */
+function commentLine(line: string): boolean {
+  return /^\s*(\/\/|\/\*|\*)/.test(line);
 }
 
 /**
@@ -42,9 +44,9 @@ export async function denoCalls(root: URL): Promise<string[]> {
   ];
   const calls: string[] = [];
   for (const file of files) {
-    const lines = code(await Deno.readTextFile(file)).split("\n");
+    const lines = (await Deno.readTextFile(file)).split("\n");
     lines.forEach((line, i) => {
-      if (/\bDeno\./.test(line)) {
+      if (!commentLine(line) && /\bDeno\./.test(line)) {
         calls.push(`${file.pathname.slice(root.pathname.length)}:${i + 1}`);
       }
     });
