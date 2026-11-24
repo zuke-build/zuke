@@ -24,12 +24,82 @@ async function sources(dir: URL): Promise<URL[]> {
 }
 
 /**
- * Whether `line` is a whole comment line. Only whole lines are skipped, never a
- * comment after code, so a comment marker inside a string cannot hide a call;
- * a trailing comment that names `Deno.` is reported, which fails safe.
+ * `source` with every comment and every string or template literal's text
+ * blanked to spaces, newlines kept so line numbers hold, and the code inside a
+ * template's `${…}` kept, so only executable code is left to search.
+ *
+ * shortcut: a regular-expression literal is read as code, so one holding a
+ * quote or a comment marker can mis-scan the rest of its line; use a real
+ * TypeScript scanner if a package ever needs one.
  */
-function commentLine(line: string): boolean {
-  return /^\s*(\/\/|\/\*|\*)/.test(line);
+export function codeOnly(source: string): string {
+  let out = "";
+  const templates: number[] = []; // brace depth at which each open `${` ends
+  let depth = 0;
+  let i = 0;
+  const blank = (c: string) => (c === "\n" ? "\n" : " ");
+  /** Skip a template literal's text from `i`, stopping after `` ` `` or `${`. */
+  const templateText = () => {
+    while (i < source.length) {
+      const c = source[i];
+      if (c === "\\") {
+        out += blank(c) + blank(source[i + 1] ?? "");
+        i += 2;
+      } else if (c === "`") {
+        out += " ";
+        i++;
+        return;
+      } else if (c === "$" && source[i + 1] === "{") {
+        out += "${";
+        i += 2;
+        templates.push(depth++);
+        return;
+      } else {
+        out += blank(c);
+        i++;
+      }
+    }
+  };
+  while (i < source.length) {
+    const c = source[i];
+    const next = source[i + 1];
+    if (c === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") out += blank(source[i++]);
+    } else if (c === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      while (i < stop) out += blank(source[i++]);
+    } else if (c === "'" || c === '"') {
+      out += " ";
+      i++;
+      while (i < source.length && source[i] !== c && source[i] !== "\n") {
+        const step = source[i] === "\\" ? 2 : 1;
+        for (let k = 0; k < step && i < source.length; k++) {
+          out += blank(source[i++]);
+        }
+      }
+      if (i < source.length && source[i] === c) {
+        out += " ";
+        i++;
+      }
+    } else if (c === "`") {
+      out += " ";
+      i++;
+      templateText();
+    } else if (c === "}" && templates.at(-1) === depth - 1) {
+      templates.pop();
+      depth--;
+      out += "}";
+      i++;
+      templateText();
+    } else {
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      out += c;
+      i++;
+    }
+  }
+  return out;
 }
 
 /**
@@ -44,9 +114,9 @@ export async function denoCalls(root: URL): Promise<string[]> {
   ];
   const calls: string[] = [];
   for (const file of files) {
-    const lines = (await Deno.readTextFile(file)).split("\n");
+    const lines = codeOnly(await Deno.readTextFile(file)).split("\n");
     lines.forEach((line, i) => {
-      if (!commentLine(line) && /\bDeno\./.test(line)) {
+      if (/\bDeno\./.test(line)) {
         calls.push(`${file.pathname.slice(root.pathname.length)}:${i + 1}`);
       }
     });
