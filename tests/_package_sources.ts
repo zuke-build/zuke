@@ -8,13 +8,15 @@
  * @module
  */
 
+import { readdir } from "node:fs/promises";
+
 /** Every `.ts` file under `dir`, recursively. */
 async function tsFiles(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory) found.push(...await tsFiles(path));
-    else if (entry.isFile && entry.name.endsWith(".ts")) found.push(path);
+    if (entry.isDirectory()) found.push(...await tsFiles(path));
+    else if (entry.isFile() && entry.name.endsWith(".ts")) found.push(path);
   }
   return found;
 }
@@ -22,8 +24,8 @@ async function tsFiles(dir: string): Promise<string[]> {
 /** Every source file a package publishes: its entry point and its `src`. */
 export async function packageSources(): Promise<string[]> {
   const files: string[] = [];
-  for await (const entry of Deno.readDir("packages")) {
-    if (!entry.isDirectory) continue;
+  for (const entry of await readdir("packages", { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
     const root = `packages/${entry.name}`;
     files.push(`${root}/mod.ts`, ...await tsFiles(`${root}/src`));
   }

@@ -9,6 +9,8 @@
  * @module
  */
 
+import { readdir, readFile } from "node:fs/promises";
+
 /**
  * The percent-encoded `::`, kept as its own constant so the encoded prefix
  * never fuses with the word after it into a token no dictionary can know: the
@@ -39,15 +41,15 @@ export async function consoleWriters(
 ): Promise<string[]> {
   const offenders: string[] = [];
   const walk = async (dir: URL): Promise<void> => {
-    for await (const entry of Deno.readDir(dir)) {
-      const child = new URL(entry.name + (entry.isDirectory ? "/" : ""), dir);
-      if (entry.isDirectory) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const child = new URL(entry.name + (entry.isDirectory() ? "/" : ""), dir);
+      if (entry.isDirectory()) {
         await walk(child);
         continue;
       }
       const relative = child.href.slice(root.href.length);
       if (!entry.name.endsWith(".ts") || allowed.has(relative)) continue;
-      const code = (await Deno.readTextFile(child))
+      const code = (await readFile(child, "utf8"))
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/\/\/[^\n]*/g, "");
       if (/\bconsole\s*(?:\.\s*\w+|\[[^\]]*\])\s*\(/.test(code)) {

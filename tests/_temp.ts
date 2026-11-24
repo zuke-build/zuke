@@ -11,6 +11,28 @@
  * @module
  */
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+
+/** Where a scope's directory goes, and the start of its name. */
+export interface TempOptions {
+  /** The parent directory, the system temp directory when unset. */
+  dir?: string;
+  /** The start of the directory's name. */
+  prefix?: string;
+}
+
+/**
+ * A fresh directory inside `options.dir`, or the system temp directory. An
+ * empty prefix falls back too: `join` would drop the separator and make the
+ * directory a sibling of its parent rather than a child.
+ */
+function makeTemp(options?: TempOptions): Promise<string> {
+  return mkdtemp(join(options?.dir ?? tmpdir(), options?.prefix || "tmp-"));
+}
+
 /**
  * Remove `dir` best-effort. A removal error (e.g. a Windows file lock, or a
  * body that already deleted the directory) must never replace the test's own
@@ -18,7 +40,7 @@
  */
 async function discard(dir: string): Promise<void> {
   try {
-    await Deno.remove(dir, { recursive: true });
+    await rm(dir, { recursive: true, force: true });
   } catch {
     // ignore — the temp dir is throwaway; masking the real error is worse.
   }
@@ -26,14 +48,13 @@ async function discard(dir: string): Promise<void> {
 
 /**
  * Run `fn` against a fresh temp directory, removed afterwards even on failure.
- * `options` is passed straight to `Deno.makeTempDir` (tests that want a
- * recognisable `prefix`).
+ * `options` places the directory and names its `prefix`.
  */
 export async function withTemp(
   fn: (dir: string) => void | Promise<void>,
-  options?: Deno.MakeTempOptions,
+  options?: TempOptions,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir(options);
+  const dir = await makeTemp(options);
   try {
     await fn(dir);
   } finally {
@@ -49,15 +70,15 @@ export async function withTemp(
  */
 export async function withTempCwd(
   fn: (dir: string) => void | Promise<void>,
-  options?: Deno.MakeTempOptions,
+  options?: TempOptions,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir(options);
-  const cwd = Deno.cwd();
+  const dir = await makeTemp(options);
+  const cwd = process.cwd();
   try {
-    Deno.chdir(dir);
+    process.chdir(dir);
     await fn(dir);
   } finally {
-    Deno.chdir(cwd);
+    process.chdir(cwd);
     await discard(dir);
   }
 }

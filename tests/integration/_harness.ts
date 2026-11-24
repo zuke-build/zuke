@@ -11,6 +11,10 @@
  * @module
  */
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Build } from "../../packages/core/mod.ts";
 import { defaultGraphHost } from "../../packages/core/src/graph_view.ts";
@@ -60,19 +64,16 @@ export async function runCli(
   console.error = (...a: unknown[]) => void err.push(a.join(" "));
   // Guard the async-safety fixes: a promise rejection that escapes the run
   // (e.g. a scheduler path that dropped its `.catch`) must fail the test
-  // explicitly, not merely rely on the Deno runner's default handling — which
-  // this pins even if that default changes. We take ownership of the event
-  // (preventDefault) so the check below is authoritative; a rejection firing
-  // after this call (listener already removed) still falls back to the runner.
+  // explicitly, not merely rely on the runner's default handling — which this
+  // pins even if that default changes. A listener takes ownership of the
+  // rejection, so the check below is authoritative; a rejection firing after
+  // this call (listener already removed) still falls back to the runner.
   const rejections: unknown[] = [];
-  const onRejection = (event: PromiseRejectionEvent) => {
-    event.preventDefault();
-    rejections.push(event.reason);
-  };
-  addEventListener("unhandledrejection", onRejection);
+  const onRejection = (reason: unknown) => void rejections.push(reason);
+  process.on("unhandledRejection", onRejection);
   try {
     const code = await main(BuildClass, args, opts);
-    // A macrotask boundary so any queued unhandledrejection event has dispatched
+    // A macrotask boundary so any queued unhandledRejection event has dispatched
     // before we inspect — it fires at a microtask checkpoint, which setTimeout(0)
     // is guaranteed to follow.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -84,7 +85,7 @@ export async function runCli(
     }
     return { code, out: out.join("\n"), err: err.join("\n") };
   } finally {
-    removeEventListener("unhandledrejection", onRejection);
+    process.off("unhandledRejection", onRejection);
     console.log = origLog;
     console.error = origErr;
   }
@@ -107,33 +108,33 @@ export async function runCli(
  * has nothing to do with it or passes while proving something else.
  */
 export async function withoutStateDir(fn: () => Promise<void>): Promise<void> {
-  const prev = Deno.env.get("ZUKE_STATE_DIR");
-  const prevUrl = Deno.env.get("ZUKE_STATE_URL");
-  Deno.env.delete("ZUKE_STATE_DIR");
-  Deno.env.delete("ZUKE_STATE_URL");
+  const prev = process.env.ZUKE_STATE_DIR;
+  const prevUrl = process.env.ZUKE_STATE_URL;
+  delete process.env.ZUKE_STATE_DIR;
+  delete process.env.ZUKE_STATE_URL;
   try {
     await fn();
   } finally {
-    if (prev !== undefined) Deno.env.set("ZUKE_STATE_DIR", prev);
-    if (prevUrl !== undefined) Deno.env.set("ZUKE_STATE_URL", prevUrl);
+    if (prev !== undefined) process.env.ZUKE_STATE_DIR = prev;
+    if (prevUrl !== undefined) process.env.ZUKE_STATE_URL = prevUrl;
   }
 }
 
 export async function withStateDir(
   fn: (dir: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-" });
-  const prev = Deno.env.get("ZUKE_STATE_DIR");
-  Deno.env.set("ZUKE_STATE_DIR", dir);
+  const dir = await mkdtemp(join(tmpdir(), "zuke-it-"));
+  const prev = process.env.ZUKE_STATE_DIR;
+  process.env.ZUKE_STATE_DIR = dir;
   try {
     await fn(dir);
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_STATE_DIR");
-    else Deno.env.set("ZUKE_STATE_DIR", prev);
+    if (prev === undefined) delete process.env.ZUKE_STATE_DIR;
+    else process.env.ZUKE_STATE_DIR = prev;
     // Best-effort cleanup: a removal error (e.g. a Windows file lock) must never
     // replace the test's own assertion failure, which is the error worth seeing.
     try {
-      await Deno.remove(dir, { recursive: true });
+      await rm(dir, { recursive: true, force: true });
     } catch {
       // ignore — the temp dir is throwaway; masking the real error is worse.
     }

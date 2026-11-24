@@ -10,6 +10,8 @@
  * @module
  */
 
+import process from "node:process";
+
 /**
  * Run `fn` with `values` applied to the process environment, restoring every
  * name's prior value afterwards (deleting the ones that were unset). A value of
@@ -22,16 +24,16 @@ export async function withEnv(
 ): Promise<void> {
   const saved = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
+    saved.set(name, process.env[name]);
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
   }
   try {
     await fn();
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
     }
   }
 }
