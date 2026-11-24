@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -61,7 +61,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -137,7 +137,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -162,7 +162,7 @@ jobs:
       chocolatey: "${{ steps.plan.outputs.chocolatey }}"
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -190,7 +190,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -228,7 +228,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -288,7 +288,7 @@ jobs:
           - ubuntu-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -309,7 +309,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -331,7 +331,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -358,7 +358,7 @@ jobs:
           - windows-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -377,7 +377,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
+        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
         with:
           egress-policy: audit
           persist-credentials: "false"

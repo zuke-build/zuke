@@ -1,6 +1,6 @@
 {
-  "ref": "zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05",
-  "version": "v1.0.11",
+  "ref": "zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160",
+  "version": "v1.0.12",
   "inputs": [
     "target",
     "egress-policy",
@@ -12,5 +12,5 @@
     "node-version",
     "actions-cache"
   ],
-  "digest": "67bc0dfa880ca01532437dddc54f95422e3e4f07ed39463ab0ea1a5be71cf4d2"
+  "digest": "cdbd03043432327561ce176697965bf28d447e6a1b3090a975114161a509c3dc"
 }
