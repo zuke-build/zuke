@@ -146,7 +146,10 @@ Deno.test({
  * A Node project's build file, which records the executable and the arguments
  * it was started with; it imports nothing, so no package has to be installed.
  */
-const NODE_REPORT_BUILD = `import { writeFileSync } from "node:fs";
+const NODE_REPORT_BUILD = `// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+import { writeFileSync } from "node:fs";
 import process from "node:process";
 
 writeFileSync(
@@ -159,6 +162,11 @@ Deno.test({
   name: "the zuke binary runs a Node project's build on the node on PATH",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
   fn: async () => {
+    const node = SEA_NODE ?? "node";
+    const nodeDir = node.slice(
+      0,
+      Math.max(node.lastIndexOf("/"), node.lastIndexOf("\\")),
+    );
     await withTemp(async (dir) => {
       const binary = `${dir}/${BINARY}`;
       await buildWorkspaceNodeBinary(binary);
@@ -172,7 +180,13 @@ Deno.test({
       const { code, stderr } = await new Deno.Command(binary, {
         args: ["report", "--flag"],
         cwd: project,
-        env: { HOME: dir, USERPROFILE: dir, ZUKE_PLAIN: "1" },
+        env: {
+          // Only the Node the test probed, so it is the one that must run.
+          PATH: nodeDir,
+          HOME: dir,
+          USERPROFILE: dir,
+          ZUKE_PLAIN: "1",
+        },
         stdout: "null",
         stderr: "piped",
         signal: AbortSignal.timeout(120_000),
@@ -181,8 +195,8 @@ Deno.test({
       const spawned: { execPath: string; args: string[] } = JSON.parse(
         await Deno.readTextFile(`${project}/spawned.json`),
       );
-      // The real Node ran the build, not the binary re-entering itself.
-      assertEquals(spawned.execPath === binary, false);
+      // That Node ran the build, not the binary re-entering itself.
+      assertEquals(spawned.execPath, node);
       assertEquals(spawned.args, ["report", "--flag"]);
     }, { prefix: "zuke-compiled-cli-node-" });
   },
