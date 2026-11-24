@@ -912,7 +912,18 @@ export function githubWorkflows(
         target: targets.integration,
         id: "e2e",
         name: "E2E (${{ matrix.os }})",
-        matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
+        // Every release target the zuke binary ships for: the latest images
+        // are x64 Linux, arm64 macOS and x64 Windows, and the two labelled
+        // images add arm64 Linux and x64 macOS.
+        matrix: {
+          os: [
+            "ubuntu-latest",
+            "ubuntu-24.04-arm",
+            "macos-latest",
+            "macos-15-intel",
+            "windows-latest",
+          ],
+        },
         // Deno rather than the ./zuke launcher: a generated step has no per-OS
         // shell to switch on, and `deno` is identical everywhere. Pinned to the
         // version the launchers bootstrap, so this runs the exact Deno the repo
