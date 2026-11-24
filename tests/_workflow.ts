@@ -15,6 +15,7 @@
  * @module
  */
 
+import { readFileSync } from "node:fs";
 import { parse } from "@std/yaml";
 
 /** Whether a parsed YAML value is an object that can be indexed. */
@@ -24,7 +25,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** A committed workflow, parsed. */
 export function readWorkflow(path: string): Record<string, unknown> {
-  const parsed = parse(Deno.readTextFileSync(path));
+  const parsed = parse(readFileSync(path, "utf8"));
   if (!isRecord(parsed)) throw new Error(`${path} is not a YAML mapping`);
   return parsed;
 }
