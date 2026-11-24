@@ -184,7 +184,7 @@ export function createOtelPlugin(
 
 /** Injectable dependencies for {@link otelWith} — the seams tests reach for. */
 export interface OtelDeps {
-  /** Environment reader; defaults to `Deno.env.get`. */
+  /** Environment reader; defaults to the process environment. */
   readEnv?: (name: string) => string | undefined;
   /** A transport to use directly, bypassing the HTTP exporter (tests). */
   transport?: OtlpTransport;

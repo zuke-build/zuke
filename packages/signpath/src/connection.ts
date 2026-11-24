@@ -159,7 +159,7 @@ export class SignPathConnectionSettings {
     return this;
   }
 
-  /** Read environment variables through `reader` instead of `Deno.env`. */
+  /** Read environment variables through `reader` instead of the process environment. */
   readEnv(reader: (name: string) => string | undefined): this {
     this.readEnv_ = reader;
     return this;
