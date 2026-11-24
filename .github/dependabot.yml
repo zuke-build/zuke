@@ -19,5 +19,10 @@ updates:
       # it still sees and still bumps — and which reach consumers when that
       # target cuts the next version.
       - dependency-name: "zuke-build/zuke"
+      # v2.6.0's image index names an amd64 manifest that ghcr.io does not
+      # serve, so the Scorecard job cannot pull it. Lift once a fixed release
+      # is out.
+      - dependency-name: "ossf/scorecard-action"
+        versions: ["2.6.0"]
     commit-message:
       prefix: "ci"
