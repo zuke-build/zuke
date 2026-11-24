@@ -10,14 +10,15 @@
  * (`EnvTasks`, `FileTasks`, `ProcessTasks`, …) instead.
  */
 
+import { readdir, readFile } from "node:fs/promises";
 import { assertEquals } from "./_assert.ts";
 
 /** Every `.ts` file under `dir`, recursively. */
 async function sources(dir: URL): Promise<URL[]> {
   const found: URL[] = [];
-  for await (const entry of Deno.readDir(dir)) {
-    const url = new URL(entry.name + (entry.isDirectory ? "/" : ""), dir);
-    if (entry.isDirectory) found.push(...await sources(url));
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), dir);
+    if (entry.isDirectory()) found.push(...await sources(url));
     else if (entry.name.endsWith(".ts")) found.push(url);
   }
   return found;
@@ -160,7 +161,7 @@ export async function denoCalls(root: URL): Promise<string[]> {
   ];
   const calls: string[] = [];
   for (const file of files) {
-    const lines = codeOnly(await Deno.readTextFile(file)).split("\n");
+    const lines = codeOnly(await readFile(file, "utf8")).split("\n");
     lines.forEach((line, i) => {
       if (/\bDeno\./.test(line)) {
         calls.push(`${file.pathname.slice(root.pathname.length)}:${i + 1}`);

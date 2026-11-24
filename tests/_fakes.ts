@@ -88,7 +88,10 @@ export class FakeStateHost implements StateHost {
   rename(from: string, to: string): Promise<void> {
     const content = this.files.get(from);
     if (content === undefined && !this.locks.has(from)) {
-      return Promise.reject(new Deno.errors.NotFound(`rename ${from}`));
+      // The error a real rename gives on either runtime: Node's ENOENT code.
+      return Promise.reject(
+        Object.assign(new Error(`rename ${from}`), { code: "ENOENT" }),
+      );
     }
     if (content !== undefined) {
       this.files.set(to, content);
