@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/storybook",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

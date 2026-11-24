@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/kubectl",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

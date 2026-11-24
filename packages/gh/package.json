@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/gh",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

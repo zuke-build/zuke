@@ -61,11 +61,9 @@ export interface ExampleRunner {
 /**
  * Run one example's build with `args`, from inside its own directory.
  *
- * An example that drives a Node app carries that app's package.json. Deno
- * would discover it from the example's directory and, under --frozen, refuse
- * to run because the root lockfile does not list it as a workspace member —
- * but it is the app's manifest, not the build's, so opt out of package.json
- * discovery for every step the gate runs.
+ * An example that drives a Node app carries that app's package.json, which
+ * the root package.json lists as a workspace member, so the root lockfile
+ * covers it as it covers the packages.
  */
 async function runExampleBuild(
   dir: string,
@@ -73,7 +71,7 @@ async function runExampleBuild(
 ): Promise<ExampleVerdict> {
   const out = await DenoTasks.run((s) =>
     s.allowAll().frozen().script("build.ts").scriptArgs(...args).cwd(dir)
-      .env({ DENO_NO_PACKAGE_JSON: "1" }).quiet().noThrow()
+      .quiet().noThrow()
   );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 }

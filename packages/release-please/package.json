@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/release-please",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

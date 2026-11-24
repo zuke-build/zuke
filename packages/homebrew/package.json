@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/homebrew",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/prometheus",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

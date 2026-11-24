@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/tsc-alias",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/turbo",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

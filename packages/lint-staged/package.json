@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/lint-staged",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

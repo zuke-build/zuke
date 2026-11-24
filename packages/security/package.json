@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/security",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

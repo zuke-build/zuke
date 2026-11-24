@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/openapi-ts",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

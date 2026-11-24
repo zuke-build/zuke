@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/cspell",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

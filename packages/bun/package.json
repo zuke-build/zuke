@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/bun",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

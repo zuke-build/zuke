@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/otel",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

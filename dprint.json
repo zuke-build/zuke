@@ -1,0 +1,30 @@
+{
+  "typescript": { "deno": true },
+  "json": { "deno": true },
+  "markdown": { "deno": true },
+  "includes": [
+    "build.ts",
+    "build/**",
+    "tests/**",
+    "packages/**",
+    "examples/**",
+    "docs/**",
+    "skills/**",
+    ".github/**",
+    "*.md"
+  ],
+  "excludes": [
+    "**/node_modules",
+    "CHANGELOG.md",
+    "packages/*/CHANGELOG.md",
+    "examples/*/.github/**",
+    "examples/*/*.yml",
+    "examples/*/package-lock.json",
+    "packages/engine/spec/tools.json"
+  ],
+  "plugins": [
+    "https://plugins.dprint.dev/typescript-0.101.0.wasm@4401b6e344db92a5e661a05958267d4b3068fa82c89067e9e8ffe849798644f4",
+    "https://plugins.dprint.dev/json-0.26.0.wasm@9abcd6eb43b3d04655649090c2e7ad14948da6acfe0374cb47ccd9eb3c48903d",
+    "https://plugins.dprint.dev/markdown-0.29.0.wasm@714aea7555dd9831861be466da8b26b2d92316d3cde550ef3e1f63b31f4ea302"
+  ]
+}

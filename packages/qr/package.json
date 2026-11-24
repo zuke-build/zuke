@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/qr",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

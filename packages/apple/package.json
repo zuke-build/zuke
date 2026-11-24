@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/apple",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

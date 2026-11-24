@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/redocly",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/gcloud",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

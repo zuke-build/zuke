@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/terraform",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}
