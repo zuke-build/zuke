@@ -11,6 +11,7 @@
 
 import { sha256Hex } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { nodeLauncherPowerShell } from "../../packages/cli/src/node_launcher.ts";
 
 const WINDOWS = Deno.build.os === "windows";
@@ -105,8 +106,7 @@ Deno.test({
     "the powershell node launcher bootstraps a verified Node, then reuses the cache",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       const w = await world(root);
       const first = await w.run({});
       assertEquals(first.code, 0, first.out);
@@ -119,9 +119,7 @@ Deno.test({
       });
       assertEquals(second.code, 0, second.out);
       assertEquals(second.out.includes("ran ci"), true, second.out);
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
 
@@ -130,8 +128,7 @@ Deno.test({
     "the powershell node launcher installs nothing on a checksum mismatch or an unpinned override",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       const w = await world(root);
       const bad = await w.run({ NODE_SHA256: "0".repeat(64) });
       assertEquals(bad.code, 1, bad.out);
@@ -140,9 +137,7 @@ Deno.test({
       const unpinned = await w.run({ NODE_SHA256: "" });
       assertEquals(unpinned.code, 1, unpinned.out);
       assertEquals(unpinned.out.includes("NODE_SHA256"), true, unpinned.out);
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
 
@@ -151,8 +146,7 @@ Deno.test({
     "the powershell node launcher uses a Node a concurrent launcher published first",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       // The other launcher's Node lands in the cache while this one downloads.
       const winner = `${root}\\winner`;
       await Deno.mkdir(winner);
@@ -171,9 +165,7 @@ Deno.test({
         "node.exe",
         "winner",
       ]);
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
 
@@ -182,8 +174,7 @@ Deno.test({
     "the powershell node launcher stops when npm fails, and retries the install next run",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       const w = await world(root);
       await Deno.writeTextFile(`${w.project}\\package.json`, "{}");
       await Deno.writeTextFile(`${w.project}\\package-lock.json`, "{}");
@@ -212,9 +203,7 @@ Deno.test({
         ),
         ["ci --ignore-scripts", "ci --ignore-scripts"],
       );
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
 
@@ -223,8 +212,7 @@ Deno.test({
     "two powershell node launchers started at once install once, and both run the build",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       const w = await world(root);
       await Deno.writeTextFile(`${w.project}\\package.json`, "{}");
       await Deno.writeTextFile(`${w.project}\\package-lock.json`, "{}");
@@ -252,9 +240,7 @@ Deno.test({
         await w.entries(`${w.project}\\.zuke`),
         [],
       );
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
 
@@ -263,8 +249,7 @@ Deno.test({
     "the powershell node launcher reports an install lock its owner left behind, and leaves it",
   ignore: !WINDOWS,
   async fn() {
-    const root = await Deno.makeTempDir();
-    try {
+    await withTemp(async (root) => {
       const w = await world(root);
       await Deno.writeTextFile(`${w.project}\\package-lock.json`, "{}");
       // The id of a process that has exited, as a killed launcher leaves it.
@@ -279,8 +264,6 @@ Deno.test({
       assertEquals(out.out.includes("remove it and run again"), true, out.out);
       assertEquals(out.out.includes("ran ci"), false, out.out);
       assertEquals(await Deno.readTextFile(lock), `${gone.pid}`);
-    } finally {
-      await Deno.remove(root, { recursive: true });
-    }
+    });
   },
 });
