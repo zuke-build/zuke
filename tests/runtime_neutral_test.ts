@@ -40,6 +40,13 @@ Deno.test("denoCalls reports a call inside a template substitution", async () =>
   assertEquals(await denoCalls(root), ["src/a.ts:1", "src/a.ts:4"]);
 });
 
+Deno.test("denoCalls reads past regular expressions holding quotes and backticks", async () => {
+  const root = await fixture(
+    'const backtick = /`/;\nconst q = text.replace(/["\'`/]+/g, "");\nconst half = 4 / 2; Deno.exit();\nDeno.cwd();\n',
+  );
+  assertEquals(await denoCalls(root), ["src/a.ts:3", "src/a.ts:4"]);
+});
+
 Deno.test("denoCalls skips whole comment lines", async () => {
   const root = await fixture(
     "/**\n * Defaults to `Deno.env.get`.\n */\n// Deno.readFile once\nexport const x = 1;\n",

@@ -28,9 +28,13 @@ async function sources(dir: URL): Promise<URL[]> {
  * blanked to spaces, newlines kept so line numbers hold, and the code inside a
  * template's `${…}` kept, so only executable code is left to search.
  *
- * shortcut: a regular-expression literal is read as code, so one holding a
- * quote or a comment marker can mis-scan the rest of its line; use a real
- * TypeScript scanner if a package ever needs one.
+ * A `/` where an expression can start (after an operator, an opening bracket,
+ * a separator or `return`) opens a regular-expression literal, read through its
+ * escapes and character classes and blanked like a string.
+ *
+ * shortcut: the regex-or-division call looks only at the code before the `/`,
+ * which is enough for this repository's style; use a real TypeScript scanner
+ * if a package ever trips it.
  */
 export function codeOnly(source: string): string {
   let out = "";
@@ -60,6 +64,29 @@ export function codeOnly(source: string): string {
       }
     }
   };
+  /** Whether a `/` at this point starts a regular expression, not a division. */
+  const regexCanStart = () => {
+    const before = out.trimEnd();
+    return before === "" || /[(,=:[!&|?{};+\-*%<>~^]$/.test(before) ||
+      /\breturn$/.test(before);
+  };
+  /** Skip a regular-expression literal's body from `i`, after its opening `/`. */
+  const regexBody = () => {
+    let inClass = false;
+    while (i < source.length && source[i] !== "\n") {
+      const c = source[i];
+      if (c === "\\") {
+        out += blank(c) + blank(source[i + 1] ?? "");
+        i += 2;
+        continue;
+      }
+      out += " ";
+      i++;
+      if (c === "[") inClass = true;
+      else if (c === "]") inClass = false;
+      else if (c === "/" && !inClass) return;
+    }
+  };
   while (i < source.length) {
     const c = source[i];
     const next = source[i + 1];
@@ -69,6 +96,10 @@ export function codeOnly(source: string): string {
       const end = source.indexOf("*/", i + 2);
       const stop = end === -1 ? source.length : end + 2;
       while (i < stop) out += blank(source[i++]);
+    } else if (c === "/" && regexCanStart()) {
+      out += " ";
+      i++;
+      regexBody();
     } else if (c === "'" || c === '"') {
       out += " ";
       i++;
