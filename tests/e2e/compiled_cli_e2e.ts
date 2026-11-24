@@ -141,3 +141,49 @@ Deno.test({
     }, { prefix: "zuke-compiled-cli-" });
   },
 });
+
+/**
+ * A Node project's build file, which records the executable and the arguments
+ * it was started with; it imports nothing, so no package has to be installed.
+ */
+const NODE_REPORT_BUILD = `import { writeFileSync } from "node:fs";
+import process from "node:process";
+
+writeFileSync(
+  "spawned.json",
+  JSON.stringify({ execPath: process.execPath, args: process.argv.slice(2) }),
+);
+`;
+
+Deno.test({
+  name: "the zuke binary runs a Node project's build on the node on PATH",
+  ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const binary = `${dir}/${BINARY}`;
+      await buildWorkspaceNodeBinary(binary);
+      const project = `${dir}/project`;
+      await Deno.mkdir(project);
+      await Deno.writeTextFile(
+        `${project}/zuke.json`,
+        JSON.stringify({ runtime: "node", build: "build.ts" }),
+      );
+      await Deno.writeTextFile(`${project}/build.ts`, NODE_REPORT_BUILD);
+      const { code, stderr } = await new Deno.Command(binary, {
+        args: ["report", "--flag"],
+        cwd: project,
+        env: { HOME: dir, USERPROFILE: dir, ZUKE_PLAIN: "1" },
+        stdout: "null",
+        stderr: "piped",
+        signal: AbortSignal.timeout(120_000),
+      }).output();
+      assertEquals(code, 0, new TextDecoder().decode(stderr));
+      const spawned: { execPath: string; args: string[] } = JSON.parse(
+        await Deno.readTextFile(`${project}/spawned.json`),
+      );
+      // The real Node ran the build, not the binary re-entering itself.
+      assertEquals(spawned.execPath === binary, false);
+      assertEquals(spawned.args, ["report", "--flag"]);
+    }, { prefix: "zuke-compiled-cli-node-" });
+  },
+});
