@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/dpdm",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

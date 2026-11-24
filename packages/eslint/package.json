@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/eslint",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

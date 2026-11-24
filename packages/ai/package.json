@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/ai",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

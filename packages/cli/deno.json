@@ -13,7 +13,8 @@
   },
   "publish": {
     "exclude": [
-      "tests/"
+      "tests/",
+      "package.json"
     ]
   }
 }

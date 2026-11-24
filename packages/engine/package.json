@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/engine",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

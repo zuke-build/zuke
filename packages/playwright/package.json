@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/playwright",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

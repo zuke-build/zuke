@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/docker-compose",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

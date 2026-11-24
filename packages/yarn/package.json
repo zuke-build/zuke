@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/yarn",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

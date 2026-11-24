@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/pnpm",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

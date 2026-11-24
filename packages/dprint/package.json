@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/dprint",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

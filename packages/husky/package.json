@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/husky",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

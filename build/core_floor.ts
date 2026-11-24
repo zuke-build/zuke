@@ -287,8 +287,11 @@ export async function checkCoreFloors(
     try {
       const config = `${dir}/deno.json`;
       await FileTasks.writeText(config, floorConfig(floor, pinned, siblings));
+      // The npm workspace's package.json files would have Deno link the
+      // packages as npm packages, which this isolated check is not about.
       const output = await DenoTasks.check((s) =>
-        s.config(config).noLock().paths(`packages/${pkg}/mod.ts`).noThrow()
+        s.config(config).noLock().paths(`packages/${pkg}/mod.ts`)
+          .env({ DENO_NO_PACKAGE_JSON: "1" }).noThrow()
       );
       results.push({
         package: pkg,

@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/oxlint",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

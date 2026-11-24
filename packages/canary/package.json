@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/canary",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

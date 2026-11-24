@@ -1,0 +1,19 @@
+{
+  "name": "zuke-workspace",
+  "private": true,
+  "description": "Zuke's own development workspace: links every package under packages/ into node_modules as @zuke/<name> and pins the Node toolchain the gate runs. Never published.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/node-app"
+  ],
+  "devDependencies": {
+    "@types/deno": "2.7.0",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.1.0",
+    "dprint": "0.64.3",
+    "oxlint": "1.93.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

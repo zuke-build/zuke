@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/flutter",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

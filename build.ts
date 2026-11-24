@@ -92,6 +92,10 @@ import {
 } from "./build/cli_binary.ts";
 import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
 import {
+  staleManifests,
+  workspaceManifests,
+} from "./build/workspace_manifest.ts";
+import {
   publishCliChocolatey,
   verifyCliChocolatey,
 } from "./build/cli_chocolatey.ts";
@@ -750,6 +754,33 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
     });
 
+  packageJsonSync = target()
+    .description(
+      "Regenerate each package's workspace package.json from its deno.json",
+    )
+    .executes(async () => {
+      const manifests = await workspaceManifests(PACKAGES);
+      for (const [path, text] of manifests) {
+        await FileTasks.writeText(path, text);
+      }
+      ConsoleTasks.info(`Wrote ${manifests.size} package.json files.`);
+    });
+
+  packageJsonSyncCheck = target()
+    .description(
+      "Verify each package's workspace package.json matches its deno.json",
+    )
+    .executes(async () => {
+      const stale = await staleManifests(await workspaceManifests(PACKAGES));
+      if (stale.length > 0) {
+        throw new Error(
+          `These package.json files have drifted from their deno.json:\n  ${
+            stale.join("\n  ")
+          }\nRun \`./zuke packageJsonSync\` and commit the result.`,
+        );
+      }
+    });
+
   launcherSync = target()
     .description(
       "Regenerate ./zuke and zuke.ps1 from @zuke/cli's launcher template",
@@ -1197,6 +1228,7 @@ class ZukeBuild extends Build {
       this.hclSyncCheck,
       this.pluginSyncCheck,
       this.launcherSyncCheck,
+      this.packageJsonSyncCheck,
       this.skillsCheck,
       this.graphDocCheck,
       this.toolSpecCheck,

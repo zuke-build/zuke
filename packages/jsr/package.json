@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/jsr",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

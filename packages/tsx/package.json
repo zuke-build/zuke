@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/tsx",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

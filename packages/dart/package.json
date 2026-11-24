@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/dart",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

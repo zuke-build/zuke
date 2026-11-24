@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/cmd",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

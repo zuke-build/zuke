@@ -1,3 +1,4 @@
+node_modules/
 # Coverage artifacts
 /cov_profile/
 /cov.lcov

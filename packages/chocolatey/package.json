@@ -1,0 +1,8 @@
+{
+  "name": "@zuke/chocolatey",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}
