@@ -24,9 +24,13 @@ export interface TempOptions {
   prefix?: string;
 }
 
-/** A fresh directory under the system temp directory. */
+/**
+ * A fresh directory inside `options.dir`, or the system temp directory. An
+ * empty prefix falls back too: `join` would drop the separator and make the
+ * directory a sibling of its parent rather than a child.
+ */
 function makeTemp(options?: TempOptions): Promise<string> {
-  return mkdtemp(join(options?.dir ?? tmpdir(), options?.prefix ?? "tmp-"));
+  return mkdtemp(join(options?.dir ?? tmpdir(), options?.prefix || "tmp-"));
 }
 
 /**
