@@ -8,6 +8,9 @@
     "packages/core": {
       "component": "core",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/core/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -20,6 +23,9 @@
     "packages/deno": {
       "component": "deno",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/deno/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -31,6 +37,9 @@
     "packages/docs": {
       "component": "docs",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/docs/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -42,6 +51,9 @@
     "packages/engine": {
       "component": "engine",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/engine/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -53,6 +65,9 @@
     "packages/npm": {
       "component": "npm",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/npm/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -64,6 +79,9 @@
     "packages/npx": {
       "component": "npx",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/npx/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -75,6 +93,9 @@
     "packages/bun": {
       "component": "bun",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/bun/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -86,6 +107,9 @@
     "packages/pnpm": {
       "component": "pnpm",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/pnpm/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -97,6 +121,9 @@
     "packages/yarn": {
       "component": "yarn",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/yarn/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -108,6 +135,9 @@
     "packages/cmd": {
       "component": "cmd",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/cmd/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -119,6 +149,9 @@
     "packages/console": {
       "component": "console",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/console/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -130,6 +163,9 @@
     "packages/cli": {
       "component": "cli",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/cli/tests"
+      ],
       "draft": true,
       "extra-files": [
         {
@@ -143,6 +179,9 @@
     "packages/docker": {
       "component": "docker",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/docker/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -154,6 +193,9 @@
     "packages/docker-compose": {
       "component": "docker-compose",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/docker-compose/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -165,6 +207,9 @@
     "packages/kubectl": {
       "component": "kubectl",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/kubectl/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -176,6 +221,9 @@
     "packages/helm": {
       "component": "helm",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/helm/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -187,6 +235,9 @@
     "packages/kustomize": {
       "component": "kustomize",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/kustomize/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -198,6 +249,9 @@
     "packages/argo-rollouts": {
       "component": "argo-rollouts",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/argo-rollouts/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -209,6 +263,9 @@
     "packages/prometheus": {
       "component": "prometheus",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/prometheus/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -220,6 +277,9 @@
     "packages/canary": {
       "component": "canary",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/canary/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -231,6 +291,9 @@
     "packages/oxlint": {
       "component": "oxlint",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/oxlint/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -242,6 +305,9 @@
     "packages/eslint": {
       "component": "eslint",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/eslint/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -253,6 +319,9 @@
     "packages/cspell": {
       "component": "cspell",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/cspell/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -264,6 +333,9 @@
     "packages/shellcheck": {
       "component": "shellcheck",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/shellcheck/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -275,6 +347,9 @@
     "packages/jest": {
       "component": "jest",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/jest/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -286,6 +361,9 @@
     "packages/vitest": {
       "component": "vitest",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/vitest/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -297,6 +375,9 @@
     "packages/playwright": {
       "component": "playwright",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/playwright/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -308,6 +389,9 @@
     "packages/biome": {
       "component": "biome",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/biome/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -319,6 +403,9 @@
     "packages/knip": {
       "component": "knip",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/knip/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -330,6 +417,9 @@
     "packages/dpdm": {
       "component": "dpdm",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/dpdm/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -341,6 +431,9 @@
     "packages/cypress": {
       "component": "cypress",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/cypress/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -352,6 +445,9 @@
     "packages/vite": {
       "component": "vite",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/vite/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -363,6 +459,9 @@
     "packages/storybook": {
       "component": "storybook",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/storybook/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -374,6 +473,9 @@
     "packages/redocly": {
       "component": "redocly",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/redocly/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -385,6 +487,9 @@
     "packages/lint-staged": {
       "component": "lint-staged",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/lint-staged/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -396,6 +501,9 @@
     "packages/tsup": {
       "component": "tsup",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tsup/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -407,6 +515,9 @@
     "packages/turbo": {
       "component": "turbo",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/turbo/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -418,6 +529,9 @@
     "packages/nx": {
       "component": "nx",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/nx/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -429,6 +543,9 @@
     "packages/jsr": {
       "component": "jsr",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/jsr/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -440,6 +557,9 @@
     "packages/tsx": {
       "component": "tsx",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tsx/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -451,6 +571,9 @@
     "packages/tsc": {
       "component": "tsc",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tsc/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -462,6 +585,9 @@
     "packages/tsc-alias": {
       "component": "tsc-alias",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tsc-alias/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -473,6 +599,9 @@
     "packages/tsdown": {
       "component": "tsdown",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tsdown/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -484,6 +613,9 @@
     "packages/nest": {
       "component": "nest",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/nest/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -495,6 +627,9 @@
     "packages/openapi-ts": {
       "component": "openapi-ts",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/openapi-ts/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -506,6 +641,9 @@
     "packages/orval": {
       "component": "orval",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/orval/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -517,6 +655,9 @@
     "packages/husky": {
       "component": "husky",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/husky/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -528,6 +669,9 @@
     "packages/node": {
       "component": "node",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/node/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -539,6 +683,9 @@
     "packages/dprint": {
       "component": "dprint",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/dprint/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -550,6 +697,9 @@
     "packages/gcloud": {
       "component": "gcloud",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/gcloud/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -561,6 +711,9 @@
     "packages/aws": {
       "component": "aws",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/aws/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -572,6 +725,9 @@
     "packages/az": {
       "component": "az",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/az/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -583,6 +739,9 @@
     "packages/git": {
       "component": "git",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/git/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -594,6 +753,9 @@
     "packages/gh": {
       "component": "gh",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/gh/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -605,6 +767,9 @@
     "packages/codecov": {
       "component": "codecov",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/codecov/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -616,6 +781,9 @@
     "packages/claude": {
       "component": "claude",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/claude/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -627,6 +795,9 @@
     "packages/codex": {
       "component": "codex",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/codex/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -638,6 +809,9 @@
     "packages/gemini": {
       "component": "gemini",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/gemini/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -649,6 +823,9 @@
     "packages/terraform": {
       "component": "terraform",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/terraform/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -660,6 +837,9 @@
     "packages/tofu": {
       "component": "tofu",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/tofu/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -671,6 +851,9 @@
     "packages/release-please": {
       "component": "release-please",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/release-please/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -682,6 +865,9 @@
     "packages/security": {
       "component": "security",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/security/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -693,6 +879,9 @@
     "packages/ai": {
       "component": "ai",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/ai/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -704,6 +893,9 @@
     "packages/otel": {
       "component": "otel",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/otel/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -715,6 +907,9 @@
     "packages/homebrew": {
       "component": "homebrew",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/homebrew/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -726,6 +921,9 @@
     "packages/chocolatey": {
       "component": "chocolatey",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/chocolatey/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -737,6 +935,9 @@
     "packages/qr": {
       "component": "qr",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/qr/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -748,6 +949,9 @@
     "packages/apple": {
       "component": "apple",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/apple/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -759,6 +963,9 @@
     "packages/google": {
       "component": "google",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/google/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -770,6 +977,9 @@
     "packages/signpath": {
       "component": "signpath",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/signpath/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -781,6 +991,9 @@
     "packages/flutter": {
       "component": "flutter",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/flutter/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
@@ -792,6 +1005,9 @@
     "packages/dart": {
       "component": "dart",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "packages/dart/tests"
+      ],
       "extra-files": [
         {
           "type": "json",
