@@ -150,8 +150,8 @@ test("tcpReachable validates the address", async () => {
 
 test("Command.spawn starts a process that stop() terminates", async () => {
   const bin = RuntimeTasks.execPath();
-  const script = "await new Promise(() => {})"; // hangs until killed
-  const proc = $`${bin} eval ${script}`.spawn();
+  const script = "setInterval(() => {}, 60_000)"; // runs until killed
+  const proc = $`${bin} ${EVAL} ${script}`.spawn();
   assertEquals(proc.pid > 0, true);
   await proc.stop();
   const status = await proc.status;
