@@ -10,7 +10,7 @@
  */
 
 import { test } from "../../../tests/_testing.ts";
-import { gunzip } from "@zuke/core";
+import { FileTasks, gunzip } from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
@@ -62,7 +62,7 @@ async function sentSarif(seen: Seen): Promise<unknown> {
 /** Write a minimal SARIF report to a temp file and return its path. */
 async function sarifFixture(dir: string): Promise<string> {
   const path = `${dir}/results.sarif`;
-  await Deno.writeTextFile(
+  await FileTasks.writeText(
     path,
     JSON.stringify({ version: "2.1.0", runs: [{ results: [] }] }),
   );

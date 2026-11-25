@@ -10,7 +10,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  parameter,
+  REDACTED,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
@@ -55,7 +61,7 @@ test("a failing command's error message masks a secret argv token", async () => 
   class Fail extends Build {
     token = parameter("Registry token").secret().required();
     run = target().executes(async () => {
-      await $`${Deno.execPath()} eval ${`Deno.exit(4)`} ${this.token.value}`
+      await $`${RuntimeTasks.execPath()} eval ${`Deno.exit(4)`} ${this.token.value}`
         .quiet();
     });
   }

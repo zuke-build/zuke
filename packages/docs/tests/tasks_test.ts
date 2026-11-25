@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { DocsTasks } from "../src/tasks.ts";
@@ -29,10 +30,12 @@ const DOCS: PackageDoc[] = [
 ];
 
 async function fixture(): Promise<{ root: string; options: ApiDocsOptions }> {
-  const root = await Deno.makeTempDir({ prefix: "zuke-docs-test-" });
-  await Deno.mkdir(`${root}/packages/foo`, { recursive: true });
-  await Deno.mkdir(`${root}/packages/bar`, { recursive: true }); // exists, no README
-  await Deno.writeTextFile(
+  const root = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-docs-test-")
+  );
+  await FileTasks.createDirectory(`${root}/packages/foo`);
+  await FileTasks.createDirectory(`${root}/packages/bar`); // exists, no README
+  await FileTasks.writeText(
     `${root}/packages/foo/README.md`,
     "# @example/foo\n\nIntro.\n",
   );
@@ -60,7 +63,7 @@ test("apiDocs generates the index, reference, and README blocks", async () => {
     assertEquals(written.includes(`${root}/packages/foo/README.md`), true);
     assertEquals(written.includes(`${root}/packages/bar/README.md`), true);
 
-    const index = await Deno.readTextFile(`${root}/llms.txt`);
+    const index = await FileTasks.readText(`${root}/llms.txt`);
     assertStringIncludes(index, "# Example");
     assertStringIncludes(index, "> A test workspace.");
     assertStringIncludes(index, "const x = 1;");
@@ -71,23 +74,27 @@ test("apiDocs generates the index, reference, and README blocks", async () => {
     // bar's summary falls back to its first line (it has no em dash)
     assertStringIncludes(index, "/@example/bar) — A module without a dash");
 
-    const full = await Deno.readTextFile(`${root}/llms-full.txt`);
+    const full = await FileTasks.readText(`${root}/llms-full.txt`);
     assertStringIncludes(full, "# Example — full API reference");
     assertStringIncludes(full, "Regenerate with `./build docs`.");
     assertStringIncludes(full, "Add two numbers.");
     assertEquals(/Defined in/.test(full), false); // machine paths stripped
 
-    const fooReadme = await Deno.readTextFile(`${root}/packages/foo/README.md`);
+    const fooReadme = await FileTasks.readText(
+      `${root}/packages/foo/README.md`,
+    );
     assertStringIncludes(fooReadme, "Intro."); // existing content preserved
     assertStringIncludes(fooReadme, "## API");
     assertStringIncludes(fooReadme, "Add two numbers.");
 
     // bar had no README — one is created from the default heading
-    const barReadme = await Deno.readTextFile(`${root}/packages/bar/README.md`);
+    const barReadme = await FileTasks.readText(
+      `${root}/packages/bar/README.md`,
+    );
     assertStringIncludes(barReadme, "# @example/bar");
     assertStringIncludes(barReadme, "Subtract.");
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -98,13 +105,13 @@ test("checkApiDocs reports clean, then stale after a manual edit", async () => {
     assertEquals(await DocsTasks.checkApiDocs(DOCS, options), []);
     // a second generation writes nothing (idempotent — exercises the replace path)
     assertEquals(await DocsTasks.apiDocs(DOCS, options), []);
-    await Deno.writeTextFile(`${root}/llms.txt`, "stale\n");
+    await FileTasks.writeText(`${root}/llms.txt`, "stale\n");
     assertEquals(
       await DocsTasks.checkApiDocs(DOCS, options),
       [`${root}/llms.txt`],
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -117,9 +124,11 @@ test("readmes:false generates only the index and reference", async () => {
     });
     assertEquals(written.includes(`${root}/packages/foo/README.md`), false);
     assertEquals(written.includes(`${root}/llms.txt`), true);
-    const fooReadme = await Deno.readTextFile(`${root}/packages/foo/README.md`);
+    const fooReadme = await FileTasks.readText(
+      `${root}/packages/foo/README.md`,
+    );
     assertEquals(/## API/.test(fooReadme), false); // README left untouched
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });

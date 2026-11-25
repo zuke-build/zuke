@@ -10,6 +10,8 @@
  * primitive for anyone who can write a file on the host.
  */
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
+import { chdir } from "../../../tests/_temp.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import {
@@ -295,24 +297,24 @@ test("a module on another host spelled as a path is remote", () => {
 });
 
 test("the host filesystem resolves symlinks and missing tails", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
-  const dir = await Deno.realPath(await Deno.makeTempDir());
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
+  const dir = await FileTasks.realPath(await FileTasks.makeTempDirectory());
   try {
     // The default directory is the project root above the working directory,
     // or the working directory itself when there is none.
     const fs = hostLaunchFileSystem();
-    assertEquals(fs.defaultDir, Deno.cwd());
-    const previous = Deno.cwd();
-    Deno.chdir(dir);
+    assertEquals(fs.defaultDir, RuntimeTasks.cwd());
+    const previous = RuntimeTasks.cwd();
+    chdir(dir);
     try {
       assertEquals(hostLaunchFileSystem().defaultDir, dir);
     } finally {
-      Deno.chdir(previous);
+      chdir(previous);
     }
-    await Deno.mkdir(`${dir}/inside`);
-    await Deno.mkdir(`${dir}/outside`);
-    await Deno.writeTextFile(`${dir}/inside/file`, "");
-    await Deno.symlink(`${dir}/outside`, `${dir}/inside/link`);
+    await FileTasks.createDirectory(`${dir}/inside`, { recursive: false });
+    await FileTasks.createDirectory(`${dir}/outside`, { recursive: false });
+    await FileTasks.writeText(`${dir}/inside/file`, "");
+    await FileTasks.symlink(`${dir}/outside`, `${dir}/inside/link`);
     const real = (path: string) => fs.realPath(path)?.replace(/\\/g, "/");
     const slashed = dir.replace(/\\/g, "/");
     assertEquals(real(`${dir}/inside/link`), `${slashed}/outside`);
@@ -323,7 +325,7 @@ test("the host filesystem resolves symlinks and missing tails", async () => {
     );
     // A dangling link could be pointed anywhere later, so it does not resolve,
     // nor does anything beneath it.
-    await Deno.symlink(`${dir}/outside/later`, `${dir}/inside/dangling`);
+    await FileTasks.symlink(`${dir}/outside/later`, `${dir}/inside/dangling`);
     assertEquals(fs.realPath(`${dir}/inside/dangling`), undefined);
     assertEquals(fs.realPath(`${dir}/inside/dangling/x.ts`), undefined);
     // A missing path straight under the filesystem root keeps its name.
@@ -334,7 +336,7 @@ test("the host filesystem resolves symlinks and missing tails", async () => {
     // A file used as a directory cannot be resolved.
     assertEquals(fs.realPath(`${dir}/inside/file/x.ts`), undefined);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

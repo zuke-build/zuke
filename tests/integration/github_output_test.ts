@@ -16,13 +16,16 @@
  * @module
  */
 
+import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   appendJobSummary,
   Build,
   externalSignal,
+  FileTasks,
   parameter,
+  RuntimeTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
@@ -172,9 +175,9 @@ test("a remediation's job-summary section is redacted", async () => {
   // an argv would appear — and the summary is published to everyone who can
   // view the run. A remediation has no redactor on its context, so this works
   // only because the writer itself applies the ambient one.
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const summaryPath = `${dir}/summary.md`;
-  await Deno.writeTextFile(summaryPath, "");
+  await FileTasks.writeText(summaryPath, "");
   try {
     class B extends Build {
       token = parameter("Deploy token").secret().required();
@@ -198,7 +201,7 @@ test("a remediation's job-summary section is redacted", async () => {
         await runCli(B, ["check", "--token", "s3cr3t-value-xyz"]);
       },
     );
-    const written = await Deno.readTextFile(summaryPath);
+    const written = await FileTasks.readText(summaryPath);
     assertEquals(
       written.includes("s3cr3t-value-xyz"),
       false,
@@ -206,7 +209,7 @@ test("a remediation's job-summary section is redacted", async () => {
     );
     assertStringIncludes(written, "[redacted]");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -217,9 +220,9 @@ test("a build's lifecycle hooks write a redacted job summary", async () => {
   // is installed where the hooks are dispatched for that reason — an earlier
   // version of this fix guarded only the plan and published both hooks' output
   // in the clear.
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const summaryPath = `${dir}/summary.md`;
-  await Deno.writeTextFile(summaryPath, "");
+  await FileTasks.writeText(summaryPath, "");
   try {
     class B extends Build {
       token = parameter("Deploy token").secret().required();
@@ -237,7 +240,7 @@ test("a build's lifecycle hooks write a redacted job summary", async () => {
         await runCli(B, ["ok", "--token", "s3cr3t-value-xyz"]);
       },
     );
-    const written = await Deno.readTextFile(summaryPath);
+    const written = await FileTasks.readText(summaryPath);
     assertEquals(
       written.includes("s3cr3t-value-xyz"),
       false,
@@ -246,7 +249,7 @@ test("a build's lifecycle hooks write a redacted job summary", async () => {
     assertStringIncludes(written, "start: [redacted]");
     assertStringIncludes(written, "finish: [redacted]");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -358,24 +361,26 @@ test("the graph command's own output cannot forge a command", async () => {
   // includes the workspace directory — which on a runner can come from a
   // matrix entry or a dispatch input. It has its own host with its own console
   // write, so the sink had to reach it too.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-##[error]graph-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-##[error]graph-")
+  );
   try {
     class B extends Build {
       ok = target().executes(() => {});
     }
-    const cwd = Deno.cwd();
-    Deno.chdir(dir);
+    const cwd = RuntimeTasks.cwd();
+    chdir(dir);
     try {
-      await Deno.writeTextFile("zuke.json", '{"build":"B"}');
+      await FileTasks.writeText("zuke.json", '{"build":"B"}');
       let r = { code: -1, out: "", err: "" };
       await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
         r = await runCli(B, ["graph", "--output", "html", "--no-open"]);
       });
       assertEquals(unintendedCommands(`${r.out}\n${r.err}`), []);
     } finally {
-      Deno.chdir(cwd);
+      chdir(cwd);
     }
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

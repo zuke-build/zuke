@@ -9,7 +9,7 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
-import { Redactor } from "@zuke/core";
+import { FileTasks, Redactor } from "@zuke/core";
 import {
   PrometheusApiError,
   type PrometheusCredentialsContext,
@@ -105,10 +105,10 @@ test("a credentials callback sees the exact request and the injected seams", asy
 });
 
 test("the default seams read the real file system, environment and clock", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const path = `${dir}/token`;
-    await Deno.writeTextFile(path, "file-token");
+    await FileTasks.writeText(path, "file-token");
     const fetcher = fakeFetch(() => vector());
     const before = Date.now();
     let now = 0;
@@ -129,7 +129,7 @@ test("the default seams read the real file system, environment and clock", async
     assertEquals(fetcher.sent[0].headers.get("x-env"), "undefined");
     assertEquals(now >= before, true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

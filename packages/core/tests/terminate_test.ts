@@ -3,26 +3,27 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
+import type { CommandStatus, Signal } from "../src/signal.ts";
 import { terminateProcess } from "../src/terminate.ts";
 
 /**
- * A stand-in for `Deno.ChildProcess` that records the signals it receives and
+ * A stand-in for a child process that records the signals it receives and
  * exits only when told to — the seam the escalation logic is tested through.
  */
 function fakeChild(
-  options: { exitsOn?: Deno.Signal; killThrows?: boolean } = {},
+  options: { exitsOn?: Signal; killThrows?: boolean } = {},
 ) {
-  const signals: Deno.Signal[] = [];
+  const signals: Signal[] = [];
   // The Promise executor runs synchronously, so `exit` is assigned before use;
   // the no-op initialiser keeps the field definitely assigned without a `!`.
   let exit: () => void = () => {};
-  const status = new Promise<Deno.CommandStatus>((resolve) => {
+  const status = new Promise<CommandStatus>((resolve) => {
     exit = () => resolve({ success: false, code: 137, signal: "SIGKILL" });
   });
   return {
     signals,
     status,
-    kill(signal: Deno.Signal = "SIGTERM") {
+    kill(signal: Signal = "SIGTERM") {
       if (options.killThrows) throw new TypeError("process already exited");
       signals.push(signal);
       if (signal === "SIGKILL" || signal === options.exitsOn) exit();
@@ -60,7 +61,7 @@ test("terminateProcess tolerates a process that exits as SIGKILL is sent", async
   let killed = 0;
   const racing = {
     status: child.status,
-    kill(signal: Deno.Signal = "SIGTERM") {
+    kill(signal: Signal = "SIGTERM") {
       killed++;
       // The first signal lands; by the time the escalation fires the process is
       // gone, so the second kill throws — which must not surface.

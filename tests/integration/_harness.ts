@@ -11,10 +11,9 @@
  * @module
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import process from "node:process";
+import { withEnv } from "../_env.ts";
+import { withTemp } from "../_temp.ts";
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Build } from "../../packages/core/mod.ts";
 import { defaultGraphHost } from "../../packages/core/src/graph_view.ts";
@@ -107,38 +106,17 @@ export async function runCli(
  * store, the premise evaporates, and the test either fails for a reason that
  * has nothing to do with it or passes while proving something else.
  */
-export async function withoutStateDir(fn: () => Promise<void>): Promise<void> {
-  const prev = process.env.ZUKE_STATE_DIR;
-  const prevUrl = process.env.ZUKE_STATE_URL;
-  delete process.env.ZUKE_STATE_DIR;
-  delete process.env.ZUKE_STATE_URL;
-  try {
-    await fn();
-  } finally {
-    if (prev !== undefined) process.env.ZUKE_STATE_DIR = prev;
-    if (prevUrl !== undefined) process.env.ZUKE_STATE_URL = prevUrl;
-  }
+export function withoutStateDir(fn: () => Promise<void>): Promise<void> {
+  return withEnv({ ZUKE_STATE_DIR: undefined, ZUKE_STATE_URL: undefined }, fn);
 }
 
-export async function withStateDir(
+export function withStateDir(
   fn: (dir: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "zuke-it-"));
-  const prev = process.env.ZUKE_STATE_DIR;
-  process.env.ZUKE_STATE_DIR = dir;
-  try {
-    await fn(dir);
-  } finally {
-    if (prev === undefined) delete process.env.ZUKE_STATE_DIR;
-    else process.env.ZUKE_STATE_DIR = prev;
-    // Best-effort cleanup: a removal error (e.g. a Windows file lock) must never
-    // replace the test's own assertion failure, which is the error worth seeing.
-    try {
-      await rm(dir, { recursive: true, force: true });
-    } catch {
-      // ignore — the temp dir is throwaway; masking the real error is worse.
-    }
-  }
+  return withTemp(
+    (dir) => withEnv({ ZUKE_STATE_DIR: dir }, () => fn(dir)),
+    { prefix: "zuke-it-" },
+  );
 }
 
 /**

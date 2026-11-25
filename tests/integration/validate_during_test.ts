@@ -9,7 +9,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli } from "./_harness.ts";
 
@@ -21,7 +21,7 @@ class Bake extends Build {
   bake = target()
     .executes(async () => {
       try {
-        await $`${Deno.execPath()} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
+        await $`${RuntimeTasks.execPath()} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
           .quiet();
       } finally {
         childEnded = true;

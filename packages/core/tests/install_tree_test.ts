@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { type DownloadFn, installTree } from "../src/install.ts";
@@ -16,7 +17,7 @@ import {
 } from "../../../tests/_xz.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
-const POSIX = Deno.build.os !== "windows";
+const POSIX = RuntimeTasks.os() !== "windows";
 
 /** A download seam that writes fixed bytes to `dest`, counting its calls. */
 function fakeDownload(
@@ -25,7 +26,7 @@ function fakeDownload(
 ): DownloadFn {
   return async (_url, dest) => {
     if (counter) counter.calls++;
-    await Deno.writeFile(String(dest), bytes);
+    await FileTasks.writeBytes(String(dest), bytes);
   };
 }
 
@@ -71,22 +72,24 @@ test("installTree unpacks a runtime tree, strips, and returns the root", async (
     assertEquals(root.path.endsWith("/node"), true);
     // The `node-v1/` wrapper is stripped: files sit directly under the root.
     assertEquals(
-      await Deno.readTextFile(String(root("bin", "node"))),
+      await FileTasks.readText(String(root("bin", "node"))),
       "#!/bin/sh\necho node\n",
     );
     if (POSIX) {
-      const mode = (await Deno.stat(String(root("bin", "node")))).mode ?? 0;
+      const mode = (await FileTasks.stat(String(root("bin", "node")))).mode ??
+        0;
       assertEquals(mode & 0o111, 0o111); // bin/node is executable
       // bin/npm is a real symlink; reading follows it to the lib script.
-      const link = await Deno.lstat(String(root("bin", "npm")));
+      const link = await FileTasks.lstat(String(root("bin", "npm")));
       assertEquals(link.isSymlink, true);
       assertEquals(
-        await Deno.readTextFile(String(root("bin", "npm"))),
+        await FileTasks.readText(String(root("bin", "npm"))),
         "#!/bin/sh\necho npm\n",
       );
       // chmod of the symlinked bin follows to its target, so npm-cli.js is +x.
-      const targetMode = (await Deno.stat(String(root("bin", "npm")))).mode ??
-        0;
+      const targetMode =
+        (await FileTasks.stat(String(root("bin", "npm")))).mode ??
+          0;
       assertEquals(targetMode & 0o111, 0o111);
     }
   });
@@ -120,11 +123,13 @@ test("installTree unpacks a GNU tarball with @LongLink long paths (Node's Linux 
     });
     const lib = onSlash.slice("node-v1/".length, -"skipFirst.js".length);
     assertEquals(
-      await Deno.readTextFile(String(root(...`${lib}skipFirst.js`.split("/")))),
+      await FileTasks.readText(
+        String(root(...`${lib}skipFirst.js`.split("/"))),
+      ),
       "a",
     );
     assertEquals(
-      await Deno.readTextFile(
+      await FileTasks.readText(
         String(root(...`${lib}delay.base.js`.split("/"))),
       ),
       "b",
@@ -186,11 +191,11 @@ test("installTree re-installs on a missing bin or a corrupt marker", async () =>
     };
     const root = await installTree(spec);
     // A deleted declared bin invalidates the cache → re-download and re-extract.
-    await Deno.remove(String(root("bin", "node")));
+    await FileTasks.remove(String(root("bin", "node")));
     await installTree(spec);
     assertEquals(counter.calls, 2);
     // A corrupt marker is treated as no marker → re-install again.
-    await Deno.writeTextFile(`${String(root)}.tree.json`, "not json{");
+    await FileTasks.writeText(`${String(root)}.tree.json`, "not json{");
     await installTree(spec);
     assertEquals(counter.calls, 3);
   });
@@ -226,7 +231,7 @@ test("installTree re-installs when the pinned checksum changes", async () => {
     });
     assertEquals(counter.calls, 2);
     assertEquals(
-      await Deno.readTextFile(String(root("bin", "node"))),
+      await FileTasks.readText(String(root("bin", "node"))),
       "#!/bin/sh\necho node-v2\n",
     );
   });
@@ -250,8 +255,11 @@ test("installTree unpacks a zip tree and skips chmod for a windows target", asyn
       url: () => "https://example.com/node.zip",
       download: fakeDownload(bytes),
     });
-    assertEquals(await Deno.readTextFile(String(root("node.exe"))), "MZ");
-    assertEquals(await Deno.readTextFile(String(root("npm.cmd"))), "@echo off");
+    assertEquals(await FileTasks.readText(String(root("node.exe"))), "MZ");
+    assertEquals(
+      await FileTasks.readText(String(root("npm.cmd"))),
+      "@echo off",
+    );
   });
 });
 
@@ -271,7 +279,7 @@ test("installTree without a checksum downloads every time and writes no marker",
     await installTree(spec);
     assertEquals(counter.calls, 2); // no checksum → no cache
     assertEquals(
-      await Deno.stat(`${String(root)}.tree.json`).then(() => true).catch(
+      await FileTasks.stat(`${String(root)}.tree.json`).then(() => true).catch(
         () => false,
       ),
       false, // no marker recorded without a checksum
@@ -299,23 +307,24 @@ test("installTree (tar.xz) verifies the checksum, strips, marks bins and keeps s
       "checksum",
     );
     assertEquals(
-      await Deno.stat(`${dir}/flutter/version`).catch(() => null),
+      await FileTasks.stat(`${dir}/flutter/version`).catch(() => null),
       null,
     );
 
     const checksum = await sha256Hex(bytes);
     const root = await installTree({ ...options, checksum });
-    assertEquals(await Deno.readTextFile(String(root("version"))), "3.47.7\n");
+    assertEquals(await FileTasks.readText(String(root("version"))), "3.47.7\n");
     if (POSIX) {
-      const mode = (await Deno.stat(String(root("bin", "flutter")))).mode ?? 0;
+      const mode =
+        (await FileTasks.stat(String(root("bin", "flutter")))).mode ?? 0;
       assertEquals(mode & 0o111, 0o111);
       // bin/dart is a real symlink into the Dart SDK cache, as Flutter ships it.
       assertEquals(
-        (await Deno.lstat(String(root("bin", "dart")))).isSymlink,
+        (await FileTasks.lstat(String(root("bin", "dart")))).isSymlink,
         true,
       );
       assertEquals(
-        await Deno.readTextFile(String(root("bin", "dart"))),
+        await FileTasks.readText(String(root("bin", "dart"))),
         "#!/bin/sh\necho dart\n",
       );
     }
@@ -339,6 +348,6 @@ test("installTree (tar.xz) refuses an archive with a path-traversal entry", asyn
       Error,
       "escapes the destination",
     );
-    assertEquals(await Deno.stat(`${dir}/escape`).catch(() => null), null);
+    assertEquals(await FileTasks.stat(`${dir}/escape`).catch(() => null), null);
   });
 });

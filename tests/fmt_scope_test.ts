@@ -10,6 +10,7 @@
  * build if the scope is narrowed back.
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 
@@ -18,7 +19,7 @@ interface FmtConfig {
 }
 
 async function fmtConfig(): Promise<FmtConfig["fmt"]> {
-  const root: FmtConfig = JSON.parse(await Deno.readTextFile("deno.json"));
+  const root: FmtConfig = JSON.parse(await FileTasks.readText("deno.json"));
   return root.fmt;
 }
 
@@ -59,7 +60,7 @@ test("deno.json stays parseable as strict JSON", async () => {
   // distance, with a parse error that names neither the comment nor the file
   // that introduced it.
   for (const path of ["deno.json", "packages/core/deno.json"]) {
-    const text = await Deno.readTextFile(path);
+    const text = await FileTasks.readText(path);
     JSON.parse(text); // throws, failing the test, if it is JSONC-only
   }
 });

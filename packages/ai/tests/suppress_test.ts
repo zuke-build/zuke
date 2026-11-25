@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import type { AssessmentFinding } from "../src/types.ts";
@@ -165,14 +166,14 @@ test("the default reader returns an empty set for a missing file", async () => {
 });
 
 test("the default reader reads a real suppress file (.file path)", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const path = `${dir}/ai-suppress.json`;
   try {
-    await Deno.writeTextFile(path, JSON.stringify(["on-disk"]));
+    await FileTasks.writeText(path, JSON.stringify(["on-disk"]));
     const set = await new Suppressions().file(path).load_();
     assertEquals([...set], ["on-disk"]);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

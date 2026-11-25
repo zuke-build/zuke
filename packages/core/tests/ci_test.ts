@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -458,7 +459,7 @@ test("syncCiFiles uses the real filesystem by default", async () => {
     const file = cicd({ provider: "github", path, pipeline: filePipeline });
     const first = await syncCiFiles([file]); // creates parent dirs and writes
     assertEquals(first[0].status, "written");
-    assertEquals(await Deno.readTextFile(path), file.render());
+    assertEquals(await FileTasks.readText(path), file.render());
     const second = await syncCiFiles([file]);
     assertEquals(second[0].status, "unchanged");
   });
@@ -1478,7 +1479,7 @@ test("syncCiFiles surfaces a read failure that is not file-absence", async () =>
   // path is a directory) must propagate, not be mistaken for a missing file.
   await withTemp(async (dir) => {
     const path = `${dir}/ci.yml`;
-    await Deno.mkdir(path); // a directory where the file should be
+    await FileTasks.createDirectory(path, { recursive: false }); // a directory where the file should be
     const file = cicd({ provider: "github", path, pipeline: filePipeline });
     await assertRejects(() => syncCiFiles([file], { check: true }));
   });

@@ -9,23 +9,32 @@
  * unknown-target error path.
  */
 
+import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, cicd, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  cicd,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { FakeGraphHost } from "../_fakes.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
 import { runCli } from "./_harness.ts";
 
 /** Run `fn` with the process cwd set to a fresh temp dir, cleaning up after. */
 async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-cli-" });
-  const prev = Deno.cwd();
-  Deno.chdir(dir);
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-cli-")
+  );
+  const prev = RuntimeTasks.cwd();
+  chdir(dir);
   try {
     await fn(dir);
   } finally {
-    Deno.chdir(prev);
-    await Deno.remove(dir, { recursive: true });
+    chdir(prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -97,7 +106,7 @@ test("generate-ci writes the declared CI file", async () => {
     const { code, out } = await runCli(CiBuild, ["generate-ci"]);
     assertEquals(code, 0);
     assertStringIncludes(out, "Generated");
-    const content = await Deno.readTextFile(
+    const content = await FileTasks.readText(
       `${dir}/.github/workflows/zuke.yml`,
     );
     assertStringIncludes(content, "name: CI");
@@ -114,8 +123,8 @@ test("generate-ci --check reports drift when the file is absent", async () => {
 
 test("generate-ci --check reports drift when the file is stale", async () => {
   await inTempDir(async (dir) => {
-    await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory(`${dir}/.github/workflows`);
+    await FileTasks.writeText(
       `${dir}/.github/workflows/zuke.yml`,
       "stale content",
     );
@@ -142,7 +151,7 @@ test("generate-ci writes a timezone-aware scheduled workflow", async () => {
   await inTempDir(async (dir) => {
     const first = await runCli(ScheduledBuild, ["generate-ci"]);
     assertEquals(first.code, 0);
-    const content = await Deno.readTextFile(
+    const content = await FileTasks.readText(
       `${dir}/.github/workflows/nightly.yml`,
     );
     // A DST zone → dual UTC crons plus a guard job the real job waits on.

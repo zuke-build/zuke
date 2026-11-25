@@ -10,7 +10,15 @@
 
 import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
+import {
+  absolutePath,
+  FileTasks,
+  gzip,
+  RuntimeTasks,
+  sha256Hex,
+  tar,
+  zip,
+} from "@zuke/core";
 import {
   compileNodeCli,
   fetchNodeBinary,
@@ -141,7 +149,9 @@ test("seaConfig injects an ES module bundle into the given Node", () => {
 });
 
 test("compileNodeCli builds every target from its own verified Node, laid out as the Deno binaries are", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-node-compile-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-node-compile-")
+  );
   try {
     // One small release per platform, pinned by its own checksum.
     const bodies = new Map<string, Uint8Array>();
@@ -165,12 +175,12 @@ test("compileNodeCli builds every target from its own verified Node, laid out as
     // The fake injection writes what it was given, as --build-sea would.
     const configs: { executable: string; output: string }[] = [];
     const buildSea = async (path: string) => {
-      const config = JSON.parse(await Deno.readTextFile(path));
+      const config = JSON.parse(await FileTasks.readText(path));
       configs.push(config);
-      const node = await Deno.readTextFile(config.executable);
-      await Deno.writeTextFile(config.output, `${node} + ${config.main}`);
-      if (Deno.build.os !== "windows") {
-        const mode = (await Deno.stat(config.executable)).mode ?? 0;
+      const node = await FileTasks.readText(config.executable);
+      await FileTasks.writeText(config.output, `${node} + ${config.main}`);
+      if (RuntimeTasks.os() !== "windows") {
+        const mode = (await FileTasks.stat(config.executable)).mode ?? 0;
         assertEquals(mode & 0o111, 0o111);
       }
     };
@@ -186,15 +196,15 @@ test("compileNodeCli builds every target from its own verified Node, laid out as
     for (const { triple, platform } of NODE_TARGETS) {
       const name = triple === WINDOWS_TRIPLE ? "zuke.exe" : "zuke";
       assertEquals(
-        await Deno.readTextFile(`${dir}/bin/${triple}/${name}`),
+        await FileTasks.readText(`${dir}/bin/${triple}/${name}`),
         `node for ${platform} + ${bundle.path}`,
       );
     }
     // The downloaded Nodes went with the scratch directory.
     for (const { executable } of configs) {
-      assertEquals(await Deno.stat(executable).catch(() => null), null);
+      assertEquals(await FileTasks.stat(executable).catch(() => null), null);
     }
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

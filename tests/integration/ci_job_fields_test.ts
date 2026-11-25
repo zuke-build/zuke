@@ -9,25 +9,34 @@
  * refuse one of those fields stopping the command with the reason.
  */
 
+import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
 } from "../_assert.ts";
-import { Build, cicd, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  cicd,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** Run `fn` with the process cwd set to a fresh temp dir, cleaning up after. */
 async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-ci-fields-" });
-  const prev = Deno.cwd();
-  Deno.chdir(dir);
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-ci-fields-")
+  );
+  const prev = RuntimeTasks.cwd();
+  chdir(dir);
   try {
     await fn(dir);
   } finally {
-    Deno.chdir(prev);
-    await Deno.remove(dir, { recursive: true });
+    chdir(prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -79,7 +88,7 @@ test("generate-ci renders environment, outputs, sparse matrix and path filters",
   await inTempDir(async (dir) => {
     const { code } = await runCli(WebsiteBuild, ["generate-ci"]);
     assertEquals(code, 0);
-    const yaml = await Deno.readTextFile(
+    const yaml = await FileTasks.readText(
       `${dir}/.github/workflows/website.yml`,
     );
 
@@ -130,7 +139,7 @@ test("generate-ci refuses, naming the field, when a provider cannot carry it", a
       `job "deploy" sets \`environment\``,
     );
     assertEquals(
-      await Deno.stat(`${dir}/azure-pipelines.yml`).then(
+      await FileTasks.stat(`${dir}/azure-pipelines.yml`).then(
         () => true,
         () => false,
       ),

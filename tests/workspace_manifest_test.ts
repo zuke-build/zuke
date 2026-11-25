@@ -6,6 +6,7 @@
  * that the committed ones match their `deno.json`, and how drift is found.
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { withTempCwd } from "./_temp.ts";
@@ -48,8 +49,8 @@ test("every committed package.json matches its deno.json", async () => {
 
 test("staleManifests names a manifest that is missing or differs, and not one that matches", async () => {
   await withTempCwd(async () => {
-    await Deno.writeTextFile("same.json", "same\n");
-    await Deno.writeTextFile("other.json", "before\n");
+    await FileTasks.writeText("same.json", "same\n");
+    await FileTasks.writeText("other.json", "before\n");
     const wanted = new Map([
       ["same.json", "same\n"],
       ["other.json", "after\n"],

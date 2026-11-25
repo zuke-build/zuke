@@ -8,6 +8,7 @@
  * (`tests/e2e/embedded_engine_e2e.ts`).
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -95,7 +96,7 @@ test("releaseEntry embeds this checkout's engine and every released wrapper from
   assertEquals(entry.engineVersion, engine);
   // The very range the engine imports, so run and the engine share a core.
   const config = JSON.parse(
-    await Deno.readTextFile("packages/engine/deno.json"),
+    await FileTasks.readText("packages/engine/deno.json"),
   );
   assertEquals(entry.core, config.imports["@zuke/core"]);
   const released: string[] = [];

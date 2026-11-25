@@ -3,7 +3,7 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
-import { Build, target } from "../mod.ts";
+import { Build, FileTasks, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { discoverParameters } from "../src/params.ts";
 import { installCompletions } from "../src/completions_install.ts";
@@ -44,9 +44,9 @@ test("install bash writes the script and sources it from .bashrc", async () => {
     );
     assertEquals(result.rcPath, `${home}/.bashrc`);
 
-    const script = await Deno.readTextFile(result.scriptPath);
+    const script = await FileTasks.readText(result.scriptPath);
     assertStringIncludes(script, "complete -F _zuke_complete zuke");
-    const rc = await Deno.readTextFile(`${home}/.bashrc`);
+    const rc = await FileTasks.readText(`${home}/.bashrc`);
     assertStringIncludes(rc, `source '${result.scriptPath}'`);
     assertStringIncludes(rc, "# zuke shell completion");
   });
@@ -65,7 +65,7 @@ test("install is idempotent — the rc is sourced once", async () => {
     });
     assertEquals(second.alreadySourced, true);
 
-    const rc = await Deno.readTextFile(`${home}/.zshrc`);
+    const rc = await FileTasks.readText(`${home}/.zshrc`);
     const line = `source '${first.scriptPath}'`;
     const occurrences = rc.split(line).length - 1;
     assertEquals(occurrences, 1);
@@ -74,12 +74,12 @@ test("install is idempotent — the rc is sourced once", async () => {
 
 test("install preserves existing rc content and appends", async () => {
   await withHome(async (home) => {
-    await Deno.writeTextFile(`${home}/.bashrc`, "export FOO=1");
+    await FileTasks.writeText(`${home}/.bashrc`, "export FOO=1");
     const result = await installCompletions("bash", targets, params, {
       home,
       env: isolatedEnv,
     });
-    const rc = await Deno.readTextFile(`${home}/.bashrc`);
+    const rc = await FileTasks.readText(`${home}/.bashrc`);
     assertStringIncludes(rc, "export FOO=1");
     assertStringIncludes(rc, `source '${result.scriptPath}'`);
   });
@@ -97,7 +97,7 @@ test("install fish drops a file in the completions dir, no rc edit", async () =>
       result.scriptPath,
       `${home}/.config/fish/completions/zuke.fish`,
     );
-    const script = await Deno.readTextFile(result.scriptPath);
+    const script = await FileTasks.readText(result.scriptPath);
     assertStringIncludes(script, "complete -c zuke -f");
   });
 });
@@ -122,7 +122,7 @@ test("install single-quotes the sourced path so it can't be interpreted", async 
       home,
       configHome,
     });
-    const rc = await Deno.readTextFile(`${home}/.bashrc`);
+    const rc = await FileTasks.readText(`${home}/.bashrc`);
     const escaped = result.scriptPath.replaceAll("'", "'\\''");
     assertStringIncludes(rc, `source '${escaped}'`);
   });

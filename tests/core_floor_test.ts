@@ -3,6 +3,7 @@
 
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
+import { notFound } from "./_fakes.ts";
 import {
   CORE_PACKAGE,
   type CoreFloor,
@@ -18,7 +19,7 @@ import {
 function reader(contents: Record<string, string>): (path: string) => string {
   return (path) => {
     const text = contents[path];
-    if (text === undefined) throw new Deno.errors.NotFound(path);
+    if (text === undefined) throw notFound(path);
     return text;
   };
 }

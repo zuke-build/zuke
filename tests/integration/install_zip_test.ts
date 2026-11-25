@@ -3,7 +3,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target, toolchain } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  target,
+  toolchain,
+} from "../../packages/core/mod.ts";
 import type { DownloadFn } from "../../packages/core/mod.ts";
 import { makeZip } from "../_zip.ts";
 import { runCli } from "./_harness.ts";
@@ -16,7 +21,7 @@ let toolsDir = "";
 
 /** A download seam that writes the prepared fixture zip to `dest`. */
 const fixtureDownload: DownloadFn = async (_url, dest) => {
-  await Deno.writeFile(String(dest), zipBytes);
+  await FileTasks.writeBytes(String(dest), zipBytes);
 };
 
 class ZipToolBuild extends Build {
@@ -33,7 +38,7 @@ class ZipToolBuild extends Build {
     .executes(async () => {
       const bins = await this.tools.install({ destDir: toolsDir });
       const bin = bins.get("dprint");
-      console.log(`dprint=${bin} :: ${await Deno.readTextFile(String(bin))}`);
+      console.log(`dprint=${bin} :: ${await FileTasks.readText(String(bin))}`);
     });
 }
 
@@ -41,13 +46,13 @@ test("a build installs a zip-packaged tool end-to-end via the CLI", async () => 
   zipBytes = await makeZip([
     { name: "bin/dprint", data: new TextEncoder().encode("ZIP-TOOL") },
   ]);
-  toolsDir = await Deno.makeTempDir({ prefix: "zuke-zip-it-" });
+  toolsDir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-zip-it-"));
   try {
     const { code, out } = await runCli(ZipToolBuild, ["install"]);
     assertEquals(code, 0);
     assertStringIncludes(out, "/dprint");
     assertStringIncludes(out, ":: ZIP-TOOL"); // the unpacked binary's contents
   } finally {
-    await Deno.remove(toolsDir, { recursive: true });
+    await FileTasks.remove(toolsDir, { recursive: true });
   }
 });

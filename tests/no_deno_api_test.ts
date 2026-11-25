@@ -22,6 +22,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { packageSources } from "./_package_sources.ts";
@@ -167,7 +168,7 @@ test("only code is counted: comments and the text of strings are not", () => {
 test("no package source uses Deno's API outside its allowance", async () => {
   const found: Record<string, number> = {};
   for (const file of await packageSources()) {
-    const uses = denoUses(await Deno.readTextFile(file));
+    const uses = denoUses(await FileTasks.readText(file));
     if (uses > 0) found[file] = uses;
   }
   assertEquals(

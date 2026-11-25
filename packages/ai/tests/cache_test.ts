@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import { AiCache, aiCache } from "../src/cache.ts";
@@ -148,15 +149,18 @@ test("the default file store round-trips and misses cleanly", async () => {
       createdAt: 42,
     });
     // A truncated file on disk is rejected as a miss, not surfaced as an error.
-    await Deno.writeTextFile(`${dir}/${key}.json`, "{not json");
+    await FileTasks.writeText(`${dir}/${key}.json`, "{not json");
     assertEquals(await cache.get_(key), undefined);
     // Valid JSON that is not a well-formed entry is also rejected as a miss.
-    await Deno.writeTextFile(`${dir}/${key}.json`, JSON.stringify({ nope: 1 }));
+    await FileTasks.writeText(
+      `${dir}/${key}.json`,
+      JSON.stringify({ nope: 1 }),
+    );
     assertEquals(await cache.get_(key), undefined);
     // An entry with text but no createdAt (an older format) is a miss too:
     // without a timestamp the TTL check is NaN and the entry would otherwise be
     // served forever. isCacheEntry rejects it.
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/${key}.json`,
       JSON.stringify({ text: "x" }),
     );

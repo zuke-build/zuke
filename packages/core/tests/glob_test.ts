@@ -1,6 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
+import { chdir } from "../../../tests/_temp.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { glob, globListing, globToRegExp } from "../src/glob.ts";
@@ -29,11 +31,11 @@ test("globToRegExp escapes regex metacharacters and unclosed braces", () => {
 
 test("glob expands patterns against a directory tree", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/src/sub`, { recursive: true });
-    await Deno.writeTextFile(`${dir}/src/a.ts`, "");
-    await Deno.writeTextFile(`${dir}/src/b.js`, "");
-    await Deno.writeTextFile(`${dir}/src/sub/c.ts`, "");
-    await Deno.writeTextFile(`${dir}/top.ts`, "");
+    await FileTasks.createDirectory(`${dir}/src/sub`);
+    await FileTasks.writeText(`${dir}/src/a.ts`, "");
+    await FileTasks.writeText(`${dir}/src/b.js`, "");
+    await FileTasks.writeText(`${dir}/src/sub/c.ts`, "");
+    await FileTasks.writeText(`${dir}/top.ts`, "");
 
     assertEquals(await glob("src/**/*.ts", { cwd: dir }), [
       "src/a.ts",
@@ -46,8 +48,8 @@ test("glob expands patterns against a directory tree", async () => {
 
 test("glob with no static base walks from cwd; missing base yields nothing", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/pkg`);
-    await Deno.writeTextFile(`${dir}/pkg/x.ts`, "");
+    await FileTasks.createDirectory(`${dir}/pkg`, { recursive: false });
+    await FileTasks.writeText(`${dir}/pkg/x.ts`, "");
     // A leading glob segment forces a walk from the root.
     assertEquals(await glob("**/*.ts", { cwd: dir }), ["pkg/x.ts"]);
     // A non-existent static base simply matches nothing.
@@ -57,10 +59,10 @@ test("glob with no static base walks from cwd; missing base yields nothing", asy
 
 test("glob matches an absolute pattern, whatever the cwd", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/g/a`, { recursive: true });
-    await Deno.mkdir(`${dir}/g/b`, { recursive: true });
-    await Deno.writeTextFile(`${dir}/g/a/tsconfig.json`, "{}");
-    await Deno.writeTextFile(`${dir}/g/b/tsconfig.json`, "{}");
+    await FileTasks.createDirectory(`${dir}/g/a`);
+    await FileTasks.createDirectory(`${dir}/g/b`);
+    await FileTasks.writeText(`${dir}/g/a/tsconfig.json`, "{}");
+    await FileTasks.writeText(`${dir}/g/b/tsconfig.json`, "{}");
 
     // The matches come back absolute, and are the same files the relative
     // pattern finds against the same directory.
@@ -83,27 +85,29 @@ test("glob matches an absolute pattern, whatever the cwd", async () => {
 });
 
 test("glob defaults cwd to Deno.cwd()", async () => {
-  const original = Deno.cwd();
-  const dir = await Deno.makeTempDir();
+  const original = RuntimeTasks.cwd();
+  const dir = await FileTasks.makeTempDirectory();
   try {
-    await Deno.writeTextFile(`${dir}/only.ts`, "");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/only.ts`, "");
+    chdir(dir);
     assertEquals(await glob("*.ts"), ["only.ts"]);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("glob skips a directory removed after its parent was listed (#1096)", async () => {
   await withTemp(async (dir) => {
     for (const sub of ["keep", "gone"]) {
-      await Deno.mkdir(`${dir}/${sub}`);
-      await Deno.writeTextFile(`${dir}/${sub}/a_test.ts`, "");
+      await FileTasks.createDirectory(`${dir}/${sub}`, { recursive: false });
+      await FileTasks.writeText(`${dir}/${sub}/a_test.ts`, "");
     }
     // Another process removes `gone` once the walk has listed `dir`.
     const removing = async (path: string) => {
-      if (path.endsWith("/gone")) await Deno.remove(path, { recursive: true });
+      if (path.endsWith("/gone")) {
+        await FileTasks.remove(path, { recursive: true });
+      }
       return await readDir(path);
     };
     assertEquals(

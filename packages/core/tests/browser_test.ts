@@ -7,6 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "../../../tests/_assert.ts";
+import type { HostOs } from "../src/host.ts";
 import { ToolNotFoundError } from "../src/tooling.ts";
 import {
   assertWrapperConformance,
@@ -21,7 +22,7 @@ import {
 const URL_ = "https://github.com/zuke-build/zuke";
 
 /** Settings pinned to `os`, so each platform branch is testable anywhere. */
-function onOs(os: typeof Deno.build.os): BrowserOpenSettings {
+function onOs(os: HostOs): BrowserOpenSettings {
   const settings = new BrowserOpenSettings(URL_);
   settings.os_ = os;
   return settings;

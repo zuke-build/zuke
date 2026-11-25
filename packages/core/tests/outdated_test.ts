@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
@@ -38,7 +39,7 @@ async function lockWith(
   specifiers: Record<string, unknown>,
 ): Promise<string> {
   const path = `${dir}/deno.lock`;
-  await Deno.writeTextFile(
+  await FileTasks.writeText(
     path,
     JSON.stringify({ version: "5", specifiers }, null, 2),
   );

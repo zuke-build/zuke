@@ -9,6 +9,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
@@ -37,7 +38,7 @@ import {
 } from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
+  return JSON.parse(await FileTasks.readText(`packages/${pkg}/deno.json`));
 }
 
 test("only the engine, which imports jsr: at runtime, stays off npm", () => {

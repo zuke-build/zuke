@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { setEnv } from "../../../tests/_env.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -163,14 +164,14 @@ test("the project falls back to the ambient GOOGLE_CLOUD_PROJECT env var", async
     })
   );
   // No project and no injected readEnv → the default reader reads the real env.
-  Deno.env.set("GOOGLE_CLOUD_PROJECT", "ambient-proj");
+  setEnv("GOOGLE_CLOUD_PROJECT", "ambient-proj");
   try {
     assertEquals(
       await SecretManagerTasks.access("s", { token: "t0", fetch }),
       "x",
     );
   } finally {
-    Deno.env.delete("GOOGLE_CLOUD_PROJECT");
+    setEnv("GOOGLE_CLOUD_PROJECT", undefined);
   }
 });
 

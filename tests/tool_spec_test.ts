@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import type { DocTsType } from "../build/api_reference.ts";
@@ -36,7 +37,7 @@ function assert(condition: boolean, message = "assertion failed"): void {
 
 /** A committed golden part, parsed, so line endings cannot matter. */
 async function golden(name: string): Promise<unknown> {
-  return JSON.parse(await Deno.readTextFile(`${FIXTURES}/${name}.json`));
+  return JSON.parse(await FileTasks.readText(`${FIXTURES}/${name}.json`));
 }
 
 /** A scope naming one settings class, one data shape and one alias. */

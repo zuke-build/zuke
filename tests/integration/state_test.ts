@@ -15,6 +15,7 @@ import {
   defaultStateHost,
   externalSignal,
   FileSystemStateStore,
+  FileTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withoutStateDir, withStateDir } from "./_harness.ts";
@@ -167,8 +168,8 @@ test("a lock acquire recovers from a mutex marker a killed run left behind", asy
     // there, stamped long enough ago to be past the mutex TTL. Every later run
     // that touches this lock used to wedge and fail; now the marker is reclaimed.
     const marker = `${dir}/locks/deploy-lock.acq`;
-    await Deno.mkdir(`${dir}/locks`, { recursive: true });
-    await Deno.writeTextFile(marker, String(Date.now() - 600_000));
+    await FileTasks.createDirectory(`${dir}/locks`);
+    await FileTasks.writeText(marker, String(Date.now() - 600_000));
 
     class B extends Build {
       deploy = target()
@@ -191,8 +192,8 @@ test("an unstamped mutex marker is left alone, with the file named", async () =>
     // let two processes hold the mutex at once, so it is never reclaimed: the
     // acquire gives up and the error names the file a human should delete.
     const marker = `${dir}/locks/deploy-lock.acq`;
-    await Deno.mkdir(`${dir}/locks`, { recursive: true });
-    await Deno.writeTextFile(marker, "");
+    await FileTasks.createDirectory(`${dir}/locks`);
+    await FileTasks.writeText(marker, "");
 
     class B extends Build {
       deploy = target()
@@ -211,7 +212,7 @@ test("an unstamped mutex marker is left alone, with the file named", async () =>
 /** Whether `path` exists, for asserting a marker was cleaned up. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.lstat(path);
+    await FileTasks.lstat(path);
     return true;
   } catch {
     return false;

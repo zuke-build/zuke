@@ -12,9 +12,9 @@
 
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
-import { glob } from "../packages/core/mod.ts";
+import { FileTasks, glob } from "../packages/core/mod.ts";
 
-const ZUKE_SOURCE = await Deno.readTextFile("build.ts");
+const ZUKE_SOURCE = await FileTasks.readText("build.ts");
 
 /**
  * The source text of the `integration` target's field initializer.
@@ -47,7 +47,7 @@ test("the integration target discovers e2e suites by glob, not a hardcoded list"
 test("glob(tests/e2e/*_e2e.ts) picks up a newly added suite with no code change", async () => {
   const before = await glob("tests/e2e/*_e2e.ts");
   const dummyPath = "tests/e2e/__dummy_e2e.ts";
-  await Deno.writeTextFile(
+  await FileTasks.writeText(
     dummyPath,
     "// temporary fixture for e2e_registration_test.ts\n",
   );
@@ -55,6 +55,6 @@ test("glob(tests/e2e/*_e2e.ts) picks up a newly added suite with no code change"
     const after = await glob("tests/e2e/*_e2e.ts");
     assertEquals(after, [...before, dummyPath].sort());
   } finally {
-    await Deno.remove(dummyPath);
+    await FileTasks.remove(dummyPath);
   }
 });
