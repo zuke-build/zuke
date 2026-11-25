@@ -12,7 +12,7 @@
  * only checked the flag would have passed against the broken version.
  *
  * Hermetic per AGENTS.md guideline 5: the child is the running `deno`
- * (`Deno.execPath()`), which is always present and needs no shell. Only the
+ * (`RuntimeTasks.execPath()`), which is always present and needs no shell. Only the
  * binary and the subcommand are swapped — `passwordStdin` and the
  * `stdinInput()` override under test are the real ones, inherited.
  *
@@ -21,16 +21,17 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { DockerLoginSettings } from "../../packages/docker/mod.ts";
 import { runCli } from "./_harness.ts";
+import { EVAL } from "../_eval.ts";
 
 /** The password the build hands the wrapper. */
 const TOKEN = "registry-value-that-must-not-escape";
 
 /** A script that echoes whatever arrives on stdin, prefixed. */
 const ECHO_STDIN =
-  "const b = new Uint8Array(1024); const n = Deno.stdin.readSync(b) ?? 0; " +
+  "const b = new Uint8Array(1024); const n = process.getBuiltinModule('node:fs').readSync(0, b); " +
   "console.log('got:' + new TextDecoder().decode(b.subarray(0, n)).trim())";
 
 /**
@@ -40,10 +41,10 @@ const ECHO_STDIN =
  */
 class EchoLogin extends DockerLoginSettings {
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
   protected override subcommandArgs(): string[] {
-    return ["eval", ECHO_STDIN];
+    return [EVAL, ECHO_STDIN];
   }
 }
 

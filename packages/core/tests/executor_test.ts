@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -59,7 +60,7 @@ import { withTempStore } from "../../../tests/_store.ts";
 const silent: ExecuteOptions = { silent: true };
 
 /** `deno` — always present under the test runner, shell-free, cross-platform. */
-const DENO = Deno.execPath();
+const DENO = RuntimeTasks.execPath();
 
 /** A reporter that records every line, for asserting output. */
 function recorder(): { lines: string[]; reporter: Reporter } {
@@ -79,14 +80,14 @@ async function withEnv(
   value: string | undefined,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const prev = Deno.env.get(key);
-  if (value === undefined) Deno.env.delete(key);
-  else Deno.env.set(key, value);
+  const prev = EnvTasks.get(key);
+  if (value === undefined) EnvTasks.delete(key);
+  else EnvTasks.set(key, value);
   try {
     await fn();
   } finally {
-    if (prev === undefined) Deno.env.delete(key);
-    else Deno.env.set(key, prev);
+    if (prev === undefined) EnvTasks.delete(key);
+    else EnvTasks.set(key, prev);
   }
 }
 
@@ -374,7 +375,7 @@ test("auto-detects GitHub Actions from the environment", async () => {
 });
 
 test("github mode appends a Markdown job summary (default console)", async () => {
-  const tmp = await Deno.makeTempFile();
+  const tmp = await FileTasks.makeTempFile();
   class B extends Build {
     a = target().executes(() => {});
     b = target().dependsOn(this.a).executes(() => {});
@@ -388,13 +389,13 @@ test("github mode appends a Markdown job summary (default console)", async () =>
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
       await silence(() => execute(build, build.b, { github: true }));
     });
-    const md = await Deno.readTextFile(tmp);
+    const md = await FileTasks.readText(tmp);
     assertEquals(md.includes("Zuke build"), true);
     assertEquals(md.includes("| Target | Result | Time |"), true);
     assertEquals(md.includes("| a | ✔ Succeeded |"), true);
     assertEquals(md.includes("| **Total** |"), true);
   } finally {
-    await Deno.remove(tmp);
+    await FileTasks.remove(tmp);
   }
 });
 
@@ -404,10 +405,13 @@ test("the job summary is appended, preserving content written during the run", a
     // AI reviewers/fixer do; the build table must not overwrite it.
     work = target()
       .validateBefore({
-        validate: () => {
-          const path = Deno.env.get("GITHUB_STEP_SUMMARY");
+        validate: async () => {
+          const path = EnvTasks.get("GITHUB_STEP_SUMMARY");
           if (path !== undefined) {
-            Deno.writeTextFileSync(path, "## AI section\n", { append: true });
+            const before = await FileTasks.exists(path)
+              ? await FileTasks.readText(path)
+              : "";
+            await FileTasks.writeText(path, before + "## AI section\n");
           }
         },
       })
@@ -415,16 +419,16 @@ test("the job summary is appended, preserving content written during the run", a
   }
   const build = new B();
   discoverTargets(build);
-  const tmp = await Deno.makeTempFile();
+  const tmp = await FileTasks.makeTempFile();
   try {
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
       await silence(() => execute(build, build.work, { github: true }));
     });
-    const md = await Deno.readTextFile(tmp);
+    const md = await FileTasks.readText(tmp);
     assertEquals(md.includes("## AI section"), true); // not wiped
     assertEquals(md.includes("Zuke build"), true); // table appended after
   } finally {
-    await Deno.remove(tmp);
+    await FileTasks.remove(tmp);
   }
 });
 
@@ -437,15 +441,15 @@ test("the job summary is NOT written when output is redirected or silent", async
   discoverTargets(build);
 
   for (const options of [{ reporter }, { silent: true }] as const) {
-    const tmp = await Deno.makeTempFile();
+    const tmp = await FileTasks.makeTempFile();
     try {
       await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
         await execute(build, build.work, { ...options, github: true });
       });
       // A redirected/silent run must not touch the shared summary file.
-      assertEquals(await Deno.readTextFile(tmp), "");
+      assertEquals(await FileTasks.readText(tmp), "");
     } finally {
-      await Deno.remove(tmp);
+      await FileTasks.remove(tmp);
     }
   }
 });
@@ -871,12 +875,12 @@ test("cache:false runs cacheable targets without touching the cache", async () =
 });
 
 test("execute caches incrementally via the default .zuke store", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory();
+  const original = RuntimeTasks.cwd();
   try {
-    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
-    await Deno.writeTextFile(`${dir}/input.txt`, "v1");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/zuke.json`, "{}\n");
+    await FileTasks.writeText(`${dir}/input.txt`, "v1");
+    RuntimeTasks.chdir(dir);
     let runs = 0;
     class B extends Build {
       build = target().inputs("input.txt").executes(() => void runs++);
@@ -891,14 +895,14 @@ test("execute caches incrementally via the default .zuke store", async () => {
     await execute(second, second.build, { silent: true });
     assertEquals(runs, 1);
 
-    await Deno.writeTextFile(`${dir}/input.txt`, "v2"); // changed → rebuild
+    await FileTasks.writeText(`${dir}/input.txt`, "v2"); // changed → rebuild
     const third = new B();
     discoverTargets(third);
     await execute(third, third.build, { silent: true });
     assertEquals(runs, 2);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -1120,7 +1124,7 @@ test("targets from a reusable component run in dependency order", async () => {
 });
 
 test("an unwritable job-summary file never fails the build", async () => {
-  const dir = await Deno.makeTempDir(); // a directory is not writable as a file
+  const dir = await FileTasks.makeTempDirectory(); // a directory is not writable as a file
   class B extends Build {
     work = target().executes(() => {});
   }
@@ -1138,7 +1142,7 @@ test("an unwritable job-summary file never fails the build", async () => {
     });
     assertEquals(result?.ok, true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -1772,14 +1776,14 @@ test("recoverWith only runs after a body failure, not on success", async () => {
 });
 
 test("execute uploads to and restores from a remote cache store", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory();
+  const original = RuntimeTasks.cwd();
   try {
-    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
-    await Deno.writeTextFile(`${dir}/input.txt`, "v1");
-    await Deno.mkdir(`${dir}/out`);
-    await Deno.writeTextFile(`${dir}/out/app.js`, "built");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/zuke.json`, "{}\n");
+    await FileTasks.writeText(`${dir}/input.txt`, "v1");
+    await FileTasks.createDirectory(`${dir}/out`, { recursive: false });
+    await FileTasks.writeText(`${dir}/out/app.js`, "built");
+    RuntimeTasks.chdir(dir);
     const store = new MemCacheStore();
 
     class B extends Build {
@@ -1791,8 +1795,8 @@ test("execute uploads to and restores from a remote cache store", async () => {
     assertEquals(store.puts.length, 1); // outputs uploaded after the run
 
     // Simulate a fresh checkout: drop the local cache and outputs, keep the store.
-    await Deno.remove(`${dir}/.zuke`, { recursive: true });
-    await Deno.remove(`${dir}/out`, { recursive: true });
+    await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+    await FileTasks.remove(`${dir}/out`, { recursive: true });
     let ran = false;
     class B2 extends Build {
       build = target().inputs("input.txt").outputs("out").executes(() => {
@@ -1806,11 +1810,11 @@ test("execute uploads to and restores from a remote cache store", async () => {
       remoteCache: store,
     });
     assertEquals(ran, false); // restored from the store, body skipped
-    assertEquals(await Deno.readTextFile(`${dir}/out/app.js`), "built");
+    assertEquals(await FileTasks.readText(`${dir}/out/app.js`), "built");
     assertEquals(result.ok, true);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -2333,13 +2337,13 @@ test("a throwing predicate settles the parallel scheduler without hanging", asyn
 });
 
 test("a throwing cacheKey thunk fails the target, not the process (sequential)", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory();
+  const original = RuntimeTasks.cwd();
   try {
     // Run from a temp dir so the default `.zuke` cache store never touches the
     // repo (the real cache is exercised: a cacheKey target is cacheable).
-    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/zuke.json`, "{}\n");
+    RuntimeTasks.chdir(dir);
     const { lines, reporter } = recorder();
     class B extends Build {
       boom = target()
@@ -2358,17 +2362,17 @@ test("a throwing cacheKey thunk fails the target, not the process (sequential)",
     assertEquals(result.ok, false);
     assertEquals(lines.some((l) => l.includes("key boom")), true);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("a throwing cacheKey settles the parallel scheduler without hanging", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory();
+  const original = RuntimeTasks.cwd();
   try {
-    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/zuke.json`, "{}\n");
+    RuntimeTasks.chdir(dir);
     const { reporter } = recorder();
     class B extends Build {
       good = target().executes(() => {});
@@ -2392,8 +2396,8 @@ test("a throwing cacheKey settles the parallel scheduler without hanging", async
     assertEquals(result.ok, false);
     assertEquals(result.executed.includes("good"), true);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -3334,15 +3338,15 @@ test("a secret in a summary note is redacted in the job summary too", async () =
   }
   const build = new B();
   discoverTargets(build);
-  const tmp = await Deno.makeTempFile();
+  const tmp = await FileTasks.makeTempFile();
   try {
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
       await silence(() => execute(build, build.deploy, { github: true }));
     });
-    const md = await Deno.readTextFile(tmp);
+    const md = await FileTasks.readText(tmp);
     assertEquals(md.includes("s3cr3t-value"), false);
     assertEquals(md.includes("[redacted]"), true);
   } finally {
-    await Deno.remove(tmp);
+    await FileTasks.remove(tmp);
   }
 });

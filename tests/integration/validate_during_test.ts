@@ -12,9 +12,7 @@ import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli } from "./_harness.ts";
-
-/** How the running runtime evaluates a script given on its command line. */
-const EVAL = RuntimeTasks.facts().name === "deno" ? "eval" : "-e";
+import { EVAL } from "../_eval.ts";
 
 /** Set once the child the body started has gone. */
 let childEnded = false;

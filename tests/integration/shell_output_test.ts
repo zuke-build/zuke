@@ -3,10 +3,11 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { ToolSettings } from "../../packages/core/src/tooling.ts";
 import { runCli } from "./_harness.ts";
+import { EVAL } from "../_eval.ts";
 
 // A child that writes far more than the cap: the target must still succeed, and
 // what it reports must be the END of the output, flagged as truncated.
@@ -17,7 +18,7 @@ class ChattyBuild extends Build {
   chatty = target()
     .description("capture a child that outruns the capture cap")
     .executes(async () => {
-      const out = await $`${Deno.execPath()} eval ${EMIT}`
+      const out = await $`${RuntimeTasks.execPath()} ${EVAL} ${EMIT}`
         .quiet()
         .maxCapturedBytes(4096)
         .then();
@@ -44,10 +45,10 @@ test("a build capturing oversized output succeeds and reports truncation", async
 /** A tool wrapper, the surface every `*Tasks` package funnels through. */
 class EmitSettings extends ToolSettings {
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
   protected override buildArgs(): string[] {
-    return ["eval", EMIT];
+    return [EVAL, EMIT];
   }
 }
 

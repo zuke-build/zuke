@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
@@ -47,7 +48,7 @@ test("the committed wrappers round-trip through generate then check", async () =
 test("checkHclWrappers flags a target that has drifted from the template", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/drifted.ts`;
-    await Deno.writeTextFile(path, "// not what the template renders\n");
+    await FileTasks.writeText(path, "// not what the template renders\n");
     const targets: HclTarget[] = [
       {
         name: "Terraform",

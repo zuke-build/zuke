@@ -7,14 +7,15 @@
  * AGENTS.md states, enforced here so it cannot erode one import at a time.
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 
 /** The `@zuke/*` packages a `deno.json` imports, core excluded, sorted. */
-function workspaceImports(pkg: string): string[] {
+async function workspaceImports(pkg: string): Promise<string[]> {
   const config: unknown = JSON.parse(
-    Deno.readTextFileSync(`packages/${pkg}/deno.json`),
+    await FileTasks.readText(`packages/${pkg}/deno.json`),
   );
   const imports = typeof config === "object" && config !== null &&
       "imports" in config && typeof config.imports === "object" &&
@@ -27,10 +28,10 @@ function workspaceImports(pkg: string): string[] {
     .sort();
 }
 
-test("a package depends on @zuke/core alone unless its exemption is listed", () => {
+test("a package depends on @zuke/core alone unless its exemption is listed", async () => {
   for (const pkg of PACKAGES) {
     assertEquals(
-      workspaceImports(pkg),
+      await workspaceImports(pkg),
       [...(PACKAGE_DEPENDENCIES[pkg] ?? [])].sort(),
       `packages/${pkg}/deno.json: its @zuke/* imports beyond core must match ` +
         `PACKAGE_DEPENDENCIES in build/packages.ts`,

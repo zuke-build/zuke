@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -16,6 +17,7 @@ import {
 } from "../src/affected.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { execute, type Reporter } from "../src/executor.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** Whether the affected set (by identity) contains `t`. */
 const has = (set: Set<unknown>, t: unknown) => set.has(t);
@@ -130,8 +132,8 @@ test("gitChangedFiles rejects a base that git would read as an option", async ()
 test("runGitProcess returns stdout of a successful process", async () => {
   // Stand in the running `deno` for `git` (always present, shell-free).
   const out = await runGitProcess(
-    ["eval", "console.log('src/a.ts'); console.log('src/b.ts')"],
-    Deno.execPath(),
+    [EVAL, "console.log('src/a.ts'); console.log('src/b.ts')"],
+    RuntimeTasks.execPath(),
   );
   assertEquals(out.trim().split("\n"), ["src/a.ts", "src/b.ts"]);
 });
@@ -139,8 +141,8 @@ test("runGitProcess returns stdout of a successful process", async () => {
 test("runGitProcess throws with stderr detail on a non-zero exit", async () => {
   const err = await assertRejects(() =>
     runGitProcess(
-      ["eval", "console.error('bad revision'); Deno.exit(1)"],
-      Deno.execPath(),
+      [EVAL, "console.error('bad revision'); process.exit(1)"],
+      RuntimeTasks.execPath(),
     )
   );
   assertStringIncludes(err.message, "failed");
@@ -149,7 +151,7 @@ test("runGitProcess throws with stderr detail on a non-zero exit", async () => {
 
 test("runGitProcess throws without detail when a failure prints nothing", async () => {
   const err = await assertRejects(() =>
-    runGitProcess(["eval", "Deno.exit(2)"], Deno.execPath())
+    runGitProcess([EVAL, "process.exit(2)"], RuntimeTasks.execPath())
   );
   assertStringIncludes(err.message, "Is this a git repository");
 });

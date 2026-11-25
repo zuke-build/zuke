@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -15,13 +16,14 @@ import {
   SecretError,
 } from "../src/secret.ts";
 import { withTemp } from "../../../tests/_temp.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** The running `deno`, used as a hermetic, always-present subprocess. */
-const deno = Deno.execPath();
+const deno = RuntimeTasks.execPath();
 
 test("execSecret runs a command and returns its trimmed stdout", async () => {
   const source = execSecret((s) =>
-    s.command(deno).arg("eval", "console.log('  s3cr3t-value  ')")
+    s.command(deno).arg(EVAL, "console.log('  s3cr3t-value  ')")
   );
   assertEquals(await source.resolve(), "s3cr3t-value");
 });
@@ -29,8 +31,8 @@ test("execSecret runs a command and returns its trimmed stdout", async () => {
 test("execSecret with trim(false) keeps surrounding whitespace", async () => {
   const source = execSecret((s) =>
     s.command(deno).arg(
-      "eval",
-      "Deno.stdout.write(new TextEncoder().encode('tok\\n'))",
+      EVAL,
+      "process.stdout.write(new TextEncoder().encode('tok\\n'))",
     )
       .trim(false)
   );
@@ -40,7 +42,7 @@ test("execSecret with trim(false) keeps surrounding whitespace", async () => {
 test("execSecret passes environment variables to the command", async () => {
   const source = execSecret((s) =>
     s.command(deno)
-      .arg("eval", "console.log(Deno.env.get('ZUKE_TEST_SECRET'))")
+      .arg(EVAL, "console.log(process.env['ZUKE_TEST_SECRET'])")
       .env({ ZUKE_TEST_SECRET: "from-env" })
   );
   assertEquals(await source.resolve(), "from-env");
@@ -48,10 +50,13 @@ test("execSecret passes environment variables to the command", async () => {
 
 test("execSecret honours the working directory", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/token.txt`, "in-cwd");
+    await FileTasks.writeText(`${dir}/token.txt`, "in-cwd");
     const source = execSecret((s) =>
       s.command(deno)
-        .arg("eval", "console.log(Deno.readTextFileSync('token.txt'))")
+        .arg(
+          EVAL,
+          "console.log(process.getBuiltinModule('node:fs').readFileSync('token.txt', 'utf8'))",
+        )
         .cwd(dir)
     );
     assertEquals(await source.resolve(), "in-cwd");
@@ -69,7 +74,7 @@ test("execSecret without a command throws SecretError", async () => {
 
 test("execSecret surfaces a non-zero exit as SecretError", async () => {
   const source = execSecret((s) =>
-    s.command(deno).arg("eval", "console.error('nope'); Deno.exit(3)")
+    s.command(deno).arg(EVAL, "console.error('nope'); process.exit(3)")
   );
   const error = await assertRejects(() => source.resolve(), SecretError);
   assertStringIncludes(error.message, "exited with code 3");
@@ -77,7 +82,9 @@ test("execSecret surfaces a non-zero exit as SecretError", async () => {
 });
 
 test("execSecret reports a non-zero exit with no stderr", async () => {
-  const source = execSecret((s) => s.command(deno).arg("eval", "Deno.exit(4)"));
+  const source = execSecret((s) =>
+    s.command(deno).arg(EVAL, "process.exit(4)")
+  );
   const error = await assertRejects(() => source.resolve(), SecretError);
   assertStringIncludes(error.message, "exited with code 4");
 });
@@ -88,24 +95,24 @@ test("execSecret wraps a missing binary as SecretError", async () => {
 });
 
 test("fileSecret reads a file and trims by default", async () => {
-  const file = await Deno.makeTempFile();
+  const file = await FileTasks.makeTempFile();
   try {
-    await Deno.writeTextFile(file, "  file-secret\n");
+    await FileTasks.writeText(file, "  file-secret\n");
     const source = fileSecret((s) => s.path(file));
     assertEquals(await source.resolve(), "file-secret");
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
 test("fileSecret with trim(false) preserves the raw content", async () => {
-  const file = await Deno.makeTempFile();
+  const file = await FileTasks.makeTempFile();
   try {
-    await Deno.writeTextFile(file, "raw\n");
+    await FileTasks.writeText(file, "raw\n");
     const source = fileSecret((s) => s.path(file).trim(false));
     assertEquals(await source.resolve(), "raw\n");
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 

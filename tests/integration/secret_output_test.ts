@@ -12,11 +12,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import type { CommandOutput } from "../../packages/core/src/shell.ts";
 import { ToolSettings } from "../../packages/core/src/tooling.ts";
 import { withEnv } from "../_env.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
+import { EVAL } from "../_eval.ts";
 
 /** The password inside the fake secret — low-entropy and obviously fake. */
 const PASSWORD = "aaaaaaaa1";
@@ -31,12 +32,12 @@ const SECRET = `postgres://app:${PASSWORD}@db.example/app`;
  */
 class GetSecretSettings extends ToolSettings {
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
 
   protected override buildArgs(): string[] {
     const answer = JSON.stringify({ Name: "prod/db", SecretString: SECRET });
-    return ["eval", `console.log(${JSON.stringify(answer)})`];
+    return [EVAL, `console.log(${JSON.stringify(answer)})`];
   }
 
   protected override onOutput(output: CommandOutput): void {
@@ -53,7 +54,7 @@ const SHORT_PASSWORD = "hunter2";
  */
 class GetSecretTextSettings extends ToolSettings {
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
 
   protected override buildArgs(): string[] {
@@ -61,7 +62,7 @@ class GetSecretTextSettings extends ToolSettings {
       username: "app",
       password: SHORT_PASSWORD,
     });
-    return ["eval", `console.log(${JSON.stringify(secret)})`];
+    return [EVAL, `console.log(${JSON.stringify(secret)})`];
   }
 
   protected override onOutput(output: CommandOutput): void {
@@ -83,11 +84,11 @@ class ConnectSettings extends ToolSettings {
   }
 
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
 
   protected override buildArgs(): string[] {
-    return ["eval", "Deno.exit(3)", this.#secret];
+    return [EVAL, "process.exit(3)", this.#secret];
   }
 }
 

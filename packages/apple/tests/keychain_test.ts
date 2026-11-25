@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -437,23 +438,23 @@ test("the real host writes a private file, refuses to overwrite, and removes", a
   try {
     assertStringIncludes(dir, "zuke-keychain-");
     // Canonical already, so it matches how security lists keychain paths.
-    assertEquals(await Deno.realPath(dir), dir);
+    assertEquals(await FileTasks.realPath(dir), dir);
     const file = `${dir}/certificate.p12`;
     await defaultKeychainHost.writePrivateFile(file, P12);
-    assertEquals([...await Deno.readFile(file)], [...P12]);
-    if (Deno.build.os !== "windows") {
-      const mode = (await Deno.stat(file)).mode;
+    assertEquals([...await FileTasks.readBytes(file)], [...P12]);
+    if (RuntimeTasks.os() !== "windows") {
+      const mode = (await FileTasks.stat(file)).mode;
       assertEquals(mode === null ? null : mode & 0o777, 0o600);
     }
-    await assertRejects(
+    const error = await assertRejects(
       () => defaultKeychainHost.writePrivateFile(file, P12),
-      Deno.errors.AlreadyExists,
     );
+    assertEquals(FileTasks.isAlreadyExists(error), true);
     await defaultKeychainHost.remove(file);
     // Already gone is fine.
     await defaultKeychainHost.remove(file);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

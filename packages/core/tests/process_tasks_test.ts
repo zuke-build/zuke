@@ -1,15 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ProcessTasks } from "../src/process_tasks.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 test("ProcessTasks.run collects a child's piped output", async () => {
   const output = await ProcessTasks.run(
-    Deno.execPath(),
+    RuntimeTasks.execPath(),
     (s) =>
-      s.args("eval", "console.log('out'); console.error('err'); Deno.exit(3)")
+      s.args(EVAL, "console.log('out'); console.error('err'); process.exit(3)")
         .stdout("piped")
         .stderr("piped"),
   );
@@ -21,9 +23,9 @@ test("ProcessTasks.run collects a child's piped output", async () => {
 
 test("ProcessTasks.spawn starts a child that can be stopped", async () => {
   const child = ProcessTasks.spawn(
-    Deno.execPath(),
+    RuntimeTasks.execPath(),
     (s) =>
-      s.args("eval", "setTimeout(() => {}, 60_000)")
+      s.args(EVAL, "setTimeout(() => {}, 60_000)")
         .stdin("null")
         .stdout("null")
         .stderr("null"),
@@ -40,14 +42,14 @@ test("ProcessTasks signal listeners are added and removed", () => {
 });
 
 test("ProcessTasks passes the working directory and environment it is given", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const output = await ProcessTasks.run(
-      Deno.execPath(),
+      RuntimeTasks.execPath(),
       (s) =>
         s.args(
-          "eval",
-          "console.log(Deno.realPathSync(Deno.cwd()), Deno.env.get('ZUKE_ONLY'), Deno.env.get('HOME'))",
+          EVAL,
+          "console.log(process.cwd(), process.env['ZUKE_ONLY'], process.env['HOME'])",
         )
           .cwd(dir)
           .env("ZUKE_ONLY", "set")
@@ -56,18 +58,18 @@ test("ProcessTasks passes the working directory and environment it is given", as
     );
     assertEquals(
       new TextDecoder().decode(output.stdout).trim(),
-      `${await Deno.realPath(dir)} set undefined`,
+      `${await FileTasks.realPath(dir)} set undefined`,
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("ProcessTasks stops a child when its signal aborts", async () => {
   const abort = new AbortController();
   const child = ProcessTasks.spawn(
-    Deno.execPath(),
-    (s) => s.args("eval", "setTimeout(() => {}, 60_000)").signal(abort.signal),
+    RuntimeTasks.execPath(),
+    (s) => s.args(EVAL, "setTimeout(() => {}, 60_000)").signal(abort.signal),
   );
   abort.abort();
   assertEquals((await child.status).success, false);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -15,6 +16,7 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { type AzOutputFormat, AzSettings, AzTasks } from "../mod.ts";
 import { FakeAz } from "../../../tests/support/az/_fake.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 test("the default binary is az", () => {
   assertEquals(new AzSettings().argv(), ["az"]);
@@ -90,12 +92,12 @@ test("prompts, extension installs and colour are off in the child's environment"
   // A real subprocess, but the running deno rather than az: the settings
   // carry the environment, so whatever they spawn sees it.
   const output = await new AzSettings()
-    .toolPath(Deno.execPath())
+    .toolPath(RuntimeTasks.execPath())
     .command(
-      "eval",
+      EVAL,
       "console.log(JSON.stringify(['AZURE_EXTENSION_USE_DYNAMIC_INSTALL', " +
         "'AZURE_CORE_LOGIN_EXPERIENCE_V2', 'AZURE_CORE_NO_COLOR']" +
-        ".map((n) => Deno.env.get(n))))",
+        ".map((n) => process.env[n])))",
     )
     .quiet()
     .run();
@@ -105,10 +107,10 @@ test("prompts, extension installs and colour are off in the child's environment"
 test("the environment defaults can be overridden", async () => {
   const output = await new AzSettings()
     .env({ AZURE_EXTENSION_USE_DYNAMIC_INSTALL: "yes_without_prompt" })
-    .toolPath(Deno.execPath())
+    .toolPath(RuntimeTasks.execPath())
     .command(
-      "eval",
-      "console.log(Deno.env.get('AZURE_EXTENSION_USE_DYNAMIC_INSTALL'))",
+      EVAL,
+      "console.log(process.env['AZURE_EXTENSION_USE_DYNAMIC_INSTALL'])",
     )
     .quiet()
     .run();

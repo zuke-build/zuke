@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -10,6 +11,7 @@ import {
 import type { DenoHost } from "../src/deno_path.ts";
 import { NODE_PIN } from "../src/node_pin.ts";
 import { npmCandidates, runNpm } from "../src/npm_path.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** A {@link DenoHost} over `env`, on Windows when `windows`. */
 function hostOf(env: Record<string, string>, windows = false): DenoHost {
@@ -41,20 +43,20 @@ test("npmCandidates tries PATH, then the pinned Node the launchers cache", () =>
 });
 
 test("runNpm skips a candidate that is not installed, and names every one when none is", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const missing = `${dir}/no-such-npm`;
     // The running deno stands in for an npm that exits 3.
     const code = await runNpm(
-      ["eval", "Deno.exit(3)"],
+      [EVAL, "process.exit(3)"],
       dir,
-      [missing, Deno.execPath()],
+      [missing, RuntimeTasks.execPath()],
     );
     assertEquals(code, 3);
     const error = await assertRejects(() => runNpm(["-v"], dir, [missing]));
     assertStringIncludes(String(error), missing);
     assertStringIncludes(String(error), "./zuke once");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

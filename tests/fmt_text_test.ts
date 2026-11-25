@@ -6,6 +6,7 @@
  * through `deno fmt` so a generated file and the formatter cannot disagree.
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { withTempCwd } from "./_temp.ts";
@@ -41,12 +42,14 @@ test("formatText leaves no temporary directory behind", async () => {
   await withTempCwd(async (dir) => {
     await formatText("const x = 1;\n", "ts");
     assertEquals(await entries(dir), []);
-  }, { dir: Deno.cwd(), prefix: ".fmt-cleanup-test-" });
+  }, { dir: RuntimeTasks.cwd(), prefix: ".fmt-cleanup-test-" });
 });
 
 /** Every entry in `dir`. */
 async function entries(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) found.push(entry.name);
+  for (const entry of await FileTasks.readDirectory(dir)) {
+    found.push(entry.name);
+  }
   return found;
 }
