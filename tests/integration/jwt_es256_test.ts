@@ -13,7 +13,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, signJwtEs256, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  type NetServer,
+  NetTasks,
+  signJwtEs256,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** `bytes` as 64-column PEM lines under `label`. */
@@ -32,9 +38,8 @@ function segment(part: string): Uint8Array<ArrayBuffer> {
 }
 
 /** A server that answers 200 only for a bearer token `publicKey` verifies. */
-function verifier(publicKey: CryptoKey): Deno.HttpServer<Deno.NetAddr> {
-  return Deno.serve(
-    { hostname: "127.0.0.1", port: 0, onListen() {} },
+function verifier(publicKey: CryptoKey): Promise<NetServer> {
+  return NetTasks.serve(
     async (request) => {
       const token = (request.headers.get("Authorization") ?? "")
         .replace(/^Bearer /, "");
@@ -81,9 +86,9 @@ test("an ES256 token signed in a build verifies at the server", async () => {
     "PRIVATE KEY",
     new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey)),
   );
-  const server = verifier(pair.publicKey);
+  const server = await verifier(pair.publicKey);
   try {
-    const url = `http://127.0.0.1:${server.addr.port}/`;
+    const url = `http://127.0.0.1:${server.port}/`;
     const statuses: number[] = [];
     const { code, err } = await runCli(caller(key, url, statuses), ["call"]);
     assertEquals(code, 0, err);
@@ -110,6 +115,6 @@ test("an ES256 token signed in a build verifies at the server", async () => {
     assertEquals(failed.err.includes(body), false);
     assertEquals(statuses, [200]);
   } finally {
-    await server.shutdown();
+    await server.close();
   }
 });

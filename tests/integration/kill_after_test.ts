@@ -3,9 +3,10 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli } from "./_harness.ts";
+import { EVAL } from "../_eval.ts";
 
 // A cooperative child (it does not trap SIGTERM) so the terminate sequence ends
 // at the first signal and the test stays fast; the grace → SIGKILL escalation
@@ -14,7 +15,7 @@ class SlowBuild extends Build {
   slow = target()
     .description("run a child that outlives its killAfter budget")
     .executes(async () => {
-      await $`${Deno.execPath()} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
+      await $`${RuntimeTasks.execPath()} ${EVAL} ${"setTimeout(() => {}, 30000)"}`
         .quiet()
         .killAfter(150);
     });

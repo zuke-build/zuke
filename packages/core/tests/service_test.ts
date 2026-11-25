@@ -7,10 +7,11 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../../tests/_assert.ts";
-import { Build, target } from "../mod.ts";
+import { Build, NetTasks, RuntimeTasks, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { execute } from "../src/executor.ts";
 import { $, Command } from "../src/shell.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 import {
   service,
   ServiceBuilder,
@@ -117,8 +118,8 @@ test("the registry stops services in reverse and tolerates a failure", async () 
 // --- tcpReachable ---
 
 test("tcpReachable reports whether a port is accepting connections", async () => {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-  const port = listener.addr.transport === "tcp" ? listener.addr.port : 0;
+  const listener = await NetTasks.listen();
+  const port = listener.port;
   assertEquals(await tcpReachable(`127.0.0.1:${port}`), true);
   listener.close();
   assertEquals(await tcpReachable(`127.0.0.1:${port}`), false);
@@ -148,7 +149,7 @@ test("tcpReachable validates the address", async () => {
 // --- Command.spawn / SpawnedProcess ---
 
 test("Command.spawn starts a process that stop() terminates", async () => {
-  const bin = Deno.execPath();
+  const bin = RuntimeTasks.execPath();
   const script = "await new Promise(() => {})"; // hangs until killed
   const proc = $`${bin} eval ${script}`.spawn();
   assertEquals(proc.pid > 0, true);
@@ -161,13 +162,13 @@ test({
   name: "stop() escalates to SIGKILL when SIGTERM is ignored",
   // On Windows SIGTERM maps to TerminateProcess and cannot be ignored, so the
   // escalation path is unreachable there.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
-    const bin = Deno.execPath();
+    const bin = RuntimeTasks.execPath();
     // Ignore SIGTERM, then hang — only SIGKILL can end it.
     const script =
-      "Deno.addSignalListener('SIGTERM', () => {}); await new Promise(() => {});";
-    const proc = $`${bin} eval ${script}`.spawn();
+      "process.on('SIGTERM', () => {}); setInterval(() => {}, 60_000);";
+    const proc = $`${bin} ${EVAL} ${script}`.spawn();
     await new Promise((r) => setTimeout(r, 300)); // let the handler install
     await proc.stop("SIGTERM", 150); // SIGTERM ignored → SIGKILL after 150ms
     const status = await proc.status;

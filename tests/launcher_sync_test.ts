@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
@@ -43,13 +44,15 @@ test("syncRootLaunchers round-trips through generate then check", async () => {
     ]);
     assertEquals(written.every((path) => path.startsWith(`${dir}/`)), true);
     assertEquals(await checkRootLaunchers(dir), []);
-    if (Deno.build.os !== "windows") {
-      const mode = (await Deno.stat(`${dir}/${BASH_LAUNCHER}`)).mode ?? 0;
+    if (RuntimeTasks.os() !== "windows") {
+      const mode = (await FileTasks.stat(`${dir}/${BASH_LAUNCHER}`)).mode ?? 0;
       assertEquals(mode & 0o111, 0o111, "./zuke must be executable");
     }
     // No staging file is left behind by the rename.
     const leftovers: string[] = [];
-    for await (const entry of Deno.readDir(dir)) leftovers.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      leftovers.push(entry.name);
+    }
     assertEquals(leftovers.sort(), [BASH_LAUNCHER, PWSH_LAUNCHER]);
   });
 });
@@ -61,7 +64,7 @@ test("checkRootLaunchers reports a missing and a drifted launcher", async () => 
       `${dir}/${PWSH_LAUNCHER} (missing)`,
     ]);
     await syncRootLaunchers(dir);
-    await Deno.writeTextFile(`${dir}/${BASH_LAUNCHER}`, "#!/bin/sh\nexit 1\n");
+    await FileTasks.writeText(`${dir}/${BASH_LAUNCHER}`, "#!/bin/sh\nexit 1\n");
     assertEquals(await checkRootLaunchers(dir), [
       `${dir}/${BASH_LAUNCHER} (content differs from the template)`,
     ]);
@@ -73,8 +76,8 @@ test("checkRootLaunchers tolerates CRLF from a Windows checkout", async () => {
     await syncRootLaunchers(dir);
     for (const name of [BASH_LAUNCHER, PWSH_LAUNCHER]) {
       const path = `${dir}/${name}`;
-      const lf = await Deno.readTextFile(path);
-      await Deno.writeTextFile(path, lf.replaceAll("\n", "\r\n"));
+      const lf = await FileTasks.readText(path);
+      await FileTasks.writeText(path, lf.replaceAll("\n", "\r\n"));
     }
     assertEquals(await checkRootLaunchers(dir), []);
   });
@@ -84,7 +87,9 @@ test("checkRootLaunchers rethrows an error that is not a missing file", async ()
   await withTemp(async (dir) => {
     // A directory where the launcher should be is neither missing nor
     // readable as text; that is a real error, not drift to report.
-    await Deno.mkdir(`${dir}/${BASH_LAUNCHER}`);
+    await FileTasks.createDirectory(`${dir}/${BASH_LAUNCHER}`, {
+      recursive: false,
+    });
     let thrown: unknown;
     try {
       await checkRootLaunchers(dir);

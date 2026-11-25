@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks, type HostOs, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -26,6 +27,7 @@ import {
   CommandTimeoutError,
 } from "../src/shell.ts";
 import { withTemp } from "../../../tests/_temp.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** Minimal concrete settings: runs `deno eval <script>` — hermetic. */
 class EvalSettings extends ToolSettings {
@@ -37,11 +39,11 @@ class EvalSettings extends ToolSettings {
   }
 
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
 
   protected override buildArgs(): string[] {
-    return ["eval", this.#script];
+    return [EVAL, this.#script];
   }
 }
 
@@ -64,12 +66,12 @@ class StdinEvalSettings extends EvalSettings {
 
 /** A script that echoes everything it is given on stdin, prefixed. */
 const ECHO_STDIN =
-  "const b = new Uint8Array(1024); const n = Deno.stdin.readSync(b) ?? 0; " +
+  "const b = new Uint8Array(1024); const n = process.getBuiltinModule('node:fs').readSync(0, b); " +
   "console.log('got:' + new TextDecoder().decode(b.subarray(0, n)).trim())";
 
 test("argv() is tool + buildArgs + extra args, in order", () => {
   const s = new EvalSettings().script("1").args("--extra", 2);
-  assertEquals(s.argv(), [Deno.execPath(), "eval", "1", "--extra", "2"]);
+  assertEquals(s.argv(), [RuntimeTasks.execPath(), EVAL, "1", "--extra", "2"]);
 });
 
 test("toolPath() overrides the default binary", () => {
@@ -89,8 +91,9 @@ test("run() applies env and cwd", async () => {
     // so both paths are normalised by the same realPath in the same process.
     // A plain string match is unreliable cross-platform (macOS temp symlinks,
     // Windows drive-letter casing and 8.3 short vs long names).
-    const script = `console.log(Deno.env.get('ZUKE_T') + ':' + ` +
-      `(Deno.realPathSync(Deno.cwd()) === Deno.realPathSync(${
+    const script = "const fs = process.getBuiltinModule('node:fs'); " +
+      `console.log(process.env['ZUKE_T'] + ':' + ` +
+      `(fs.realpathSync.native(process.cwd()) === fs.realpathSync.native(${
         JSON.stringify(dir)
       })))`;
     const out = await new EvalSettings()
@@ -105,7 +108,7 @@ test("run() applies env and cwd", async () => {
 
 test("run() throws CommandError on non-zero exit", async () => {
   await assertRejects(
-    () => new EvalSettings().script("Deno.exit(3)").quiet().run(),
+    () => new EvalSettings().script("process.exit(3)").quiet().run(),
     CommandError,
     "exit 3",
   );
@@ -160,7 +163,7 @@ test("maxCapturedBytes() rejects a cap capture cannot honour", () => {
 
 test("noThrow() suppresses the non-zero throw", async () => {
   const out = await new EvalSettings()
-    .script("Deno.exit(3)")
+    .script("process.exit(3)")
     .noThrow()
     .quiet()
     .run();
@@ -177,7 +180,7 @@ test("missing binary without a shim raises ToolNotFoundError", async () => {
 
 test({
   name: "a missing binary on windows reports the tool, with no cmd /c retry",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     const s = new EvalSettings().toolPath("zuke-no-such-tool-xyz");
     s.os_ = "windows";
@@ -192,15 +195,15 @@ test({
   // shim is spawned directly instead. Proven here without Windows: a file
   // named `.cmd` whose shebang makes it executable runs only if it is the
   // process being spawned — a `cmd /c` wrap would look for `cmd` and fail.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       const shim = `${dir}/tool.cmd`;
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         shim,
         '#!/bin/sh\nfor a in "$@"; do echo "arg:$a"; done\n',
       );
-      await Deno.chmod(shim, 0o755);
+      await FileTasks.chmod(shim, 0o755);
 
       const s = new EvalSettings().toolPath(shim).args("A=1&whoami").quiet();
       s.os_ = "windows"; // the branch that used to wrap
@@ -228,11 +231,11 @@ test("non-NotFound spawn errors propagate unchanged", async () => {
 });
 
 /** Create `node_modules/.bin/<name>` under `dir` and return its path. */
-function plantBin(dir: string, name: string): string {
+async function plantBin(dir: string, name: string): Promise<string> {
   const binDir = `${dir}/node_modules/.bin`;
-  Deno.mkdirSync(binDir, { recursive: true });
+  await FileTasks.createDirectory(binDir);
   const path = `${binDir}/${name}`;
-  Deno.writeTextFileSync(path, "#!/bin/sh\n");
+  await FileTasks.writeText(path, "#!/bin/sh\n");
   return path.replace(/\\/g, "/");
 }
 
@@ -243,7 +246,7 @@ function plantBin(dir: string, name: string): string {
  * its own tests that set `os_ = "windows"` explicitly.
  */
 class NodeToolSettings extends ToolSettings {
-  override os_: typeof Deno.build.os = "linux";
+  override os_: HostOs = "linux";
   protected override defaultTool(): string {
     return "mytool";
   }
@@ -255,111 +258,91 @@ class NodeToolSettings extends ToolSettings {
   }
 }
 
-test("fromNodeModules resolves a hoisted bin by walking up", () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    const bin = plantBin(root, "mytool");
-    Deno.mkdirSync(`${root}/a/b`, { recursive: true });
+test("fromNodeModules resolves a hoisted bin by walking up", () =>
+  withTemp(async (root) => {
+    const bin = await plantBin(root, "mytool");
+    await FileTasks.createDirectory(`${root}/a/b`);
     // The bin lives at the root; the cwd is two levels down → the walk finds it.
     const node = new NodeToolSettings().cwd(`${root}/a/b`);
     assertEquals(node.resolvedArgv(), [bin, "run"]);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("resolution falls back to the bare name on a miss", () => {
-  const root = Deno.makeTempDirSync();
-  try {
+test("resolution falls back to the bare name on a miss", () =>
+  withTemp((root) => {
     const s = new NodeToolSettings().cwd(root);
     assertEquals(s.resolvedArgv(), ["mytool", "run"]);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("fromPath ignores a present node_modules/.bin", () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    plantBin(root, "mytool");
+test("fromPath ignores a present node_modules/.bin", () =>
+  withTemp(async (root) => {
+    await plantBin(root, "mytool");
     const s = new NodeToolSettings().cwd(root).fromPath();
     assertEquals(s.resolvedArgv(), ["mytool", "run"]);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("an explicit toolPath wins over node_modules resolution", () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    plantBin(root, "mytool");
+test("an explicit toolPath wins over node_modules resolution", () =>
+  withTemp(async (root) => {
+    await plantBin(root, "mytool");
     const s = new NodeToolSettings().cwd(root).toolPath("/custom/mytool");
     assertEquals(s.resolvedArgv(), ["/custom/mytool", "run"]);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () => {
-  const root = Deno.makeTempDirSync();
-  const prev = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  try {
-    const bin = plantBin(root, "mytool");
-    // A "path"-default wrapper; the ambient override switches it on. Pinned to
-    // linux so the planted bare shim matches regardless of the host OS.
-    class MyTool extends ToolSettings {
-      override os_: typeof Deno.build.os = "linux";
-      protected override defaultTool(): string {
-        return "mytool";
+test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () =>
+  withTemp(async (root) => {
+    const prev = EnvTasks.get("ZUKE_TOOL_RESOLUTION");
+    try {
+      const bin = await plantBin(root, "mytool");
+      // A "path"-default wrapper; the ambient override switches it on. Pinned to
+      // linux so the planted bare shim matches regardless of the host OS.
+      class MyTool extends ToolSettings {
+        override os_: HostOs = "linux";
+        protected override defaultTool(): string {
+          return "mytool";
+        }
+        protected override buildArgs(): string[] {
+          return [];
+        }
       }
-      protected override buildArgs(): string[] {
-        return [];
-      }
+      EnvTasks.set("ZUKE_TOOL_RESOLUTION", "node_modules");
+      assertEquals(new MyTool().cwd(root).resolvedArgv(), [bin]);
+      // A per-call .fromPath() still beats the ambient override.
+      assertEquals(new MyTool().cwd(root).fromPath().resolvedArgv(), [
+        "mytool",
+      ]);
+      // And "path" turns a node_modules-default wrapper back off.
+      EnvTasks.set("ZUKE_TOOL_RESOLUTION", "path");
+      assertEquals(new NodeToolSettings().cwd(root).resolvedArgv(), [
+        "mytool",
+        "run",
+      ]);
+      // An unrecognised value is ignored (default wins).
+      EnvTasks.set("ZUKE_TOOL_RESOLUTION", "bogus");
+      assertEquals(new NodeToolSettings().cwd(root).resolvedArgv(), [
+        bin,
+        "run",
+      ]);
+    } finally {
+      if (prev === undefined) EnvTasks.delete("ZUKE_TOOL_RESOLUTION");
+      else EnvTasks.set("ZUKE_TOOL_RESOLUTION", prev);
     }
-    Deno.env.set("ZUKE_TOOL_RESOLUTION", "node_modules");
-    assertEquals(new MyTool().cwd(root).resolvedArgv(), [bin]);
-    // A per-call .fromPath() still beats the ambient override.
-    assertEquals(new MyTool().cwd(root).fromPath().resolvedArgv(), ["mytool"]);
-    // And "path" turns a node_modules-default wrapper back off.
-    Deno.env.set("ZUKE_TOOL_RESOLUTION", "path");
-    assertEquals(new NodeToolSettings().cwd(root).resolvedArgv(), [
-      "mytool",
-      "run",
-    ]);
-    // An unrecognised value is ignored (default wins).
-    Deno.env.set("ZUKE_TOOL_RESOLUTION", "bogus");
-    assertEquals(new NodeToolSettings().cwd(root).resolvedArgv(), [bin, "run"]);
-  } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prev);
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("windows resolution matches the .cmd shim, not the bare shim", () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    const cmd = plantBin(root, "mytool.cmd");
-    plantBin(root, "mytool"); // the bare shim (no extension) is ignored
+test("windows resolution matches the .cmd shim, not the bare shim", () =>
+  withTemp(async (root) => {
+    const cmd = await plantBin(root, "mytool.cmd");
+    await plantBin(root, "mytool"); // the bare shim (no extension) is ignored
     const s = new NodeToolSettings().cwd(root);
     s.os_ = "windows";
     assertEquals(s.resolvedArgv(), [cmd, "run"]);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("windows resolution ignores a bare-only shim", () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    plantBin(root, "mytool"); // no .cmd/.bat → Windows cannot launch it
+test("windows resolution ignores a bare-only shim", () =>
+  withTemp(async (root) => {
+    await plantBin(root, "mytool"); // no .cmd/.bat → Windows cannot launch it
     const s = new NodeToolSettings().cwd(root);
     s.os_ = "windows";
     assertEquals(s.resolvedArgv(), ["mytool", "run"]); // falls back to PATH
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
 test("windowsCmdShim wraps .cmd/.bat via cmd /c on windows only", () => {
   assertEquals(windowsCmdShim(["C:/x/foo.cmd", "-v"], "windows"), [
@@ -379,22 +362,17 @@ test("windowsCmdShim wraps .cmd/.bat via cmd /c on windows only", () => {
   assertEquals(windowsCmdShim([], "windows"), []);
 });
 
-test("the lookup is memoized per (tool, cwd)", () => {
-  const root = Deno.makeTempDirSync();
-  try {
+test("the lookup is memoized per (tool, cwd)", () =>
+  withTemp(async (root) => {
     const s = new NodeToolSettings().cwd(root);
     assertEquals(s.resolvedArgv(), ["mytool", "run"]); // miss, memoized
-    plantBin(root, "mytool"); // planted *after* the first lookup
+    await plantBin(root, "mytool"); // planted *after* the first lookup
     assertEquals(s.resolvedArgv(), ["mytool", "run"]); // still the cached miss
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
-test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", async () => {
-  const root = Deno.makeTempDirSync();
-  try {
-    Deno.mkdirSync(`${root}/node_modules`, { recursive: true });
+test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", () =>
+  withTemp(async (root) => {
+    await FileTasks.createDirectory(`${root}/node_modules`);
     // A bare tool name that does not exist, so the spawn fails NotFound while
     // a node_modules directory was seen during the walk.
     class Missing extends ToolSettings {
@@ -410,10 +388,7 @@ test("ToolNotFoundError hints at npm ci when node_modules lacked the bin", async
     const err = await assertRejects(() => miss.run(), ToolNotFoundError);
     assertEquals(messageOf(err).includes("node_modules"), true);
     assertEquals(messageOf(err).includes("npm ci"), true);
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-  }
-});
+  }));
 
 test("shimFallbackArgv wraps with cmd /c on windows only", () => {
   assertEquals(shimFallbackArgv(["npm", "-v"], "windows"), [
@@ -573,7 +548,7 @@ test("onOutput sees the output of a successful run", async () => {
 
 test("onOutput sees a failed run's output before the CommandError is raised", async () => {
   const s = new ObservingSettings()
-    .script("console.log('partial'); Deno.exit(3)")
+    .script("console.log('partial'); process.exit(3)")
     .quiet();
   await assertRejects(() => s.run(), CommandError, "exit 3");
   assertEquals(s.seen, [{ code: 3, stdout: "partial" }]);
@@ -581,7 +556,7 @@ test("onOutput sees a failed run's output before the CommandError is raised", as
 
 test("onOutput runs once under noThrow too, and the output is returned", async () => {
   const s = new ObservingSettings()
-    .script("console.log('partial'); Deno.exit(3)")
+    .script("console.log('partial'); process.exit(3)")
     .noThrow()
     .quiet();
   const out = await s.run();
@@ -602,12 +577,11 @@ test("markSecret masks a credential a tool only takes as an argument", async () 
       return this;
     }
     protected override defaultTool(): string {
-      return Deno.execPath();
+      return RuntimeTasks.execPath();
     }
     protected override buildArgs(): string[] {
       return [
-        "eval",
-        "--no-lock",
+        EVAL,
         `console.log(${JSON.stringify(this.#token)})`,
       ];
     }
@@ -632,10 +606,10 @@ test("markSecret outside a run is a no-op, not a crash", async () => {
       return this;
     }
     protected override defaultTool(): string {
-      return Deno.execPath();
+      return RuntimeTasks.execPath();
     }
     protected override buildArgs(): string[] {
-      return ["eval", "--no-lock", "console.log('ok')"];
+      return [EVAL, "console.log('ok')"];
     }
   }
   new TokenSettings().token("hunter2");
@@ -746,7 +720,7 @@ test("stdin text stays out of every rendering of the command", async () => {
   // The whole point of preferring this over markSecret: the secret is not on
   // the command line, so nothing that renders the command line can leak it.
   const settings = new StdinEvalSettings()
-    .script("Deno.exit(7)")
+    .script("process.exit(7)")
     .input("hunter2")
     .quiet();
   const error = await assertRejects(

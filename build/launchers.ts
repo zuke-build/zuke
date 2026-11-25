@@ -13,6 +13,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { launcherBash, launcherPwsh } from "../packages/cli/src/launcher.ts";
 
 /** The bash launcher's file name at the repository root. */
@@ -49,11 +50,11 @@ export async function syncRootLaunchers(dir = "."): Promise<string[]> {
   for (const [name, content] of renderRootLaunchers()) {
     const path = `${dir}/${name}`;
     const staging = `${path}.tmp-${crypto.randomUUID()}`;
-    await Deno.writeTextFile(staging, content);
-    if (name === BASH_LAUNCHER && Deno.build.os !== "windows") {
-      await Deno.chmod(staging, EXECUTABLE);
+    await FileTasks.writeText(staging, content);
+    if (name === BASH_LAUNCHER && RuntimeTasks.os() !== "windows") {
+      await FileTasks.chmod(staging, EXECUTABLE);
     }
-    await Deno.rename(staging, path);
+    await FileTasks.move(staging, path);
     written.push(path);
   }
   return written;
@@ -71,9 +72,9 @@ export async function checkRootLaunchers(dir = "."): Promise<string[]> {
     const path = `${dir}/${name}`;
     let actual: string;
     try {
-      actual = await Deno.readTextFile(path);
+      actual = await FileTasks.readText(path);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!(FileTasks.isNotFound(error))) throw error;
       stale.push(`${path} (missing)`);
       continue;
     }

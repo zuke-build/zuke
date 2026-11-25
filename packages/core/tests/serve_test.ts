@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { NetTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { createServer, Socket } from "node:net";
 import { PassThrough, Readable } from "node:stream";
@@ -320,10 +321,7 @@ test("Node: a Host header that makes no URL is answered on the bound address", a
     return new Response(new URL(request.url).pathname);
   }, async (base) => {
     const { port } = new URL(base);
-    const conn = await Deno.connect({
-      hostname: "127.0.0.1",
-      port: Number(port),
-    });
+    const conn = await NetTasks.connect(Number(port));
     await conn.write(
       new TextEncoder().encode(
         "GET /seen HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",

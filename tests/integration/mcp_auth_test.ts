@@ -29,8 +29,10 @@ import {
   type McpAuthenticator,
   type McpIdentityHook,
   type McpRequestContext,
+  NetTasks,
   protectedResource,
   type ProtectedResourceSettings,
+  RuntimeTasks,
   target,
 } from "../../packages/core/mod.ts";
 import {
@@ -216,8 +218,8 @@ test("in registry mode the caller's kind and roles reach the spawned build", asy
         registry,
         location: {
           kind: "module",
-          module: `${Deno.cwd()}/fleet.ts`,
-          cwd: Deno.cwd(),
+          module: `${RuntimeTasks.cwd()}/fleet.ts`,
+          cwd: RuntimeTasks.cwd(),
         },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
@@ -328,17 +330,18 @@ test("a malformed Host header does not fault the server", async () => {
   const server = await startMcp(new Guarded(), {});
   try {
     const port = Number(new URL(server.url).port);
-    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    const connection = await NetTasks.connect(port);
     await connection.write(
       new TextEncoder().encode(
         "GET / HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",
       ),
     );
-    const buffer = new Uint8Array(256);
-    const read = await connection.read(buffer);
+    const reader = connection.readable.getReader();
+    const { value } = await reader.read();
+    reader.releaseLock();
     connection.close();
     const statusLine = new TextDecoder()
-      .decode(buffer.subarray(0, read ?? 0))
+      .decode(value)
       .split("\r\n")[0];
     // The ordinary refusal for a GET on the MCP endpoint — not a fault.
     assertStringIncludes(statusLine, "405");
@@ -459,7 +462,7 @@ test("two real protocol-version header lines arrive comma-joined", async () => {
       id: 1,
       method: "tools/list",
     });
-    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    const connection = await NetTasks.connect(port);
     await connection.write(
       new TextEncoder().encode(
         "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
@@ -470,10 +473,11 @@ test("two real protocol-version header lines arrive comma-joined", async () => {
           "Connection: close\r\n\r\n" + message,
       ),
     );
-    const buffer = new Uint8Array(512);
-    const read = await connection.read(buffer);
+    const reader = connection.readable.getReader();
+    const { value } = await reader.read();
+    reader.releaseLock();
     connection.close();
-    return new TextDecoder().decode(buffer.subarray(0, read ?? 0));
+    return new TextDecoder().decode(value);
   };
   try {
     // Copies that agree: a proxy re-adding what the client already sent.
