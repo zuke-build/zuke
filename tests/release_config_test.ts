@@ -29,6 +29,24 @@ test("release-please config matches the workspace packages", async () => {
   assertEquals(Object.keys(packages).sort(), [...PACKAGES].sort());
 });
 
+test("no package is released for a change to its tests alone", async () => {
+  // release-please gives a feat or fix commit to every package it touches a
+  // file in. Excluding the tests directory means a commit whose changes in a
+  // package are all tests leaves that package unreleased. release-please
+  // matches these paths as directories only, so a file cannot be listed.
+  const config = await readJson(CONFIG);
+  const packages = config.packages;
+  if (packages === null || typeof packages !== "object") {
+    throw new Error("config.packages must be an object");
+  }
+  for (const [path, entry] of Object.entries(packages)) {
+    const excluded = entry !== null && typeof entry === "object"
+      ? Reflect.get(entry, "exclude-paths")
+      : undefined;
+    assertEquals(excluded, [`${path}/tests`], path);
+  }
+});
+
 test("the config uses the simple release type", async () => {
   // release-please has no "deno" releaser; the version lives in each package's
   // deno.json, bumped via the simple releaser plus a json extra-files updater.
