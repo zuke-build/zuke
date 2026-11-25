@@ -44,8 +44,8 @@ class RuntimeTasksBuild extends Build {
     const entries = await FileTasks.readDirectory(staging);
     seen.push(`staged ${entries.map((entry) => entry.name).join(",")}`);
     seen.push(
-      `in ${RuntimeTasks.cwd() === RuntimeTasks.cwd()} on ${
-        RuntimeTasks.arch() === RuntimeTasks.arch()
+      `in ${await FileTasks.exists(RuntimeTasks.cwd())} on ${
+        ["x86_64", "aarch64"].includes(RuntimeTasks.arch())
       }`,
     );
   });

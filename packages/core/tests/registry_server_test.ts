@@ -1775,7 +1775,7 @@ test("a runner rejecting with a non-Error is still a structured failure", async 
  * can drop an empty-valued variable from a spawned environment altogether, so
  * "no roles" is asserted as unset-or-empty rather than exactly `""`.
  */
-const ACTOR_ECHO = "const v = (n: string) => process.env[n] ?? '-'; " +
+const ACTOR_ECHO = "const v = (n) => process.env[n] ?? '-'; " +
   "console.log([v('ZUKE_ACTOR'), v('ZUKE_ACTOR_KIND'), " +
   "process.env['ZUKE_ACTOR_ROLES'] || 'NONE'].join('|'))";
 
