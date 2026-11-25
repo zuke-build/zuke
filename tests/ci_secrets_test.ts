@@ -22,6 +22,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { isRecord, jobsOf, readWorkflow, stepsOf } from "./_workflow.ts";
@@ -90,7 +91,7 @@ test("no workflow triggers on pull_request_target", async () => {
   // The trigger that would run a fork's code with this repository's secrets.
   // Nothing here uses it, and nothing should start to without the change being
   // argued for.
-  for await (const entry of Deno.readDir(".github/workflows")) {
+  for (const entry of await FileTasks.readDirectory(".github/workflows")) {
     if (!entry.name.endsWith(".yml")) continue;
     const workflow = readWorkflow(`.github/workflows/${entry.name}`);
     // `on` is YAML 1.1 truthy, so a parser may key it as `true`.

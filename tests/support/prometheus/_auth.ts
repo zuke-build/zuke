@@ -7,6 +7,7 @@
  * request, and a generated RSA key (no key is ever committed).
  */
 
+import { notFound } from "../../_fakes.ts";
 import type {
   PrometheusCredentialsContext,
   PrometheusOutgoingRequest,
@@ -45,7 +46,7 @@ export function context(seams: Seams = {}): PrometheusCredentialsContext {
     readTextFile: (path) =>
       Object.hasOwn(files, path)
         ? Promise.resolve(files[path])
-        : Promise.reject(new Deno.errors.NotFound(`no such file: ${path}`)),
+        : Promise.reject(notFound(`no such file: ${path}`)),
     now: () => clock.now,
     fetch: seams.fetch ?? fakeFetch(() => {
       throw new TypeError("unexpected request");

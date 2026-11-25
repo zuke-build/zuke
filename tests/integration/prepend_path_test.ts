@@ -3,7 +3,15 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, prependPath, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  EnvTasks,
+  FileTasks,
+  prependPath,
+  ProcessTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 // The bin directory to put on PATH is module-scoped so the target body (captured
@@ -17,8 +25,10 @@ class PathBuild extends Build {
       prependPath(binDir);
       // A bare command name must now resolve through the prepended directory,
       // proving the mutation reaches spawned subprocesses.
-      const cmd = new Deno.Command("zuke-fixture-tool", { stdout: "piped" });
-      const { success, stdout } = await cmd.output();
+      const { success, stdout } = await ProcessTasks.run(
+        "zuke-fixture-tool",
+        (s) => s.stdout("piped"),
+      );
       console.log(
         `resolved=${success} out=${new TextDecoder().decode(stdout).trim()}`,
       );
@@ -26,15 +36,17 @@ class PathBuild extends Build {
 }
 
 test("prependPath makes a provisioned bin resolve by bare name via the CLI", async () => {
-  if (Deno.build.os === "windows") return; // bare-name shell scripts are POSIX
-  const dir = await Deno.makeTempDir({ prefix: "zuke-path-it-" });
-  const savedPath = Deno.env.get("PATH");
+  if (RuntimeTasks.os() === "windows") return; // bare-name shell scripts are POSIX
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-path-it-")
+  );
+  const savedPath = EnvTasks.get("PATH");
   try {
     binDir = `${dir}/bin`;
-    await Deno.mkdir(binDir);
+    await FileTasks.createDirectory(binDir, { recursive: false });
     const tool = `${binDir}/zuke-fixture-tool`;
-    await Deno.writeTextFile(tool, "#!/bin/sh\necho PATH-RESOLVED\n");
-    await Deno.chmod(tool, 0o755);
+    await FileTasks.writeText(tool, "#!/bin/sh\necho PATH-RESOLVED\n");
+    await FileTasks.chmod(tool, 0o755);
 
     const { code, out } = await runCli(PathBuild, ["run"]);
     assertEquals(code, 0);
@@ -42,8 +54,8 @@ test("prependPath makes a provisioned bin resolve by bare name via the CLI", asy
     assertStringIncludes(out, "out=PATH-RESOLVED"); // …and it was the provisioned one
   } finally {
     // Restore the real PATH the in-process run mutated.
-    if (savedPath === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", savedPath);
-    await Deno.remove(dir, { recursive: true });
+    if (savedPath === undefined) EnvTasks.delete("PATH");
+    else EnvTasks.set("PATH", savedPath);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

@@ -8,6 +8,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import {
   assertEquals,
@@ -122,8 +123,8 @@ function fakeTools(
 async function binaries(dir: string): Promise<string> {
   const bin = `${dir}/bin`;
   for (const target of CLI_TARGETS) {
-    await Deno.mkdir(`${bin}/${target.triple}`, { recursive: true });
-    await Deno.writeTextFile(binaryPath(bin, target.triple), target.triple);
+    await FileTasks.createDirectory(`${bin}/${target.triple}`);
+    await FileTasks.writeText(binaryPath(bin, target.triple), target.triple);
   }
   return bin;
 }
@@ -139,9 +140,12 @@ test("signMacBinaries signs and verifies each macOS binary inside the keychain, 
       fakeTools(calls, undefined, async (argv) => {
         keyFile = argv[argv.indexOf("--key") + 1];
         // Written owner-only, holding the key text as given.
-        assertEquals(await Deno.readTextFile(keyFile), CREDENTIALS.notaryKey);
-        if (Deno.build.os !== "windows") {
-          assertEquals(((await Deno.stat(keyFile)).mode ?? 0) & 0o777, 0o600);
+        assertEquals(await FileTasks.readText(keyFile), CREDENTIALS.notaryKey);
+        if (RuntimeTasks.os() !== "windows") {
+          assertEquals(
+            ((await FileTasks.stat(keyFile)).mode ?? 0) & 0o777,
+            0o600,
+          );
         }
       }),
     );
@@ -188,22 +192,25 @@ test("signMacBinaries signs and verifies each macOS binary inside the keychain, 
       assertStringIncludes(submit, part);
     }
     // The key file does not outlive the run.
-    await assertRejects(() => Deno.stat(keyFile), Deno.errors.NotFound);
+    assertEquals(
+      FileTasks.isNotFound(await assertRejects(() => FileTasks.stat(keyFile))),
+      true,
+    );
     // Only the macOS binaries were touched.
     assertEquals(calls.some((c) => c.includes("linux")), false);
   });
 });
 
 test("signMacBinaries restores the execute bit an artifact download drops", async () => {
-  if (Deno.build.os === "windows") return;
+  if (RuntimeTasks.os() === "windows") return;
   await withTemp(async (dir) => {
     const bin = await binaries(dir);
     for (const target of MACOS_TARGETS) {
-      await Deno.chmod(binaryPath(bin, target.triple), 0o644);
+      await FileTasks.chmod(binaryPath(bin, target.triple), 0o644);
     }
     await signMacBinaries(bin, CREDENTIALS, fakeTools([]));
     for (const target of MACOS_TARGETS) {
-      const { mode } = await Deno.stat(binaryPath(bin, target.triple));
+      const { mode } = await FileTasks.stat(binaryPath(bin, target.triple));
       assertEquals((mode ?? 0) & 0o777, 0o755);
     }
   });
@@ -212,10 +219,10 @@ test("signMacBinaries restores the execute bit an artifact download drops", asyn
 test("signMacBinaries fails on a missing binary before opening a keychain", async () => {
   await withTemp(async (dir) => {
     const calls: string[] = [];
-    await assertRejects(
-      () => signMacBinaries(`${dir}/none`, CREDENTIALS, fakeTools(calls)),
-      Deno.errors.NotFound,
+    const error = await assertRejects(() =>
+      signMacBinaries(`${dir}/none`, CREDENTIALS, fakeTools(calls))
     );
+    assertEquals(FileTasks.isNotFound(error), true);
     assertEquals(calls, []);
   });
 });
@@ -241,6 +248,9 @@ test("signMacBinaries removes the key file even when notarization fails", async 
       Error,
       "notarization: Invalid",
     );
-    await assertRejects(() => Deno.stat(keyFile), Deno.errors.NotFound);
+    assertEquals(
+      FileTasks.isNotFound(await assertRejects(() => FileTasks.stat(keyFile))),
+      true,
+    );
   });
 });

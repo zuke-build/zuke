@@ -12,6 +12,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
@@ -207,11 +208,11 @@ test("a repository with no action release yet starts at v1.0.0", async () => {
   assertEquals(calls[1], `tag:v1.0.0@${SHA.slice(0, 4)}`);
 });
 
-test("the committed pin file matches what the module expects", () => {
+test("the committed pin file matches what the module expects", async () => {
   // The generated workflows reference the action at this pin, so a hand edit
   // that breaks its shape would unpin every job.
   const pin: ActionPinFile = JSON.parse(
-    Deno.readTextFileSync(ACTION_VERSION_FILE),
+    await FileTasks.readText(ACTION_VERSION_FILE),
   );
   assertEquals(
     /^zuke-build\/zuke@[0-9a-f]{40}$/.test(pin.ref),
@@ -444,12 +445,12 @@ test("a release must declare at least one input", () => {
   assertThrows(() => pinFor(SHA, "v1.0.0", [], DIGEST));
 });
 
-test("the committed pin lists the inputs action.yml declares", () => {
+test("the committed pin lists the inputs action.yml declares", async () => {
   // The two are written together by `actionRelease`, and drift between them is
   // exactly what the gate check reads. This asserts the committed pair agree
   // on the *shape* — the gate asserts the workflows fit inside it.
   const pin: ActionPinFile = JSON.parse(
-    Deno.readTextFileSync(ACTION_VERSION_FILE),
+    await FileTasks.readText(ACTION_VERSION_FILE),
   );
   assertEquals(pin.inputs.length > 0, true);
   for (const name of pin.inputs) {

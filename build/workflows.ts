@@ -109,7 +109,9 @@ export interface WorkflowTargets {
  * shape of a compromised build-time dependency.
  *
  * Each entry is traceable to something the build does — the Deno bootstrap,
- * module resolution (JSR, plus npm for the cspell tooling), the OpenAI API for
+ * module resolution (JSR, plus npm for the cspell tooling, and JSR's npm
+ * registry for the `@jsr`-scoped development dependencies that installing
+ * `package.json` brings, such as `@std/yaml`), the OpenAI API for
  * the lint fixer, GitHub for the fixer's comment and push, Codecov's CDN,
  * API, and upload bucket, and Sigstore's TUF repository for the npm
  * attestation check.
@@ -119,6 +121,7 @@ const GATE_ENDPOINTS = [
   "dl.deno.land:443",
   "jsr.io:443",
   "registry.npmjs.org:443",
+  "npm.jsr.io:443",
   "api.openai.com:443",
   "api.github.com:443",
   "github.com:443",
@@ -182,7 +185,8 @@ const REPO_WRITE_ENDPOINTS = [
 ];
 
 /**
- * The website sync's hosts: {@link REPO_WRITE_ENDPOINTS} plus the npm registry.
+ * The website sync's hosts: {@link REPO_WRITE_ENDPOINTS} plus the npm registry,
+ * and JSR's npm registry, which serves the `@jsr` scope of `package.json`.
  *
  * Separate because the npm registry is not in the action release's module
  * graph — the only `npm:` specifiers in this build are runtime strings in the
@@ -193,6 +197,7 @@ const REPO_WRITE_ENDPOINTS = [
 const WEBSITE_SYNC_ENDPOINTS = [
   ...REPO_WRITE_ENDPOINTS,
   "registry.npmjs.org:443",
+  "npm.jsr.io:443",
 ];
 
 /** The artifact the compiled CLI binaries travel in, unsigned. */

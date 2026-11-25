@@ -5,7 +5,10 @@ import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
+  FileTasks,
   gzip,
+  ProcessTasks,
+  RuntimeTasks,
   tar,
   target,
   toolchain,
@@ -18,11 +21,11 @@ import { runCli } from "./_harness.ts";
 // reads them at execution time — set before the run.
 let tarballBytes: Uint8Array = new Uint8Array(0);
 let toolsDir = "";
-const POSIX = Deno.build.os !== "windows";
+const POSIX = RuntimeTasks.os() !== "windows";
 
 /** A download seam that writes the prepared fixture tarball to `dest`. */
 const fixtureDownload: DownloadFn = async (_url, dest) => {
-  await Deno.writeFile(String(dest), tarballBytes);
+  await FileTasks.writeBytes(String(dest), tarballBytes);
 };
 
 class TreeBuild extends Build {
@@ -40,18 +43,18 @@ class TreeBuild extends Build {
       const roots = await this.tools.install({ destDir: toolsDir });
       const root = roots.get("node");
       if (root === undefined) throw new Error("node tree not installed");
-      if (Deno.build.os !== "windows") {
+      if (RuntimeTasks.os() !== "windows") {
         // The symlinked bin resolves to the lib script it points at…
-        const npm = await Deno.readTextFile(String(root("bin", "npm")));
+        const npm = await FileTasks.readText(String(root("bin", "npm")));
         console.log(`npm-via-symlink=${npm.trim()}`);
         // …and chmod made the real bin executable, so it actually runs.
-        const cmd = new Deno.Command(String(root("bin", "node")), {
-          stdout: "piped",
-        });
-        const { stdout } = await cmd.output();
+        const { stdout } = await ProcessTasks.run(
+          String(root("bin", "node")),
+          (s) => s.stdout("piped"),
+        );
         console.log(`ran=${new TextDecoder().decode(stdout).trim()}`);
       } else {
-        const node = await Deno.stat(String(root("bin", "node")));
+        const node = await FileTasks.stat(String(root("bin", "node")));
         console.log(`node-exists=${node.isFile}`);
       }
     });
@@ -80,7 +83,9 @@ test("a build installs a multi-file runtime tree end-to-end via the CLI", async 
     );
   }
   tarballBytes = await gzip(tar(entries));
-  toolsDir = await Deno.makeTempDir({ prefix: "zuke-tree-it-" });
+  toolsDir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-tree-it-")
+  );
   try {
     const { code, out } = await runCli(TreeBuild, ["install"]);
     assertEquals(code, 0);
@@ -93,6 +98,6 @@ test("a build installs a multi-file runtime tree end-to-end via the CLI", async 
       assertStringIncludes(out, "node-exists=true"); // tree extracted
     }
   } finally {
-    await Deno.remove(toolsDir, { recursive: true });
+    await FileTasks.remove(toolsDir, { recursive: true });
   }
 });
