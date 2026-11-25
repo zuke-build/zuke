@@ -63,3 +63,24 @@ export class TempDirectorySettings {
     return this;
   }
 }
+
+/** How `FileTasks.makeTempFile` names its file. */
+export class TempFileSettings {
+  /** How the file's name starts; see {@link prefix}. */
+  prefix_: string | undefined = undefined;
+
+  /** How the file's name ends; see {@link suffix}. */
+  suffix_: string | undefined = undefined;
+
+  /** How the file's name starts (default `zuke-`). */
+  prefix(start: string): this {
+    this.prefix_ = start;
+    return this;
+  }
+
+  /** How the file's name ends, such as an extension (default none). */
+  suffix(end: string): this {
+    this.suffix_ = end;
+    return this;
+  }
+}

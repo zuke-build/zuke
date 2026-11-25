@@ -373,14 +373,15 @@ imports a test library, so moving to another runtime or framework is a change to
 those seams, not to every test:
 
 - Runtime operations go through core's tasks, the same seams the code uses:
-  `FileTasks`, `EnvTasks`, `RuntimeTasks` and `ProcessTasks`.
+  `FileTasks`, `EnvTasks`, `RuntimeTasks`, `ProcessTasks` and `NetTasks`.
 - Tests register with `test()` from `tests/_testing.ts`, which hands them to
   Deno's runner or to Vitest, and assert with `tests/_assert.ts`.
-- What core does not offer because only a test needs it (setting the
-  environment, changing the working directory, temp scopes, the integration
-  harness's unhandled-rejection guard) lives in a root helper, `tests/_*.ts`.
-  Those helpers are the only test code that may call the runtime directly, and
-  they too use core wherever it reaches.
+- When a test needs something of the runtime that core has no task for, add the
+  task to core, as `EnvTasks.set` and `RuntimeTasks.chdir` were added. Only what
+  serves tests alone (temp scopes, the integration harness's unhandled-rejection
+  guard) lives in a root helper, `tests/_*.ts`. Those helpers are the only test
+  code that may call the runtime directly, and they too use core wherever it
+  reaches.
 
 The exceptions are the tests whose subject is the boundary itself (core's own
 file, stream and stdio layers), and fixture scripts that a test runs as a

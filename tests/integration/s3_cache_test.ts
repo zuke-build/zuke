@@ -11,7 +11,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, FileTasks, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import { withTempCwd } from "../_temp.ts";
 
@@ -60,16 +60,16 @@ test("the S3 cache store restores outputs on a fresh checkout", async () => {
         AWS_REGION: "eu-west-1",
       };
       for (const [name, value] of Object.entries(vars)) {
-        Deno.env.set(name, value);
+        EnvTasks.set(name, value);
       }
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await Deno.writeTextFile("out.txt", "built");
+              await FileTasks.writeText("out.txt", "built");
             },
           );
         }
@@ -79,16 +79,16 @@ test("the S3 cache store restores outputs on a fresh checkout", async () => {
         assertEquals(log, ["build"]);
         assertEquals(bucket.objects.size, 1); // the first run uploaded, signed
 
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/out.txt`);
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/out.txt`);
 
         const second = await runCli(B, ["build"]);
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored, body not re-run
-        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
       } finally {
         globalThis.fetch = realFetch;
-        for (const name of Object.keys(vars)) Deno.env.delete(name);
+        for (const name of Object.keys(vars)) EnvTasks.delete(name);
       }
     });
   });

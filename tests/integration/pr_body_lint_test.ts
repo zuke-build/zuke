@@ -10,7 +10,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, parameter, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, parameter, target } from "../../packages/core/mod.ts";
 import { lintPrBody } from "../../build/pr_body_lint.ts";
 import { runCli } from "./_harness.ts";
 
@@ -36,17 +36,17 @@ class Gate extends Build {
 
 /** Run `Gate`'s `prBodyLint` target with `PR_BODY` set to `body` for the call. */
 async function runWithPrBody(body: string | undefined) {
-  const prev = Deno.env.get("PR_BODY");
+  const prev = EnvTasks.get("PR_BODY");
   if (body === undefined) {
-    Deno.env.delete("PR_BODY");
+    EnvTasks.delete("PR_BODY");
   } else {
-    Deno.env.set("PR_BODY", body);
+    EnvTasks.set("PR_BODY", body);
   }
   try {
     return await runCli(Gate, ["prBodyLint"]);
   } finally {
-    if (prev === undefined) Deno.env.delete("PR_BODY");
-    else Deno.env.set("PR_BODY", prev);
+    if (prev === undefined) EnvTasks.delete("PR_BODY");
+    else EnvTasks.set("PR_BODY", prev);
   }
 }
 

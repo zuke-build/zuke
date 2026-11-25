@@ -10,7 +10,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
+import {
+  Build,
+  EnvTasks,
+  FileTasks,
+  target,
+  ToolTasks,
+} from "../../packages/core/mod.ts";
 import { sha256Hex } from "../../packages/core/src/internal.ts";
 import { fixture, FLUTTER_TAR_XZ } from "../_xz.ts";
 import { withTemp } from "../_temp.ts";
@@ -32,10 +38,10 @@ async function installFlutter(): Promise<void> {
               .checksum(checksum)
               .download(async (url, dest) => {
                 seen.push(url);
-                await Deno.writeFile(String(dest), bytes);
+                await FileTasks.writeBytes(String(dest), bytes);
               })
           );
-          seen.push(await Deno.readTextFile(String(flutter("version"))));
+          seen.push(await FileTasks.readText(String(flutter("version"))));
         });
     }
     const result = await runCli(Flutter, ["sdk"]);
@@ -53,12 +59,12 @@ test(
 );
 
 test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
-  const path = Deno.env.get("PATH");
-  Deno.env.set("PATH", "");
+  const path = EnvTasks.get("PATH");
+  EnvTasks.set("PATH", "");
   try {
     await installFlutter();
   } finally {
-    if (path === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", path);
+    if (path === undefined) EnvTasks.delete("PATH");
+    else EnvTasks.set("PATH", path);
   }
 });

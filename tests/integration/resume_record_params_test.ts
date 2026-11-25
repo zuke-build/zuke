@@ -9,12 +9,12 @@
  * replay. Driven through the real CLI `main()` against a temp store.
  */
 
-import { setEnv } from "../_env.ts";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
   parameter,
@@ -43,7 +43,7 @@ test("zuke resume re-resolves a secret from the environment, not the record", as
       });
     }
 
-    setEnv(TOKEN_ENV, "from-env");
+    EnvTasks.set(TOKEN_ENV, "from-env");
     try {
       const first = await runCli(CD, ["promote"]);
       assertEquals(first.code, 0);
@@ -67,7 +67,7 @@ test("zuke resume re-resolves a secret from the environment, not the record", as
       assertEquals(resumed.code, 0);
       assertEquals(seen, ["from-env", "prod"]);
     } finally {
-      setEnv(TOKEN_ENV, undefined);
+      EnvTasks.delete(TOKEN_ENV);
     }
   });
 });

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 import { FileTasks, RuntimeTasks } from "../mod.ts";
-import { chdir } from "../../../tests/_temp.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { glob, globListing, globToRegExp } from "../src/glob.ts";
@@ -89,10 +88,10 @@ test("glob defaults cwd to Deno.cwd()", async () => {
   const dir = await FileTasks.makeTempDirectory();
   try {
     await FileTasks.writeText(`${dir}/only.ts`, "");
-    chdir(dir);
+    RuntimeTasks.chdir(dir);
     assertEquals(await glob("*.ts"), ["only.ts"]);
   } finally {
-    chdir(original);
+    RuntimeTasks.chdir(original);
     await FileTasks.remove(dir, { recursive: true });
   }
 });

@@ -9,10 +9,9 @@
  * file runs in its own process.
  */
 
-import { setEnv } from "../_env.ts";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, FileTasks, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, FileTasks, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import { withTempCwd } from "../_temp.ts";
 
@@ -63,8 +62,8 @@ test("the GitHub Actions cache store restores outputs on a fresh checkout", asyn
       const service = fakeService();
       const realFetch = globalThis.fetch;
       globalThis.fetch = service.fetch;
-      setEnv("ACTIONS_RUNTIME_TOKEN", "runtime-token");
-      setEnv("ACTIONS_RESULTS_URL", RESULTS_URL);
+      EnvTasks.set("ACTIONS_RUNTIME_TOKEN", "runtime-token");
+      EnvTasks.set("ACTIONS_RESULTS_URL", RESULTS_URL);
       try {
         await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
@@ -92,8 +91,8 @@ test("the GitHub Actions cache store restores outputs on a fresh checkout", asyn
         assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
       } finally {
         globalThis.fetch = realFetch;
-        setEnv("ACTIONS_RUNTIME_TOKEN", undefined);
-        setEnv("ACTIONS_RESULTS_URL", undefined);
+        EnvTasks.delete("ACTIONS_RUNTIME_TOKEN");
+        EnvTasks.delete("ACTIONS_RESULTS_URL");
       }
     });
   });

@@ -333,7 +333,11 @@ export {
   type RemoveOptions,
   type SymlinkOptions,
 } from "./src/file.ts";
-export { TempDirectorySettings, WriteSettings } from "./src/file_settings.ts";
+export {
+  TempDirectorySettings,
+  TempFileSettings,
+  WriteSettings,
+} from "./src/file_settings.ts";
 export { StreamTasks, type StreamTasksApi } from "./src/stream.ts";
 export { ProcessSettings } from "./src/process_settings.ts";
 export {
@@ -350,9 +354,12 @@ export {
   type StandardStream,
 } from "./src/runtime_tasks.ts";
 export {
+  ConnectSettings,
+  type FetchHandler,
   ListenSettings,
   type NetConnection,
   type NetListener,
+  type NetServer,
   NetTasks,
   type NetTasksApi,
 } from "./src/net.ts";

@@ -1,7 +1,6 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { setEnv } from "../_env.ts";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
@@ -56,7 +55,7 @@ test("a build can report who holds a lock while another run holds it", async () 
     held.length = 0;
     // The actor is what a reader most wants to see, so name it: the CLI takes
     // it from ZUKE_ACTOR.
-    setEnv("ZUKE_ACTOR", "alice");
+    EnvTasks.set("ZUKE_ACTOR", "alice");
     const holding = runCli(HolderBuild, ["stack"]);
     while (held.length === 0) await new Promise((r) => setTimeout(r, 5));
 
@@ -72,6 +71,6 @@ test("a build can report who holds a lock while another run holds it", async () 
     assertEquals(after.code, 0, after.err);
     assertEquals(after.out.includes("LOCK dev-env"), false, after.out);
     assertStringIncludes(after.out, "END");
-    setEnv("ZUKE_ACTOR", undefined);
+    EnvTasks.delete("ZUKE_ACTOR");
   });
 });

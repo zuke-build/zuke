@@ -14,6 +14,7 @@
 import process from "node:process";
 import { userId } from "./fs.ts";
 import { archName, type HostOs, hostOs } from "./host.ts";
+import type { PathLike } from "./path.ts";
 import {
   mainModule,
   programArgs,
@@ -55,6 +56,9 @@ export interface RuntimeTasksApi {
 
   /** The process's current working directory. */
   cwd(): string;
+
+  /** Make `path` the process's working directory. */
+  chdir(path: PathLike): void;
 
   /** Whether `stream` is connected to a terminal. */
   isTerminal(stream: StandardStream): boolean;
@@ -99,6 +103,10 @@ export const RuntimeTasks: RuntimeTasksApi = {
 
   cwd(): string {
     return process.cwd();
+  },
+
+  chdir(path: PathLike): void {
+    process.chdir(String(path));
   },
 
   isTerminal(stream: StandardStream): boolean {

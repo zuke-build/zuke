@@ -15,6 +15,7 @@ import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
   parameter,
@@ -388,13 +389,13 @@ test("a resume that overrides nothing records no event", async () => {
 
     // The env var supplies the same value the launch did, so nothing differs
     // and an ordinary resume leaves no audit noise behind.
-    const prev = Deno.env.get("ENV");
-    Deno.env.set("ENV", "sit");
+    const prev = EnvTasks.get("ENV");
+    EnvTasks.set("ENV", "sit");
     try {
       assertEquals((await runCli(B, ["resume", id, "--signal", "go"])).code, 0);
     } finally {
-      if (prev === undefined) Deno.env.delete("ENV");
-      else Deno.env.set("ENV", prev);
+      if (prev === undefined) EnvTasks.delete("ENV");
+      else EnvTasks.set("ENV", prev);
     }
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const record = (await store.getRun(id))?.record;

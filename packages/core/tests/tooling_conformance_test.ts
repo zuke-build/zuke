@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { CommandOutput } from "../src/shell.ts";
@@ -55,8 +56,8 @@ test("a PATH wrapper conforms", async () => {
 });
 
 test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () => {
-  const previous = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.set("ZUKE_TOOL_RESOLUTION", "node_modules");
+  const previous = EnvTasks.get("ZUKE_TOOL_RESOLUTION");
+  EnvTasks.set("ZUKE_TOOL_RESOLUTION", "node_modules");
   try {
     // The ambient override would make the PATH wrapper resolve npx-style; the
     // kit clears it for the duration so the wrapper's own default is asserted.
@@ -65,10 +66,10 @@ test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () => {
       "zuke-fake-tool",
       { resolution: "path" },
     );
-    assertEquals(Deno.env.get("ZUKE_TOOL_RESOLUTION"), "node_modules");
+    assertEquals(EnvTasks.get("ZUKE_TOOL_RESOLUTION"), "node_modules");
   } finally {
-    if (previous === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", previous);
+    if (previous === undefined) EnvTasks.delete("ZUKE_TOOL_RESOLUTION");
+    else EnvTasks.set("ZUKE_TOOL_RESOLUTION", previous);
   }
 });
 

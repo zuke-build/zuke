@@ -11,7 +11,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  EnvTasks,
+  parameter,
+  REDACTED,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 test("a missing required parameter fails the build with a clear error", async () => {
@@ -76,8 +82,8 @@ test("a boolean flag resolves true when present and false when absent", async ()
 });
 
 test("a parameter falls back to its .env() variable when no flag is given", async () => {
-  const prev = Deno.env.get("DEPLOY_TOKEN");
-  Deno.env.set("DEPLOY_TOKEN", "from-env");
+  const prev = EnvTasks.get("DEPLOY_TOKEN");
+  EnvTasks.set("DEPLOY_TOKEN", "from-env");
   try {
     const log: string[] = [];
     class Deploy extends Build {
@@ -88,8 +94,8 @@ test("a parameter falls back to its .env() variable when no flag is given", asyn
     assertEquals(code, 0);
     assertEquals(log, ["from-env"]);
   } finally {
-    if (prev === undefined) Deno.env.delete("DEPLOY_TOKEN");
-    else Deno.env.set("DEPLOY_TOKEN", prev);
+    if (prev === undefined) EnvTasks.delete("DEPLOY_TOKEN");
+    else EnvTasks.set("DEPLOY_TOKEN", prev);
   }
 });
 
@@ -212,14 +218,14 @@ test("the environment variable is unaffected by a declared flag", async () => {
   }
   // The flag and the variable are derived separately, so overriding one leaves
   // the other exactly where it was — `.env()` is the override for that half.
-  const prev = Deno.env.get("SKIP_E2_E");
-  Deno.env.set("SKIP_E2_E", "true");
+  const prev = EnvTasks.get("SKIP_E2_E");
+  EnvTasks.set("SKIP_E2_E", "true");
   try {
     const run = await runCli(Ship, ["ship"]);
     assertEquals(run.code, 0);
     assertEquals(seen, [true]);
   } finally {
-    if (prev === undefined) Deno.env.delete("SKIP_E2_E");
-    else Deno.env.set("SKIP_E2_E", prev);
+    if (prev === undefined) EnvTasks.delete("SKIP_E2_E");
+    else EnvTasks.set("SKIP_E2_E", prev);
   }
 });

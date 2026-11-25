@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `NetTasks`: listen on a TCP port and accept connections, as byte streams,
- * on every runtime Zuke runs on. For HTTP, core has its own server; this is
- * for a protocol of a package's own, such as the engine's link to a worker.
+ * `NetTasks`: listen on a TCP port and accept connections, or connect to one,
+ * as byte streams, on every runtime Zuke runs on, and serve HTTP with a
+ * web-style handler.
  *
  * Built on `node:net`, which every runtime Zuke runs on implements.
  *
  * @module
  */
 
-import { createServer, type Server, type Socket } from "node:net";
+import { connect, createServer, type Server, type Socket } from "node:net";
+import { type FetchHandler, serve } from "./serve.ts";
 import type { Configure } from "./tooling.ts";
 
 /** Where {@link NetTasks.listen} listens. */
@@ -38,7 +39,29 @@ export class ListenSettings {
   }
 }
 
-/** One accepted TCP connection. */
+export type { FetchHandler } from "./serve.ts";
+
+/** Where {@link NetTasks.connect} connects. */
+export class ConnectSettings {
+  /** The address to connect to; see {@link hostname}. */
+  hostname_ = "127.0.0.1";
+
+  /** The address to connect to (default `127.0.0.1`, this machine). */
+  hostname(address: string): this {
+    this.hostname_ = address;
+    return this;
+  }
+}
+
+/** An HTTP server {@link NetTasks.serve} started. */
+export interface NetServer {
+  /** The port, which the system chose when `0` was asked for. */
+  readonly port: number;
+  /** Stop serving, resolving once the server has closed. */
+  close(): Promise<void>;
+}
+
+/** One TCP connection, accepted or opened. */
 export interface NetConnection {
   /**
    * What the other side sends. It ends when the other side closes its half,
@@ -79,6 +102,35 @@ export interface NetTasksApi {
    * ```
    */
   listen(configure?: Configure<ListenSettings>): Promise<NetListener>;
+
+  /**
+   * Connect to `port`, on loopback unless `configure` names another host.
+   *
+   * ```ts
+   * const connection = await NetTasks.connect(8080);
+   * ```
+   *
+   * @throws when nothing accepts the connection.
+   */
+  connect(
+    port: number,
+    configure?: Configure<ConnectSettings>,
+  ): Promise<NetConnection>;
+
+  /**
+   * Answer HTTP requests with `handler`, listening where `configure` says, as
+   * {@link listen} does, until the server is closed.
+   *
+   * ```ts
+   * const server = await NetTasks.serve(() => new Response("ok"));
+   * await fetch(`http://127.0.0.1:${server.port}/`);
+   * await server.close();
+   * ```
+   */
+  serve(
+    handler: FetchHandler,
+    configure?: Configure<ListenSettings>,
+  ): Promise<NetServer>;
 }
 
 /**
@@ -215,6 +267,49 @@ export const NetTasks: NetTasksApi = {
           : port;
         resolve(listenerOf(server, bound));
       });
+    });
+  },
+
+  connect(
+    port: number,
+    configure: Configure<ConnectSettings> = (s) => s,
+  ): Promise<NetConnection> {
+    const { hostname_: hostname } = configure(new ConnectSettings());
+    // Half-open, as an accepted connection is, for `closeWrite`'s promise.
+    const socket = connect({ host: hostname, port, allowHalfOpen: true });
+    return new Promise((resolve, reject) => {
+      socket.once("error", reject);
+      socket.once("connect", () => {
+        socket.off("error", reject);
+        resolve(connectionOf(socket));
+      });
+    });
+  },
+
+  serve(
+    handler: FetchHandler,
+    configure: Configure<ListenSettings> = (s) => s,
+  ): Promise<NetServer> {
+    const { hostname_: hostname, port_: port } = configure(
+      new ListenSettings(),
+    );
+    const stop = new AbortController();
+    return new Promise((resolve, reject) => {
+      const served = serve({
+        hostname,
+        port,
+        signal: stop.signal,
+        onListen: (address) =>
+          resolve({
+            port: address.port,
+            close: () => {
+              stop.abort();
+              return served;
+            },
+          }),
+      }, handler);
+      // Failing to start rejects; once started, closing is what ends it.
+      served.catch(reject);
     });
   },
 };

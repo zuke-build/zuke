@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { absolutePath } from "../src/path.ts";
@@ -48,33 +49,33 @@ test("repoRootFrom throws a helpful error when not found", () => {
 });
 
 test("pathExists reports existence and rethrows other errors", async () => {
-  const file = await Deno.makeTempFile();
+  const file = await FileTasks.makeTempFile();
   try {
     assertEquals(pathExists(file), true);
     assertEquals(pathExists(`${file}-missing`), false);
-    if (Deno.build.os !== "windows") {
+    if (RuntimeTasks.os() !== "windows") {
       // Treating a file as a directory yields NotADirectory, not NotFound.
       assertThrows(() => pathExists(`${file}/child`));
     }
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
 test("repoRoot resolves from the current working directory", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory();
+  const original = RuntimeTasks.cwd();
   try {
-    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, "{}\n");
-    Deno.chdir(dir);
+    await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, "{}\n");
+    RuntimeTasks.chdir(dir);
     // Normalise the cwd the way AbsolutePath does (forward slashes), so the
     // assertion holds on Windows where Deno.cwd() uses backslashes.
-    const here = absolutePath(Deno.cwd()).path;
+    const here = absolutePath(RuntimeTasks.cwd()).path;
     assertEquals(repoRoot().path, here);
     assertEquals(repoRoot("src", "x.ts").path, `${here}/src/x.ts`);
   } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(original);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

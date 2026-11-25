@@ -381,15 +381,40 @@ export function userId(): number | null {
  * directory, never where it goes.
  */
 export function makeTempDir(prefix = "zuke-"): Promise<string> {
-  if (/[\\/]/.test(prefix)) {
-    return Promise.reject(
-      new TypeError(
-        `a temporary directory's prefix names it and cannot hold a path ` +
-          `separator: "${prefix}"`,
-      ),
-    );
-  }
+  const refused = separatorIn("directory's prefix", prefix);
+  if (refused) return Promise.reject(refused);
   return io(() => nodeMkdtemp(`${tempRoot()}/${prefix}`));
+}
+
+/**
+ * Create an empty file of its own under the system's temporary directory,
+ * its name starting with `prefix` and ending with `suffix`, neither of which
+ * may hold a path separator.
+ */
+export async function makeTempFile(
+  prefix = "zuke-",
+  suffix = "",
+): Promise<string> {
+  const refused = separatorIn("file's prefix", prefix) ??
+    separatorIn("file's suffix", suffix);
+  if (refused) throw refused;
+  const path = `${tempRoot()}/${prefix}${crypto.randomUUID()}${suffix}`;
+  await createNew(path);
+  return path;
+}
+
+/**
+ * The error for a temporary name's `part` that holds a path separator, or
+ * `undefined` when it holds none: the part names the entry, never where it
+ * goes.
+ */
+function separatorIn(part: string, text: string): TypeError | undefined {
+  return /[\\/]/.test(text)
+    ? new TypeError(
+      `a temporary ${part} names it and cannot hold a path separator: ` +
+        `"${text}"`,
+    )
+    : undefined;
 }
 
 /** Set the permission bits of `path`. Not for Windows, which has none. */

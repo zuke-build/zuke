@@ -16,7 +16,6 @@
  * @module
  */
 
-import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
@@ -369,7 +368,7 @@ test("the graph command's own output cannot forge a command", async () => {
       ok = target().executes(() => {});
     }
     const cwd = RuntimeTasks.cwd();
-    chdir(dir);
+    RuntimeTasks.chdir(dir);
     try {
       await FileTasks.writeText("zuke.json", '{"build":"B"}');
       let r = { code: -1, out: "", err: "" };
@@ -378,7 +377,7 @@ test("the graph command's own output cannot forge a command", async () => {
       });
       assertEquals(unintendedCommands(`${r.out}\n${r.err}`), []);
     } finally {
-      chdir(cwd);
+      RuntimeTasks.chdir(cwd);
     }
   } finally {
     await FileTasks.remove(dir, { recursive: true });

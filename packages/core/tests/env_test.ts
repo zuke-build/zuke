@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import { prependPath } from "../src/env.ts";
@@ -10,13 +11,13 @@ async function withPath(
   value: string,
   fn: () => void | Promise<void>,
 ): Promise<void> {
-  const saved = Deno.env.get("PATH");
-  Deno.env.set("PATH", value);
+  const saved = EnvTasks.get("PATH");
+  EnvTasks.set("PATH", value);
   try {
     await fn();
   } finally {
-    if (saved === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", saved);
+    if (saved === undefined) EnvTasks.delete("PATH");
+    else EnvTasks.set("PATH", saved);
   }
 }
 
@@ -24,7 +25,7 @@ test("prependPath puts a directory first (POSIX separator)", async () => {
   await withPath("/usr/bin:/bin", () => {
     const next = prependPath("/tools/bin", "linux");
     assertEquals(next, "/tools/bin:/usr/bin:/bin");
-    assertEquals(Deno.env.get("PATH"), "/tools/bin:/usr/bin:/bin");
+    assertEquals(EnvTasks.get("PATH"), "/tools/bin:/usr/bin:/bin");
   });
 });
 
@@ -32,7 +33,7 @@ test("prependPath uses the Windows separator", async () => {
   await withPath("C:\\Windows;C:\\bin", () => {
     const next = prependPath("C:\\tools", "windows");
     assertEquals(next, "C:\\tools;C:\\Windows;C:\\bin");
-    assertEquals(Deno.env.get("PATH"), "C:\\tools;C:\\Windows;C:\\bin");
+    assertEquals(EnvTasks.get("PATH"), "C:\\tools;C:\\Windows;C:\\bin");
   });
 });
 
@@ -40,28 +41,28 @@ test("prependPath is idempotent — an already-present dir is not duplicated", a
   await withPath("/a:/b", () => {
     const next = prependPath("/a", "linux");
     assertEquals(next, "/a:/b"); // unchanged
-    assertEquals(Deno.env.get("PATH"), "/a:/b");
+    assertEquals(EnvTasks.get("PATH"), "/a:/b");
   });
 });
 
 test("prependPath handles an empty PATH", async () => {
   await withPath("", () => {
     assertEquals(prependPath("/only", "linux"), "/only");
-    assertEquals(Deno.env.get("PATH"), "/only");
+    assertEquals(EnvTasks.get("PATH"), "/only");
   });
 });
 
 test("prependPath treats an unset PATH as empty", () => {
   // Distinct from an empty-string PATH: this exercises the `?? ""` fallback for
   // a PATH that is genuinely unset.
-  const saved = Deno.env.get("PATH");
-  Deno.env.delete("PATH");
+  const saved = EnvTasks.get("PATH");
+  EnvTasks.delete("PATH");
   try {
     assertEquals(prependPath("/x", "linux"), "/x");
-    assertEquals(Deno.env.get("PATH"), "/x");
+    assertEquals(EnvTasks.get("PATH"), "/x");
   } finally {
-    if (saved === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", saved);
+    if (saved === undefined) EnvTasks.delete("PATH");
+    else EnvTasks.set("PATH", saved);
   }
 });
 

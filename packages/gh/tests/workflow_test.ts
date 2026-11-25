@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -1008,10 +1009,10 @@ test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
   const url = "https://api.github.com/repos/a/b/actions/workflows/w/dispatches";
   const { fetch, calls } = routerFetch({ [`POST ${url}`]: {} });
   const saved = new Map(
-    ["GH_TOKEN", "GITHUB_TOKEN"].map((n) => [n, Deno.env.get(n)]),
+    ["GH_TOKEN", "GITHUB_TOKEN"].map((n) => [n, EnvTasks.get(n)]),
   );
-  Deno.env.set("GH_TOKEN", "");
-  Deno.env.set("GITHUB_TOKEN", "workflow_tok");
+  EnvTasks.set("GH_TOKEN", "");
+  EnvTasks.set("GITHUB_TOKEN", "workflow_tok");
   try {
     const trigger = githubWorkflowWith(
       (g) => g.repo("a/b").workflow("w"),
@@ -1020,8 +1021,8 @@ test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
     await trigger.isSatisfied(NO_SIGNALS, ctx(fakeState())); // dispatch
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     }
   }
   assertEquals(
