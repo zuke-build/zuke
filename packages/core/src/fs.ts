@@ -93,6 +93,8 @@ export interface DirEntry {
   isFile: boolean;
   /** Whether it is a directory; a link to one is not. */
   isDirectory: boolean;
+  /** Whether it is a symbolic link, whatever it points at. */
+  isSymlink: boolean;
 }
 
 /**
@@ -376,14 +378,17 @@ export function userId(): number | null {
 }
 
 /**
- * Create a directory of its own under the system's temporary one, its name
- * starting with `prefix`, which may not hold a path separator: it names the
- * directory, never where it goes.
+ * Create a directory of its own inside `parent`, the system's temporary
+ * directory unless given, its name starting with `prefix`, which may not hold
+ * a path separator: it names the directory, never where it goes.
  */
-export function makeTempDir(prefix = "zuke-"): Promise<string> {
+export function makeTempDir(
+  prefix = "zuke-",
+  parent: string = tempRoot(),
+): Promise<string> {
   const refused = separatorIn("directory's prefix", prefix);
   if (refused) return Promise.reject(refused);
-  return io(() => nodeMkdtemp(`${tempRoot()}/${prefix}`));
+  return io(() => nodeMkdtemp(`${parent}/${prefix}`));
 }
 
 /**
@@ -430,6 +435,7 @@ export function readDir(path: string): Promise<DirEntry[]> {
       name: entry.name,
       isFile: entry.isFile(),
       isDirectory: entry.isDirectory(),
+      isSymlink: entry.isSymbolicLink(),
     }));
   });
 }

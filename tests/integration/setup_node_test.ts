@@ -11,6 +11,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
@@ -24,9 +25,11 @@ function quietHost(lines: string[]): SetupHost {
 }
 
 test("zuke setup --runtime node scaffolds a Node project that names no Deno", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-node-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-node-")
+  );
   try {
-    await Deno.writeTextFile(`${dir}/package.json`, '{"name":"mine"}');
+    await FileTasks.writeText(`${dir}/package.json`, '{"name":"mine"}');
     const lines: string[] = [];
     const code = await main(
       ["setup", "--yes", "--runtime", "node", "--mcp", "--dir", dir],
@@ -35,7 +38,9 @@ test("zuke setup --runtime node scaffolds a Node project that names no Deno", as
     );
     assertEquals(code, 0, lines.join("\n"));
     const names: string[] = [];
-    for await (const entry of Deno.readDir(dir)) names.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      names.push(entry.name);
+    }
     assertEquals(
       names.sort(),
       [
@@ -48,38 +53,40 @@ test("zuke setup --runtime node scaffolds a Node project that names no Deno", as
         "zuke.ps1",
       ],
     );
-    const config = await Deno.readTextFile(`${dir}/zuke.json`);
+    const config = await FileTasks.readText(`${dir}/zuke.json`);
     assertEquals(runtimeNamed(config), "node");
     assertEquals(buildFileNamed(config), "build.ts");
-    assertEquals(JSON.parse(await Deno.readTextFile(`${dir}/package.json`)), {
+    assertEquals(JSON.parse(await FileTasks.readText(`${dir}/package.json`)), {
       name: "mine",
       type: "module",
       dependencies: { "@zuke/core": "npm:@zuke-build/core@^1" },
     });
     assertStringIncludes(
-      await Deno.readTextFile(`${dir}/build.ts`),
+      await FileTasks.readText(`${dir}/build.ts`),
       'from "@zuke/core"',
     );
     assertEquals(
-      (await Deno.readTextFile(`${dir}/.gitignore`)).split("\n").includes(
+      (await FileTasks.readText(`${dir}/.gitignore`)).split("\n").includes(
         "node_modules/",
       ),
       true,
     );
     for (const name of names) {
       assertEquals(
-        /deno/i.test(await Deno.readTextFile(`${dir}/${name}`)),
+        /deno/i.test(await FileTasks.readText(`${dir}/${name}`)),
         false,
         name,
       );
     }
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("zuke setup creates the --dir it is given when it is not there yet", async () => {
-  const root = await Deno.makeTempDir({ prefix: "zuke-it-node-" });
+  const root = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-node-")
+  );
   try {
     const dir = `${root}/new/project`;
     const lines: string[] = [];
@@ -90,11 +97,11 @@ test("zuke setup creates the --dir it is given when it is not there yet", async 
     );
     assertEquals(code, 0, lines.join("\n"));
     assertEquals(
-      runtimeNamed(await Deno.readTextFile(`${dir}/zuke.json`)),
+      runtimeNamed(await FileTasks.readText(`${dir}/zuke.json`)),
       "node",
     );
-    assertEquals((await Deno.stat(`${dir}/zuke`)).isFile, true);
+    assertEquals((await FileTasks.stat(`${dir}/zuke`)).isFile, true);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });

@@ -12,7 +12,12 @@
  */
 
 import { test } from "./_testing.ts";
-import { gunzip, untar } from "../packages/core/mod.ts";
+import {
+  FileTasks,
+  gunzip,
+  RuntimeTasks,
+  untar,
+} from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
@@ -27,17 +32,17 @@ import { withTemp } from "./_temp.ts";
 
 /** Lay out a minimal extension root (manifest, license, two skills). */
 async function extensionFixture(): Promise<string> {
-  const root = await Deno.makeTempDir();
-  await Deno.writeTextFile(
+  const root = await FileTasks.makeTempDirectory();
+  await FileTasks.writeText(
     `${root}/gemini-extension.json`,
     '{"name":"zuke","version":"0.0.1"}',
   );
-  await Deno.writeTextFile(`${root}/LICENSE`, "MIT");
-  await Deno.mkdir(`${root}/skills/b-skill`, { recursive: true });
-  await Deno.writeTextFile(`${root}/skills/b-skill/SKILL.md`, "b");
-  await Deno.mkdir(`${root}/skills/a-skill/references`, { recursive: true });
-  await Deno.writeTextFile(`${root}/skills/a-skill/SKILL.md`, "a");
-  await Deno.writeTextFile(`${root}/skills/a-skill/references/notes.md`, "n");
+  await FileTasks.writeText(`${root}/LICENSE`, "MIT");
+  await FileTasks.createDirectory(`${root}/skills/b-skill`);
+  await FileTasks.writeText(`${root}/skills/b-skill/SKILL.md`, "b");
+  await FileTasks.createDirectory(`${root}/skills/a-skill/references`);
+  await FileTasks.writeText(`${root}/skills/a-skill/SKILL.md`, "a");
+  await FileTasks.writeText(`${root}/skills/a-skill/references/notes.md`, "n");
   return root;
 }
 
@@ -52,7 +57,7 @@ test("the file list is the manifest, license, and skills — sorted", async () =
       "skills/b-skill/SKILL.md",
     ]);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -61,7 +66,7 @@ test("the archive round-trips with the manifest at its root", async () => {
   try {
     const dest = `${root}/out.tar.gz`;
     await buildGeminiArchive(dest, root);
-    const entries = untar(await gunzip(await Deno.readFile(dest)));
+    const entries = untar(await gunzip(await FileTasks.readBytes(dest)));
     const names = entries.map((e) => e.name);
     // Gemini requires the manifest at the archive root — no wrapper directory.
     assertEquals(names[0], "gemini-extension.json");
@@ -72,7 +77,7 @@ test("the archive round-trips with the manifest at its root", async () => {
       '"name":"zuke"',
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -84,11 +89,11 @@ test("two builds of the same tree are byte-identical", async () => {
     await buildGeminiArchive(`${root}/one.tar.gz`, root);
     await buildGeminiArchive(`${root}/two.tar.gz`, root);
     assertEquals(
-      await Deno.readFile(`${root}/one.tar.gz`),
-      await Deno.readFile(`${root}/two.tar.gz`),
+      await FileTasks.readBytes(`${root}/one.tar.gz`),
+      await FileTasks.readBytes(`${root}/two.tar.gz`),
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -117,9 +122,9 @@ test("a broken extension root fails with errors that name the fix", async () => 
       Error,
       "requires gemini-extension.json",
     );
-    await Deno.writeTextFile(`${root}/gemini-extension.json`, "{}");
+    await FileTasks.writeText(`${root}/gemini-extension.json`, "{}");
     await assertRejects(() => geminiArchiveFiles(root), Error, "LICENSE");
-    await Deno.writeTextFile(`${root}/LICENSE`, "MIT");
+    await FileTasks.writeText(`${root}/LICENSE`, "MIT");
     // Manifest and license present, but no skills tree.
     await assertRejects(
       () => geminiArchiveFiles(root),
@@ -132,13 +137,13 @@ test("a broken extension root fails with errors that name the fix", async () => 
 test({
   name: "a symlink under skills/ is refused, not silently dropped",
   // Creating symlinks on Windows needs a privilege the CI runner may lack.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     // Git and the other harnesses would keep the linked content; an archive
     // that silently loses it would ship different skills to Gemini.
     const root = await extensionFixture();
     try {
-      await Deno.symlink(
+      await FileTasks.symlink(
         `${root}/skills/a-skill/SKILL.md`,
         `${root}/skills/a-skill/linked.md`,
       );
@@ -148,7 +153,7 @@ test({
         "linked.md",
       );
     } finally {
-      await Deno.remove(root, { recursive: true });
+      await FileTasks.remove(root, { recursive: true });
     }
   },
 });

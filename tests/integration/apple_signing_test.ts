@@ -24,7 +24,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { NotarytoolTasks, SecurityTasks } from "../../packages/apple/mod.ts";
 import {
   fakeNotarytool,
@@ -66,22 +71,24 @@ async function inFakeSecurityDir(
   >,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-apple-" });
-  const previous = Deno.cwd();
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-apple-")
+  );
+  const previous = RuntimeTasks.cwd();
   try {
     await writeFakeSecurity(dir, { ...SECURITY, ...overrides });
-    Deno.chdir(dir);
+    RuntimeTasks.chdir(dir);
     await fn();
   } finally {
-    Deno.chdir(previous);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(previous);
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
 /** Whether `path` exists. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.stat(path);
+    await FileTasks.stat(path);
     return true;
   } catch {
     return false;
@@ -95,7 +102,7 @@ test("a target signs from a temporary keychain that is gone afterwards", async (
       sign = target().executes(async () => {
         await SecurityTasks.temporaryKeychain(
           (s) =>
-            s.toolPath(Deno.execPath()).certificate(P12_BASE64)
+            s.toolPath(RuntimeTasks.execPath()).certificate(P12_BASE64)
               .certificatePassword(P12_PASSWORD),
           async ({ keychain, identity }) => {
             const dir = keychain.slice(0, keychain.lastIndexOf("/"));
@@ -144,7 +151,7 @@ test("a failing keychain step fails the target, masks the password, and still cl
       sign = target().executes(async () => {
         await SecurityTasks.temporaryKeychain(
           (s) =>
-            s.toolPath(Deno.execPath()).certificate(P12_BASE64)
+            s.toolPath(RuntimeTasks.execPath()).certificate(P12_BASE64)
               .certificatePassword(P12_PASSWORD).host(recording),
           () => Promise.resolve(),
         );
@@ -195,7 +202,7 @@ test("a rejected notarization fails the target with the log's issues", async () 
     class Release extends Build {
       notarize = target().executes(async () => {
         await NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).file("dist/a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).file("dist/a.zip")
             .keychainProfile("ci").wait().timeout("30m")
         );
       });
@@ -208,7 +215,7 @@ test("a rejected notarization fails the target with the log's issues", async () 
     );
     assertStringIncludes(err, "error: The binary is not signed.");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -225,7 +232,7 @@ test("an accepted notarization passes the target and returns the result", async 
     class Release extends Build {
       notarize = target().executes(async () => {
         const result = await NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).file("dist/a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).file("dist/a.zip")
             .keychainProfile("ci").wait()
         );
         status = result.status;
@@ -235,6 +242,6 @@ test("an accepted notarization passes the target and returns the result", async 
     assertEquals(code, 0, err);
     assertEquals(status, "Accepted");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

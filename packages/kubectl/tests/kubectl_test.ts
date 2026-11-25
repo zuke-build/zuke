@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -276,11 +277,11 @@ test("parseNamespaces narrows a List, a single object, and skips bad items", () 
 });
 
 test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async () => {
-  if (Deno.build.os === "windows") return; // shebang script; argv is covered above.
+  if (RuntimeTasks.os() === "windows") return; // shebang script; argv is covered above.
   await withTemp(async (dir) => {
     const argvFile = `${dir}/argv`;
     const jsonFile = `${dir}/ns.json`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       jsonFile,
       JSON.stringify({
         items: [
@@ -297,11 +298,11 @@ test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async
       }),
     );
     const fake = `${dir}/kubectl`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       fake,
       `#!/bin/sh\nprintf '%s' "$*" > "${argvFile}"\ncat "${jsonFile}"\n`,
     );
-    await Deno.chmod(fake, 0o755);
+    await FileTasks.chmod(fake, 0o755);
 
     // The caller sets `.output("yaml")` and a `.selector()`: getNamespaces must
     // FORCE `-o json` over the caller's yaml (or parsing would fail) while still
@@ -315,7 +316,7 @@ test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async
     assertEquals(namespaces[0].createdAt, "2026-01-01T00:00:00Z");
     assertEquals(namespaces[1].status, ""); // no status.phase
     assertEquals(
-      await Deno.readTextFile(argvFile),
+      await FileTasks.readText(argvFile),
       "get namespaces -o json -l team=web",
     );
   });

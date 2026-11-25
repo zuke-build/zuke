@@ -15,7 +15,7 @@
  * @module
  */
 
-import { gzip, sha256Hex, tar, zip } from "@zuke/core";
+import { FileTasks, gzip, sha256Hex, tar, zip } from "@zuke/core";
 import {
   archiveName,
   type Checksum,
@@ -46,7 +46,7 @@ export function binaryPath(binDir: string, triple: string): string {
 async function readBinary(binDir: string, triple: string): Promise<Uint8Array> {
   const source = binaryPath(binDir, triple);
   try {
-    return await Deno.readFile(source);
+    return await FileTasks.readBytes(source);
   } catch (error) {
     throw new Error(
       `no ${triple} binary to package at ${source}: ${
@@ -67,10 +67,10 @@ export async function packageCliArchives(
   binDir: string,
   outDir: string,
 ): Promise<Checksum[]> {
-  await Deno.mkdir(outDir, { recursive: true });
+  await FileTasks.createDirectory(outDir);
   const sums: Checksum[] = [];
   const write = async (name: string, archive: Uint8Array) => {
-    await Deno.writeFile(`${outDir}/${name}`, archive);
+    await FileTasks.writeBytes(`${outDir}/${name}`, archive);
     sums.push({ name, sha256: await sha256Hex(archive) });
   };
   for (const target of CLI_TARGETS) {
@@ -87,6 +87,6 @@ export async function packageCliArchives(
       data: await readBinary(binDir, WINDOWS_TRIPLE),
     }]),
   );
-  await Deno.writeTextFile(`${outDir}/${CHECKSUMS}`, checksumsText(sums));
+  await FileTasks.writeText(`${outDir}/${CHECKSUMS}`, checksumsText(sums));
   return sums;
 }

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
+import { notFound } from "../../../tests/_fakes.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -33,7 +35,7 @@ const RELEASES: readonly BinaryPin[] = [
 ];
 
 /** The working directory as discovery reports it. */
-const ROOT = Deno.cwd().replaceAll("\\", "/");
+const ROOT = RuntimeTasks.cwd().replaceAll("\\", "/");
 
 /** A probe for a project at the cwd holding `names`, whose `zuke.json` reads `config`. */
 function projectAt(names: string[], config: string): BuildProbe {
@@ -72,7 +74,7 @@ function filesHost(
       const name = path.slice(ROOT.length + 1);
       return name in files
         ? Promise.resolve(files[name])
-        : Promise.reject(new Deno.errors.NotFound(path));
+        : Promise.reject(notFound(path));
     },
     writeText: (path: string, content: string) => {
       host.written.set(path.slice(ROOT.length + 1), content);

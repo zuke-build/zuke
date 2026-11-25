@@ -8,7 +8,7 @@
  * needs no manual merge on the website side.
  */
 
-import { type Build, FileTasks } from "@zuke/core";
+import { type Build, EnvTasks, FileTasks } from "@zuke/core";
 import { ConsoleTasks } from "@zuke/console";
 import { DocsTasks } from "@zuke/docs";
 import { GitTasks } from "@zuke/git";
@@ -221,7 +221,7 @@ const REAL_DEPS: WebsiteSyncDeps = {
   regenerateApiJson: async () => {
     await writeApiJson();
   },
-  makeTempDir: () => Deno.makeTempDir({ prefix: "zuke-sync-" }),
+  makeTempDir: () => FileTasks.makeTempDirectory((s) => s.prefix("zuke-sync-")),
   removeDir: async (dir) => {
     await FileTasks.remove(dir, { recursive: true });
   },
@@ -345,17 +345,17 @@ export async function runWebsiteSync(
   build: Build,
   deps: WebsiteSyncDeps = REAL_DEPS,
 ): Promise<void> {
-  const repo = resolveSyncRepo({ repo: Deno.env.get("WEBSITE_REPO") });
+  const repo = resolveSyncRepo({ repo: EnvTasks.get("WEBSITE_REPO") });
   // An explicit token wins; otherwise mint one from the app credentials, scoped
   // to this repository alone. Either way no workflow step is involved.
-  const explicit = Deno.env.get("WEBSITE_SYNC_TOKEN");
+  const explicit = EnvTasks.get("WEBSITE_SYNC_TOKEN");
   let token: string;
   if (explicit !== undefined && explicit !== "") {
     token = explicit;
   } else {
     const credentials = resolveAppCredentials({
-      appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
-      privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+      appId: EnvTasks.get("ZUKE_BUILD_APP_ID"),
+      privateKey: EnvTasks.get("ZUKE_BUILD_APP_KEY"),
     });
     if (credentials === null) {
       deps.warn(

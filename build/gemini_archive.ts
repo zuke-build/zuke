@@ -24,7 +24,7 @@
  * @module
  */
 
-import { createTarGzip } from "@zuke/core";
+import { createTarGzip, FileTasks } from "@zuke/core";
 
 /** The extension manifest Gemini requires at the archive root. */
 export const GEMINI_MANIFEST = "gemini-extension.json";
@@ -45,7 +45,7 @@ export const GEMINI_ASSET_NAMES: readonly string[] = [
 /** Every file under `dir`, as `dir`-prefixed paths, sorted for determinism. */
 async function walk(root: string, dir: string): Promise<string[]> {
   const out: string[] = [];
-  for await (const entry of Deno.readDir(`${root}/${dir}`)) {
+  for (const entry of await FileTasks.readDirectory(`${root}/${dir}`)) {
     const path = `${dir}/${entry.name}`;
     if (entry.isDirectory) out.push(...await walk(root, path));
     else if (entry.isFile) out.push(path);
@@ -69,7 +69,7 @@ async function walk(root: string, dir: string): Promise<string[]> {
  */
 export async function geminiArchiveFiles(root = "."): Promise<string[]> {
   for (const required of [GEMINI_MANIFEST, "LICENSE"]) {
-    const info = await Deno.stat(`${root}/${required}`).catch(() => null);
+    const info = await FileTasks.stat(`${root}/${required}`).catch(() => null);
     if (info?.isFile !== true) {
       throw new Error(
         `the Gemini extension archive requires ${required} at the extension ` +
@@ -80,7 +80,7 @@ export async function geminiArchiveFiles(root = "."): Promise<string[]> {
   try {
     return [GEMINI_MANIFEST, "LICENSE", ...await walk(root, GEMINI_SKILLS_DIR)];
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (FileTasks.isNotFound(error)) {
       throw new Error(
         `the Gemini extension archive requires a ${GEMINI_SKILLS_DIR}/ tree ` +
           `under "${root}" — Gemini auto-discovers skills from it.`,

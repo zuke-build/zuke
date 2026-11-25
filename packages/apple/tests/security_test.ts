@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -253,12 +254,14 @@ async function withFakeSecurity(
   responses: Parameters<typeof writeFakeSecurity>[1],
   fn: (configure: <S extends ToolSettings>(s: S) => S) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-apple-security-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-apple-security-")
+  );
   try {
     await writeFakeSecurity(dir, responses);
-    await fn((s) => s.toolPath(Deno.execPath()).cwd(dir).quiet());
+    await fn((s) => s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet());
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 

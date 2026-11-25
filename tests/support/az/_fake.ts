@@ -9,6 +9,7 @@
  * @module
  */
 
+import { EnvTasks, FileTasks } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import type { AzSettings, AzSettingsRunner } from "../../../packages/az/mod.ts";
 
@@ -60,14 +61,14 @@ export function json(value: unknown): string {
  * finds nothing, rather than a real CLI that may be installed on the host.
  */
 export async function withEmptyPath(fn: () => Promise<void>): Promise<void> {
-  const previous = Deno.env.get("PATH");
-  const empty = await Deno.makeTempDir();
-  Deno.env.set("PATH", empty);
+  const previous = EnvTasks.get("PATH");
+  const empty = await FileTasks.makeTempDirectory();
+  EnvTasks.set("PATH", empty);
   try {
     await fn();
   } finally {
-    if (previous === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", previous);
-    await Deno.remove(empty);
+    if (previous === undefined) EnvTasks.delete("PATH");
+    else EnvTasks.set("PATH", previous);
+    await FileTasks.remove(empty);
   }
 }

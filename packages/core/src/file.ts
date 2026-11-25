@@ -125,6 +125,8 @@ export interface DirectoryEntry {
   isFile: boolean;
   /** Whether it is a directory; a link to one is not. */
   isDirectory: boolean;
+  /** Whether it is a symbolic link, whatever it points at. */
+  isSymlink: boolean;
 }
 
 /** Core's file information as the public {@link PathInfo}. */
@@ -297,8 +299,9 @@ export interface FileTasksApi {
   readDirectory(path: PathLike): Promise<DirectoryEntry[]>;
 
   /**
-   * Create a directory of its own under the system's temporary directory and
-   * return its path. Removing it is the caller's job.
+   * Create a directory of its own under the system's temporary directory, or
+   * the directory `dir` names, and return its path. Removing it is the
+   * caller's job.
    */
   makeTempDirectory(
     configure?: Configure<TempDirectorySettings>,
@@ -482,7 +485,8 @@ export const FileTasks: FileTasksApi = {
   makeTempDirectory(
     configure: Configure<TempDirectorySettings> = (s) => s,
   ): Promise<string> {
-    return makeTempDir(configure(new TempDirectorySettings()).prefix_);
+    const { prefix_, dir_ } = configure(new TempDirectorySettings());
+    return makeTempDir(prefix_, dir_);
   },
 
   makeTempFile(

@@ -12,7 +12,7 @@
  */
 
 import { test } from "./_testing.ts";
-import { Build } from "@zuke/core";
+import { Build, EnvTasks, FileTasks } from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
@@ -109,7 +109,7 @@ test("packageEntrypoints resolves core's exports map to real paths", async () =>
 });
 
 test("localVersion matches core's own deno.json", async () => {
-  const raw = JSON.parse(await Deno.readTextFile("packages/core/deno.json"));
+  const raw = JSON.parse(await FileTasks.readText("packages/core/deno.json"));
   assertEquals(await localVersion("core"), raw.version);
 });
 
@@ -839,16 +839,16 @@ async function withSyncEnv(
   };
   const saved = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(names)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
+    saved.set(name, EnvTasks.get(name));
+    if (value === undefined) EnvTasks.delete(name);
+    else EnvTasks.set(name, value);
   }
   try {
     await fn();
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     }
   }
 }
@@ -1106,8 +1106,8 @@ test("docsOptions: carries the project framing plus a live CLI block", () => {
 
 test("crossPackageTypesOf: named, type, namespace, and default imports; tests/ excluded", async () => {
   await withTempCwd(async () => {
-    await Deno.mkdir("packages/demo/tests", { recursive: true });
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory("packages/demo/tests");
+    await FileTasks.writeText(
       "packages/demo/mod.ts",
       [
         'import { type Configure, target } from "@zuke/core";',
@@ -1121,7 +1121,7 @@ test("crossPackageTypesOf: named, type, namespace, and default imports; tests/ e
       ].join("\n"),
     );
     // A `@zuke/*` reference inside tests/ must not count — it isn't doc surface.
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       "packages/demo/tests/demo_test.ts",
       'import { NotCounted } from "@zuke/core";\nexport { NotCounted };\n',
     );

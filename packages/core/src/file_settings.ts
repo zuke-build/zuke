@@ -57,9 +57,22 @@ export class TempDirectorySettings {
   /** How the directory's name starts; see {@link prefix}. */
   prefix_: string | undefined = undefined;
 
+  /** Where the directory goes; see {@link dir}. */
+  dir_: string | undefined = undefined;
+
   /** How the directory's name starts (default `zuke-`). */
   prefix(start: string): this {
     this.prefix_ = start;
+    return this;
+  }
+
+  /**
+   * The directory to make it in (default the system's temporary directory),
+   * for scratch space a tool must find under a project, such as a formatter
+   * that reads the project's configuration.
+   */
+  dir(parent: string): this {
+    this.dir_ = parent;
     return this;
   }
 }

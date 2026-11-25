@@ -18,6 +18,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { main } from "../../packages/cli/mod.ts";
@@ -29,7 +30,7 @@ async function scaffold(): Promise<{
   log: string;
   code: number;
 }> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-" });
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-setup-"));
   const lines: string[] = [];
   const host: SetupHost = {
     ...defaultHost,
@@ -41,9 +42,9 @@ async function scaffold(): Promise<{
       host,
     );
     const files = new Map<string, string>();
-    for await (const entry of Deno.readDir(dir)) {
+    for (const entry of await FileTasks.readDirectory(dir)) {
       if (entry.isFile) {
-        files.set(entry.name, await Deno.readTextFile(`${dir}/${entry.name}`));
+        files.set(entry.name, await FileTasks.readText(`${dir}/${entry.name}`));
       }
     }
     return {
@@ -56,7 +57,7 @@ async function scaffold(): Promise<{
       code,
     };
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -116,15 +117,19 @@ test("zuke setup scaffolds a project whose first run has no lockfile to freeze",
 });
 
 test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {
-  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-link-" });
-  const outside = await Deno.makeTempDir({ prefix: "zuke-setup-victim-" });
+  if (RuntimeTasks.os() === "windows") return; // Deno.symlink needs privileges.
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-setup-link-")
+  );
+  const outside = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-setup-victim-")
+  );
   const victim = `${outside}/gitconfig`;
   try {
-    await Deno.writeTextFile(victim, "[user]\n\tname = victim\n");
+    await FileTasks.writeText(victim, "[user]\n\tname = victim\n");
     // What a hostile repository ships: a scaffold name that is really a link
     // pointing at one of the developer's own files.
-    await Deno.symlink(victim, `${dir}/.gitignore`);
+    await FileTasks.symlink(victim, `${dir}/.gitignore`);
 
     const lines: string[] = [];
     const host: SetupHost = {
@@ -138,13 +143,15 @@ test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone"
 
     assertEquals(code, 1);
     // The developer's file is untouched, and the scaffold wrote nothing at all.
-    assertEquals(await Deno.readTextFile(victim), "[user]\n\tname = victim\n");
+    assertEquals(await FileTasks.readText(victim), "[user]\n\tname = victim\n");
     const written: string[] = [];
-    for await (const entry of Deno.readDir(dir)) written.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      written.push(entry.name);
+    }
     assertEquals(written, [".gitignore"]); // only the link the test planted
   } finally {
-    await Deno.remove(dir, { recursive: true });
-    await Deno.remove(outside, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
+    await FileTasks.remove(outside, { recursive: true });
   }
 });
 
@@ -170,19 +177,21 @@ test("integration: setup exits 1 rather than claim success over a JSONC deno.jso
   // The scaffolded build resolves @zuke/core through this file, so a skip here
   // leaves a build that cannot start; saying "Next: zuke" over that is worse
   // than saying plainly what is left to do. The file keeps its comments.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-jsonc-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-setup-jsonc-")
+  );
   const jsonc = '{\n  // cfg\n  "tasks": { "dev": "echo hi" }\n}\n';
   try {
-    await Deno.writeTextFile(`${dir}/deno.json`, jsonc);
+    await FileTasks.writeText(`${dir}/deno.json`, jsonc);
     const { code, log } = await setupIn(dir);
 
     assertEquals(code, 1);
-    assertEquals(await Deno.readTextFile(`${dir}/deno.json`), jsonc);
+    assertEquals(await FileTasks.readText(`${dir}/deno.json`), jsonc);
     assertEquals(log.includes("Next: zuke"), false);
     assertEquals(log.includes("Incomplete —"), true);
     assertEquals(log.includes('"@zuke/core": "jsr:@zuke/core@^1"'), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -190,18 +199,20 @@ test("integration: setup keeps a delegated importMap working", async () => {
   // Deno ignores `importMap` as soon as `imports` appears beside it, so writing
   // one would silently disable the project's whole module resolution. Prove the
   // pre-existing project still resolves after setup has run over it.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-import-map-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-setup-import-map-")
+  );
   try {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/deno.json`,
       `${JSON.stringify({ importMap: "./import_map.json" }, null, 2)}\n`,
     );
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/import_map.json`,
       `${JSON.stringify({ imports: { "lib/": "./lib/" } }, null, 2)}\n`,
     );
-    await Deno.mkdir(`${dir}/lib`);
-    await Deno.writeTextFile(`${dir}/lib/a.ts`, "export const x = 1;\n");
+    await FileTasks.createDirectory(`${dir}/lib`, { recursive: false });
+    await FileTasks.writeText(`${dir}/lib/a.ts`, "export const x = 1;\n");
 
     const { code, log } = await setupIn(dir);
 
@@ -209,7 +220,7 @@ test("integration: setup keeps a delegated importMap working", async () => {
     assertEquals(log.includes("./import_map.json"), true);
     // The delegation is intact: no `imports` block was written beside it.
     const parsed: unknown = JSON.parse(
-      await Deno.readTextFile(`${dir}/deno.json`),
+      await FileTasks.readText(`${dir}/deno.json`),
     );
     assertEquals(
       parsed !== null && typeof parsed === "object" && "imports" in parsed,
@@ -222,6 +233,6 @@ test("integration: setup keeps a delegated importMap working", async () => {
       "./import_map.json",
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

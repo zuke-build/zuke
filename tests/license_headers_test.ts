@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 
@@ -22,7 +23,7 @@ const TS_ROOTS = ["packages", "build", "tests", "examples"];
 /** Every `.ts` file under `dir`, recursively. */
 async function tsFiles(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
+  for (const entry of await FileTasks.readDirectory(dir)) {
     const path = `${dir}/${entry.name}`;
     if (entry.isDirectory) found.push(...await tsFiles(path));
     else if (entry.isFile && entry.name.endsWith(".ts")) found.push(path);
@@ -49,7 +50,7 @@ test("every source file carries the copyright and SPDX header", async () => {
   for (const file of await allSources()) {
     // Only the head is inspected: the header belongs at the top (after a
     // shebang, for the launchers), not buried somewhere in the file.
-    const head = (await Deno.readTextFile(file)).slice(0, 300);
+    const head = (await FileTasks.readText(file)).slice(0, 300);
     if (!head.includes(COPYRIGHT) || !head.includes(SPDX)) missing.push(file);
   }
   assertEquals(

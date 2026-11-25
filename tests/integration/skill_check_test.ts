@@ -10,7 +10,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import { checkSkillTree } from "../../build/skill_check.ts";
 import { runCli } from "./_harness.ts";
 import { withTemp } from "../_temp.ts";
@@ -31,8 +31,8 @@ function gateBuild(root: string) {
 
 test("skillsCheck passes a conforming tree through the CLI", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/my-skill`);
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory(`${dir}/my-skill`, { recursive: false });
+    await FileTasks.writeText(
       `${dir}/my-skill/SKILL.md`,
       "---\nname: my-skill\ndescription: Toggles the widget.\n---\n\n# My skill\n",
     );
@@ -46,8 +46,8 @@ test("skillsCheck passes a conforming tree through the CLI", async () => {
 test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
   await withTemp(async (dir) => {
     // The realistic slip: the folder was renamed, the frontmatter was not.
-    await Deno.mkdir(`${dir}/new-name`);
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory(`${dir}/new-name`, { recursive: false });
+    await FileTasks.writeText(
       `${dir}/new-name/SKILL.md`,
       "---\nname: old-name\ndescription: Toggles the widget.\n---\n",
     );

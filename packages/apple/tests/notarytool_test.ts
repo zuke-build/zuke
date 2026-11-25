@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -243,7 +244,7 @@ async function withFake(
   try {
     await fn(dir);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -274,7 +275,7 @@ test("submit with wait returns an accepted submission", async () => {
     { submit: { stdout: ACCEPTED, needs: ["--wait"] } },
     async (dir) => {
       const result = await NotarytoolTasks.submit((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
           .keychainProfile("p").wait()
       );
       assertEquals(result, {
@@ -294,7 +295,7 @@ test("submit without wait returns the upload, which has no status", async () => 
   });
   await withFake({ submit: { stdout: uploaded } }, async (dir) => {
     const result = await NotarytoolTasks.submit((s) =>
-      s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+      s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
         .keychainProfile("p")
     );
     assertEquals(result.status, undefined);
@@ -311,7 +312,7 @@ test("a rejected submission fetches its log with the same credentials and throws
     const error = await rejection(
       () =>
         NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
             .key("AuthKey_ABC.p8").keyId("ABC").wait()
         ),
       NotarizationError,
@@ -338,7 +339,7 @@ test("a rejected submission still throws when its log cannot be fetched", async 
     const error = await rejection(
       () =>
         NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
             .keychainProfile("p").wait()
         ),
       NotarizationError,
@@ -351,7 +352,7 @@ test("a rejected submission still throws when its log cannot be fetched", async 
 test("noThrow returns a rejected submission for the caller to inspect", async () => {
   await withFake({ submit: { stdout: INVALID, code: 1 } }, async (dir) => {
     const result = await NotarytoolTasks.submit((s) =>
-      s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+      s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
         .keychainProfile("p").wait().noThrow()
     );
     assertEquals(result.status, "Invalid");
@@ -365,7 +366,7 @@ test("submit output that is not a result is refused, with the raw text on the er
       const error = await rejection(
         () =>
           NotarytoolTasks.submit((s) =>
-            s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+            s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
               .keychainProfile("p")
           ),
         NotarytoolOutputError,
@@ -383,7 +384,7 @@ test("a failed submit with no result is a CommandError with the password masked"
     const error = await rejection(
       () =>
         NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
             .appleId("me@example.com").password(password).teamId("TEAM")
         ),
       CommandError,
@@ -401,7 +402,7 @@ test("a failed info run is a CommandError with the password masked", async () =>
     const error = await rejection(
       () =>
         NotarytoolTasks.info((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).quiet().submissionId(ID)
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().submissionId(ID)
             .appleId("me@example.com").password(password).teamId("TEAM")
         ),
       CommandError,
@@ -428,13 +429,13 @@ test("info, log and history parse their JSON", async () => {
     history: { stdout: history },
   }, async (dir) => {
     const read = await NotarytoolTasks.info((s) =>
-      s.toolPath(Deno.execPath()).cwd(dir).quiet().keychainProfile("p")
+      s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().keychainProfile("p")
         .submissionId(ID)
     );
     assertEquals(read.status, "In Progress");
     assertEquals(read.name, "a.zip");
     const log = await NotarytoolTasks.log((s) =>
-      s.toolPath(Deno.execPath()).cwd(dir).quiet().keychainProfile("p")
+      s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().keychainProfile("p")
         .submissionId(ID)
     );
     assertEquals(
@@ -442,7 +443,7 @@ test("info, log and history parse their JSON", async () => {
       "Archive contains critical validation errors",
     );
     const past = await NotarytoolTasks.history((s) =>
-      s.toolPath(Deno.execPath()).cwd(dir).quiet().keychainProfile("p")
+      s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().keychainProfile("p")
     );
     assertEquals(past, [{ id: ID, status: "Accepted", name: "a.zip" }]);
   });
@@ -465,7 +466,7 @@ test("with wait, every status but exactly Accepted is a NotarizationError", asyn
       const error = await rejection(
         () =>
           NotarytoolTasks.submit((s) =>
-            s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+            s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
               .keychainProfile("p").wait()
           ),
         NotarizationError,
@@ -488,7 +489,7 @@ test("a non-zero exit fails the submit even when it printed a result", async () 
       const error = await rejection(
         () =>
           NotarytoolTasks.submit((s) =>
-            s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+            s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
               .keychainProfile("p")
           ),
         CommandError,
@@ -496,7 +497,7 @@ test("a non-zero exit fails the submit even when it printed a result", async () 
       assertEquals(error.code, 69);
       // Under noThrow the result is handed back for the caller to judge.
       const result = await NotarytoolTasks.submit((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
           .keychainProfile("p").noThrow()
       );
       assertEquals(result.message, "Error: upload failed");
@@ -506,7 +507,7 @@ test("a non-zero exit fails the submit even when it printed a result", async () 
     const error = await rejection(
       () =>
         NotarytoolTasks.submit((s) =>
-          s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+          s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().file("a.zip")
             .keychainProfile("p").wait()
         ),
       CommandError,

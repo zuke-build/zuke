@@ -5,7 +5,6 @@ import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { type NetConnection, NetTasks } from "@zuke/core";
 import { MAX_LINE, Peer, RpcFailure } from "../src/peer.ts";
-import { connect } from "../../../tests/support/engine/_conn.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 
 /** The RPC code of a rejection, or NaN when it was not an RpcFailure. */
@@ -22,7 +21,7 @@ async function pair(): Promise<{
   const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const [server, client] = await Promise.all([
     listener.accept(),
-    connect(listener.port),
+    NetTasks.connect(listener.port),
   ]);
   listener.close();
   const a = new Peer(server);
@@ -48,7 +47,7 @@ async function rawPair(): Promise<{
   const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const [server, raw] = await Promise.all([
     listener.accept(),
-    connect(listener.port),
+    NetTasks.connect(listener.port),
   ]);
   listener.close();
   const peer = new Peer(server);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
@@ -419,9 +420,9 @@ test("applyEdits (default write) creates missing parent directories", async () =
   // Exercises the real default write — every other test injects a write seam,
   // so the mkdir path would otherwise be uncovered. chdir into a temp dir so the
   // repo-relative write lands there, not in the repo; restored in finally.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-apply-" });
-  const cwd = Deno.cwd();
-  Deno.chdir(dir);
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-apply-"));
+  const cwd = RuntimeTasks.cwd();
+  RuntimeTasks.chdir(dir);
   try {
     const written = await applyEdits(
       [{ path: "nested/new/mod.ts", content: "export const x = 1;\n" }],
@@ -429,12 +430,12 @@ test("applyEdits (default write) creates missing parent directories", async () =
     );
     assertEquals(written, ["nested/new/mod.ts"]);
     assertEquals(
-      await Deno.readTextFile(`${dir}/nested/new/mod.ts`),
+      await FileTasks.readText(`${dir}/nested/new/mod.ts`),
       "export const x = 1;\n",
     );
   } finally {
-    Deno.chdir(cwd);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(cwd);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

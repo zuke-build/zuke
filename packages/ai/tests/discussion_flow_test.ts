@@ -22,7 +22,7 @@ import {
   outcomeMarker,
 } from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
-import { sha256Hex } from "@zuke/core";
+import { EnvTasks, sha256Hex } from "@zuke/core";
 import { withEnv } from "../../../tests/_env.ts";
 import { captureLines as captured } from "../../../tests/_console.ts";
 import {
@@ -701,23 +701,23 @@ async function inEnv(
   const prior = new Map<string, string | undefined>();
   for (const marker of CI_MARKERS) {
     if (marker in vars) continue;
-    prior.set(marker, Deno.env.get(marker));
-    Deno.env.delete(marker);
+    prior.set(marker, EnvTasks.get(marker));
+    EnvTasks.delete(marker);
   }
   for (const [key, value] of Object.entries(vars)) {
-    prior.set(key, Deno.env.get(key));
-    Deno.env.set(key, value);
+    prior.set(key, EnvTasks.get(key));
+    EnvTasks.set(key, value);
   }
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
+  const summary = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.delete("GITHUB_STEP_SUMMARY");
   try {
     await fn();
   } finally {
     for (const [key, value] of prior) {
-      if (value === undefined) Deno.env.delete(key);
-      else Deno.env.set(key, value);
+      if (value === undefined) EnvTasks.delete(key);
+      else EnvTasks.set(key, value);
     }
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
+    if (summary !== undefined) EnvTasks.set("GITHUB_STEP_SUMMARY", summary);
   }
 }
 
@@ -3398,8 +3398,8 @@ test("a missing token env skips the comment with the PR-context warning", async 
         // no GITHUB_TOKEN
       },
       async () => {
-        const token = Deno.env.get("GITHUB_TOKEN");
-        Deno.env.delete("GITHUB_TOKEN");
+        const token = EnvTasks.get("GITHUB_TOKEN");
+        EnvTasks.delete("GITHUB_TOKEN");
         try {
           await securityReviewer((r) =>
             r.provider("claude").apiKey("k")
@@ -3408,7 +3408,7 @@ test("a missing token env skips the comment with the PR-context warning", async 
               .fetch(fetch)
           ).validate(noRedactionContext("t"));
         } finally {
-          if (token !== undefined) Deno.env.set("GITHUB_TOKEN", token);
+          if (token !== undefined) EnvTasks.set("GITHUB_TOKEN", token);
         }
       },
     )

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -1675,9 +1676,11 @@ test("the default runner runs compose itself", async () => {
  * one skip there.
  */
 async function fakeDocker(failUp: boolean): Promise<string> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-compose-canary-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-compose-canary-")
+  );
   const path = `${dir}/docker`;
-  await Deno.writeTextFile(
+  await FileTasks.writeText(
     path,
     [
       "#!/bin/sh",
@@ -1690,14 +1693,14 @@ async function fakeDocker(failUp: boolean): Promise<string> {
       "",
     ].join("\n"),
   );
-  await Deno.chmod(path, 0o755);
+  await FileTasks.chmod(path, 0o755);
   return path;
 }
 
 test({
   name:
     "the default runner runs compose with the image variables over a global .env",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     const docker = await fakeDocker(false);
     const ctx = context();
@@ -1719,7 +1722,7 @@ test({
 test({
   name:
     "the default runner with noThrow still fails a rollback whose commands fail",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     const docker = await fakeDocker(true);
     const p = dockerComposeCanary((d) =>
