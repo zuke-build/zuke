@@ -12,7 +12,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertRejects } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, FileTasks, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 test("withStateDir surfaces the body error even when cleanup fails", async () => {
@@ -22,7 +22,7 @@ test("withStateDir surfaces the body error even when cleanup fails", async () =>
     await withStateDir(async (dir) => {
       // Delete the dir out from under the finally so its Deno.remove throws
       // (NotFound) — proving the removal error is swallowed, not the body's.
-      await Deno.remove(dir, { recursive: true });
+      await FileTasks.remove(dir, { recursive: true });
       throw marker;
     });
   } catch (error) {
@@ -37,12 +37,12 @@ test("withStateDir resolves when cleanup fails after a successful body", async (
   // withStateDir even though nothing meaningful failed; the best-effort catch
   // means a clean body now resolves — this is the behaviour the PR adds, and
   // this call throwing would fail the test on a revert.
-  const prev = Deno.env.get("ZUKE_STATE_DIR");
+  const prev = EnvTasks.get("ZUKE_STATE_DIR");
   await withStateDir(async (dir) => {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   });
   // The env var is still restored on the success-with-failed-cleanup path.
-  assertEquals(Deno.env.get("ZUKE_STATE_DIR"), prev);
+  assertEquals(EnvTasks.get("ZUKE_STATE_DIR"), prev);
 });
 
 test("runCli surfaces an unhandled rejection during the run as a failure", async () => {

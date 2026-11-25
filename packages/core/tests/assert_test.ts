@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -44,7 +45,7 @@ test("assertExists returns the value and narrows it", () => {
 test("assertFileExists: passes for a file, fails for missing or a dir", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/a.txt`;
-    await Deno.writeTextFile(file, "hi");
+    await FileTasks.writeText(file, "hi");
     await assertFileExists(file); // no throw
     await assertRejects(
       () => assertFileExists(`${dir}/missing.txt`),
@@ -70,7 +71,7 @@ test("assertDirectoryExists: passes for a dir, fails for missing or a file", asy
   await withTemp(async (dir) => {
     await assertDirectoryExists(dir); // no throw
     const file = `${dir}/a.txt`;
-    await Deno.writeTextFile(file, "hi");
+    await FileTasks.writeText(file, "hi");
     await assertRejects(
       () => assertDirectoryExists(`${dir}/missing`),
       AssertionError,

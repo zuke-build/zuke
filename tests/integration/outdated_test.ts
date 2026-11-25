@@ -13,7 +13,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** A build with a target, so `outdated` is proven not to be read as one. */
@@ -44,10 +49,10 @@ async function runOutdated(
   latest: Record<string, string>,
   args: string[] = [],
 ) {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const lockPath = `${dir}/deno.lock`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       lockPath,
       JSON.stringify({ version: "5", specifiers }),
     );
@@ -59,7 +64,7 @@ async function runOutdated(
       },
     });
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -93,10 +98,10 @@ test("outdated --exit-code fails when something is behind, not otherwise", async
 });
 
 test("an offline run is reported as unchecked, and --exit-code fails on it", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const lockPath = `${dir}/deno.lock`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       lockPath,
       JSON.stringify({ specifiers: { "jsr:@zuke/git@^1": "1.5.0" } }),
     );
@@ -121,12 +126,12 @@ test("an offline run is reported as unchecked, and --exit-code fails on it", asy
     });
     assertEquals(gated.code, 1);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("outdated names a missing lock and fails", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const { code, err } = await runCli(OutdatedBuild, ["outdated"], {
       outdatedOptions: { lockPath: `${dir}/absent.lock` },
@@ -135,7 +140,7 @@ test("outdated names a missing lock and fails", async () => {
     assertEquals(code, 1);
     assertEquals(err.includes("no lock file at"), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -178,10 +183,10 @@ async function runUpdate(
   resolved: Record<string, string>,
   args: string[] = [],
 ): Promise<{ code: number; out: string; err: string; lock: string }> {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const lockPath = `${dir}/deno.lock`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       lockPath,
       JSON.stringify({ version: "5", specifiers }, null, 2),
     );
@@ -197,19 +202,19 @@ async function runUpdate(
         resolve: async (path) => {
           // Models `deno install`: it fills in entries that are missing and
           // leaves a satisfying one alone, so only dropped specifiers move.
-          const lock = JSON.parse(await Deno.readTextFile(path));
+          const lock = JSON.parse(await FileTasks.readText(path));
           for (const [specifier, version] of Object.entries(resolved)) {
             if (lock.specifiers[specifier] === undefined) {
               lock.specifiers[specifier] = version;
             }
           }
-          await Deno.writeTextFile(path, JSON.stringify(lock, null, 2));
+          await FileTasks.writeText(path, JSON.stringify(lock, null, 2));
         },
       },
     });
-    return { ...result, lock: await Deno.readTextFile(lockPath) };
+    return { ...result, lock: await FileTasks.readText(lockPath) };
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -315,10 +320,10 @@ test("outdated lists a package once, however many wrappers pin it", async () => 
 test("outdated does not offer a release Deno is still too young to install", async () => {
   // Deno refuses releases under 24h old by default; offering one sends
   // `--update` into a resolution that cannot succeed.
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const lockPath = `${dir}/deno.lock`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       lockPath,
       JSON.stringify({
         version: "5",
@@ -346,17 +351,17 @@ test("outdated does not offer a release Deno is still too young to install", asy
     assertEquals(code, 0);
     assertEquals(out.includes("at its latest release"), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("outdated --update --min-dep-age passes the age on to the resolver", async () => {
   // A release an hour old is offered, and moved to, once the age is waived —
   // and the resolver is told the same age, or Deno would refuse that version.
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const lockPath = `${dir}/deno.lock`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       lockPath,
       JSON.stringify({
         version: "5",
@@ -385,9 +390,9 @@ test("outdated --update --min-dep-age passes the age on to the resolver", async 
         fetch: () => Promise.resolve(new Response(JSON.stringify(meta))),
         resolve: async (path, request) => {
           requests.push(request);
-          const lock = JSON.parse(await Deno.readTextFile(path));
+          const lock = JSON.parse(await FileTasks.readText(path));
           lock.specifiers["jsr:@zuke/core@^1"] = "1.67.0";
-          await Deno.writeTextFile(path, JSON.stringify(lock));
+          await FileTasks.writeText(path, JSON.stringify(lock));
         },
       },
     });
@@ -397,12 +402,12 @@ test("outdated --update --min-dep-age passes the age on to the resolver", async 
       minDepAge: "0",
       entrypoints: [
         "/repo/a/zuke.ts",
-        `${Deno.cwd().replaceAll("\\", "/")}/b/zuke.ts`,
+        `${RuntimeTasks.cwd().replaceAll("\\", "/")}/b/zuke.ts`,
       ],
     }]);
     assertEquals(out.includes("1.66.0  →  1.67.0"), true, out);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

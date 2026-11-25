@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import {
@@ -59,7 +60,7 @@ test("homeRelative writes home as ~, and only a whole leading directory", () => 
 });
 
 test("homeRelative matches a Windows home given with backslashes, ignoring case", () => {
-  if (Deno.build.os !== "windows") return; // absolutePath reads Windows paths only there.
+  if (RuntimeTasks.os() !== "windows") return; // absolutePath reads Windows paths only there.
   assertEquals(
     homeRelative("C:/Users/Me/proj", "C:\\Users\\me", true),
     "~/proj",
@@ -105,7 +106,7 @@ test("projectLockPath follows Deno's lock setting", () => {
 });
 
 test("projectLockPath keeps an absolute lock path as it is", () => {
-  if (Deno.build.os === "windows") return; // "/x" has no drive there.
+  if (RuntimeTasks.os() === "windows") return; // "/x" has no drive there.
   assertEquals(
     projectLockPath("/work/app", '{"lock": "/elsewhere/z.lock"}'),
     "/elsewhere/z.lock",

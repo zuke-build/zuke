@@ -14,7 +14,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, parameter, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  parameter,
+  target,
+} from "../../packages/core/mod.ts";
 import {
   type SignPathConnectionSettings,
   SignPathTasks,
@@ -66,7 +71,7 @@ function server() {
 }
 
 /** Where the signed binary lands. */
-const dir = await Deno.makeTempDir();
+const dir = await FileTasks.makeTempDirectory();
 const output = `${dir}/signed/zuke.exe`;
 
 /** The seams every call shares. */
@@ -106,7 +111,7 @@ test("a build signs through SignPath with GitHub origin verification", async () 
     TOKEN,
   ]);
   assertEquals(code, 0, err);
-  assertEquals(await Deno.readTextFile(output), "MZ signed by SignPath");
+  assertEquals(await FileTasks.readText(output), "MZ signed by SignPath");
   assertEquals(seen, ["Completed"]);
   assertStringIncludes(
     out,

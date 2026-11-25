@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
@@ -77,7 +78,7 @@ test("httpDownload streams the body to a file", async () => {
   await withTemp(async (dir) => {
     const dest = `${dir}/out.txt`;
     await httpDownload("https://example.com/f", dest, { fetch });
-    assertEquals(await Deno.readTextFile(dest), "file-contents");
+    assertEquals(await FileTasks.readText(dest), "file-contents");
   });
 });
 
@@ -90,7 +91,7 @@ test("httpDownload of a non-2xx status throws before writing", async () => {
       HttpError,
       "HTTP 500",
     );
-    assertEquals(await Deno.stat(dest).catch(() => null), null); // not created
+    assertEquals(await FileTasks.stat(dest).catch(() => null), null); // not created
   });
 });
 
@@ -102,6 +103,6 @@ test("httpDownload handles an empty (null) body", async () => {
   await withTemp(async (dir) => {
     const dest = `${dir}/empty.bin`;
     await httpDownload("https://example.com/empty", dest, { fetch: impl });
-    assertEquals((await Deno.stat(dest)).size, 0);
+    assertEquals((await FileTasks.stat(dest)).size, 0);
   });
 });

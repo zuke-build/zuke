@@ -17,6 +17,7 @@ import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
   target,
@@ -183,7 +184,7 @@ test("a compensation run by `zuke cancel` reads the run's plan", async () => {
     const first = await runCli(CD, ["promote"]);
     assertEquals(first.code, 0, first.err);
     const store = new FileSystemStateStore(
-      Deno.env.get("ZUKE_STATE_DIR") ?? "",
+      EnvTasks.get("ZUKE_STATE_DIR") ?? "",
       defaultStateHost,
     );
     const runs = await store.listRuns({});

@@ -13,6 +13,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -328,7 +329,7 @@ test("every other verdict reports the level its outcome deserves", async () => {
  * decision above is only a check if the job it runs in can actually reach a
  * base ref, and for months it could not.
  */
-const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");
+const CI_WORKFLOW = await FileTasks.readText(".github/workflows/ci.yml");
 
 test("the gate job checks out enough history for this check to run", () => {
   // A shallow checkout has no `origin/<base>` at all, so the check reported

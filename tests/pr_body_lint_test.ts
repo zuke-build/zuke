@@ -10,11 +10,12 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { lintPrBody } from "../build/pr_body_lint.ts";
 
-const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");
+const CI_WORKFLOW = await FileTasks.readText(".github/workflows/ci.yml");
 
 /** The `on.pull_request` trigger block of the CI workflow, as source text. */
 function pullRequestTrigger(workflow: string): string {

@@ -17,8 +17,10 @@ import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
+  FileTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
@@ -39,8 +41,10 @@ test("a run holds a lease while it runs, and releases it when it settles", async
 
   class Ci extends Build {
     work = target().effect("announce", async (ctx) => {
-      const dir = Deno.env.get("ZUKE_STATE_DIR") ?? "";
-      heldDuringRun = await Deno.stat(`${dir}/locks/zuke-run-${ctx.runId}.json`)
+      const dir = EnvTasks.get("ZUKE_STATE_DIR") ?? "";
+      heldDuringRun = await FileTasks.stat(
+        `${dir}/locks/zuke-run-${ctx.runId}.json`,
+      )
         .then(() => true, () => false);
     });
   }
@@ -51,7 +55,7 @@ test("a run holds a lease while it runs, and releases it when it settles", async
     assertEquals(heldDuringRun, true);
     const id = await onlyRunId(dir);
     // Released: the lock is gone rather than left to lapse at its TTL.
-    const stillHeld = await Deno.stat(`${dir}/locks/zuke-run-${id}.json`)
+    const stillHeld = await FileTasks.stat(`${dir}/locks/zuke-run-${id}.json`)
       .then(() => true, () => false);
     assertEquals(stillHeld, false);
   });

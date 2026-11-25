@@ -16,23 +16,30 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, FileTasks, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** Whether this platform creates symlinks without elevation. */
-const SYMLINKS_UNPRIVILEGED = Deno.build.os !== "windows";
+const SYMLINKS_UNPRIVILEGED = RuntimeTasks.os() !== "windows";
 
 test({
   name: "a link-creating target is idempotent across runs",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
-    const root = await Deno.makeTempDir();
+    const root = await FileTasks.makeTempDirectory();
     try {
-      await Deno.mkdir(`${root}/infra`);
-      await Deno.mkdir(`${root}/other-infra`);
-      await Deno.writeTextFile(`${root}/infra/mod.ts`, "// first");
-      await Deno.writeTextFile(`${root}/other-infra/mod.ts`, "// second");
-      await Deno.mkdir(`${root}/group`);
+      await FileTasks.createDirectory(`${root}/infra`, { recursive: false });
+      await FileTasks.createDirectory(`${root}/other-infra`, {
+        recursive: false,
+      });
+      await FileTasks.writeText(`${root}/infra/mod.ts`, "// first");
+      await FileTasks.writeText(`${root}/other-infra/mod.ts`, "// second");
+      await FileTasks.createDirectory(`${root}/group`, { recursive: false });
 
       let linkedTo = `${root}/infra`;
       const seen: string[] = [];
@@ -67,11 +74,11 @@ test({
         `${root}/other-infra`,
       ]);
       assertEquals(
-        await Deno.readTextFile(`${root}/group/infra/mod.ts`),
+        await FileTasks.readText(`${root}/group/infra/mod.ts`),
         "// second",
       );
     } finally {
-      await Deno.remove(root, { recursive: true });
+      await FileTasks.remove(root, { recursive: true });
     }
   },
 });
@@ -80,10 +87,10 @@ test({
   name: "linking onto an occupied path fails the build without force",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
-    const root = await Deno.makeTempDir();
+    const root = await FileTasks.makeTempDirectory();
     try {
-      await Deno.writeTextFile(`${root}/target.txt`, "t");
-      await Deno.writeTextFile(`${root}/occupied`, "already here");
+      await FileTasks.writeText(`${root}/target.txt`, "t");
+      await FileTasks.writeText(`${root}/occupied`, "already here");
       class LinkBuild extends Build {
         link = target().executes(async () => {
           await FileTasks.symlink(`${root}/target.txt`, `${root}/occupied`);
@@ -93,11 +100,11 @@ test({
       assertEquals(code, 1);
       // The refusal left the existing file alone.
       assertEquals(
-        await Deno.readTextFile(`${root}/occupied`),
+        await FileTasks.readText(`${root}/occupied`),
         "already here",
       );
     } finally {
-      await Deno.remove(root, { recursive: true });
+      await FileTasks.remove(root, { recursive: true });
     }
   },
 });

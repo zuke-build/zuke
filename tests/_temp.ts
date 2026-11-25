@@ -11,10 +11,8 @@
  * @module
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import process from "node:process";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 
 /** Where a scope's directory goes, and the start of its name. */
 export interface TempOptions {
@@ -25,12 +23,17 @@ export interface TempOptions {
 }
 
 /**
- * A fresh directory inside `options.dir`, or the system temp directory. An
- * empty prefix falls back too: `join` would drop the separator and make the
- * directory a sibling of its parent rather than a child.
+ * A fresh directory inside `options.dir`, or the system temp directory, made
+ * through core's file tasks like the code under test.
  */
-function makeTemp(options?: TempOptions): Promise<string> {
-  return mkdtemp(join(options?.dir ?? tmpdir(), options?.prefix || "tmp-"));
+export async function makeTempDir(options?: TempOptions): Promise<string> {
+  const prefix = options?.prefix ?? "tmp-";
+  if (options?.dir === undefined) {
+    return await FileTasks.makeTempDirectory((s) => s.prefix(prefix));
+  }
+  const dir = `${options.dir}/${prefix}${crypto.randomUUID()}`;
+  await FileTasks.createDirectory(dir, { recursive: false });
+  return dir;
 }
 
 /**
@@ -40,7 +43,7 @@ function makeTemp(options?: TempOptions): Promise<string> {
  */
 async function discard(dir: string): Promise<void> {
   try {
-    await rm(dir, { recursive: true, force: true });
+    await FileTasks.remove(dir, { recursive: true });
   } catch {
     // ignore — the temp dir is throwaway; masking the real error is worse.
   }
@@ -54,7 +57,7 @@ export async function withTemp(
   fn: (dir: string) => void | Promise<void>,
   options?: TempOptions,
 ): Promise<void> {
-  const dir = await makeTemp(options);
+  const dir = await makeTempDir(options);
   try {
     await fn(dir);
   } finally {
@@ -72,13 +75,22 @@ export async function withTempCwd(
   fn: (dir: string) => void | Promise<void>,
   options?: TempOptions,
 ): Promise<void> {
-  const dir = await makeTemp(options);
-  const cwd = process.cwd();
+  const dir = await makeTempDir(options);
+  const cwd = RuntimeTasks.cwd();
   try {
-    process.chdir(dir);
+    chdir(dir);
     await fn(dir);
   } finally {
-    process.chdir(cwd);
+    chdir(cwd);
     await discard(dir);
   }
+}
+
+/**
+ * Change the process's working directory. Core reads it but never changes
+ * it, so a test that must move comes here; {@link withTempCwd}, which moves
+ * back, is the better fit wherever the move has a scope.
+ */
+export function chdir(dir: string): void {
+  process.chdir(dir);
 }

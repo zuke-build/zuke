@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { PACKAGES as PACKAGE_DIRS } from "../build/packages.ts";
@@ -14,7 +15,7 @@ import { PACKAGES as PACKAGE_DIRS } from "../build/packages.ts";
 const PACKAGES = PACKAGE_DIRS.map((dir) => `packages/${dir}`);
 
 async function readJson(path: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await Deno.readTextFile(path));
+  return JSON.parse(await FileTasks.readText(path));
 }
 
 const CONFIG = ".release-please-config.json";
@@ -55,7 +56,7 @@ test("a package that was never released is registered at 0.0.0", async () => {
   // strategy's initial version, 1.0.0, and publishJsr skips the package until
   // then. A package with no CHANGELOG.md has never been released.
   for (const path of PACKAGES) {
-    const released = await Deno.stat(`${path}/CHANGELOG.md`).then(
+    const released = await FileTasks.stat(`${path}/CHANGELOG.md`).then(
       () => true,
       () => false,
     );
@@ -94,7 +95,7 @@ async function markedFiles(): Promise<MarkedFile[]> {
   interface ReleaseConfig {
     packages: Record<string, { "extra-files"?: unknown }>;
   }
-  const config: ReleaseConfig = JSON.parse(await Deno.readTextFile(CONFIG));
+  const config: ReleaseConfig = JSON.parse(await FileTasks.readText(CONFIG));
   const files: MarkedFile[] = [];
   for (const [pkg, entry] of Object.entries(config.packages)) {
     const extras = entry["extra-files"];
@@ -104,7 +105,7 @@ async function markedFiles(): Promise<MarkedFile[]> {
       // $.version; only the plain string paths carry an inline marker.
       if (typeof extra !== "string") continue;
       const path = `${pkg}/${extra}`;
-      const text = await Deno.readTextFile(path);
+      const text = await FileTasks.readText(path);
       const lines = text.split("\n").filter((line) =>
         line.includes("x-release-please-version")
       );
@@ -201,7 +202,7 @@ test("the docs package matrix lists exactly the workspace packages", async () =>
   // not exist (or listed twice) makes the stated count a lie. Enforce exact
   // membership so the lists (workspace, release-please config/manifest, the
   // build/packages.ts publish loop, and the matrix) never drift apart.
-  const matrix = await Deno.readTextFile("docs/packages.md");
+  const matrix = await FileTasks.readText("docs/packages.md");
   const rows = [...matrix.matchAll(MATRIX_ROW)].map((m) => m[1]);
   assertEquals(
     rows.length,
@@ -215,7 +216,7 @@ test("the README still reaches the package matrix", async () => {
   // The README names only the notable wrappers; the full catalogue lives in
   // docs/packages.md, so the README must keep linking to it or the catalogue
   // becomes unreachable from the landing page.
-  const readme = await Deno.readTextFile("README.md");
+  const readme = await FileTasks.readText("README.md");
   assertEquals(
     readme.includes("](./docs/packages.md)"),
     true,
@@ -231,7 +232,7 @@ test("deno.lock captures release-please's full npm tree", async () => {
   // lock. Assert both the top-level pin and one of its transitive dependencies,
   // so a `deno.lock` regenerated without re-caching that specifier (dropping the
   // tree) is caught here rather than at release time.
-  const lock = await Deno.readTextFile("deno.lock");
+  const lock = await FileTasks.readText("deno.lock");
   if (!lock.includes('"npm:release-please@16.18.0"')) {
     throw new Error(
       'deno.lock is missing the "npm:release-please@16.18.0" specifier pin — ' +
@@ -274,7 +275,7 @@ test("every prose mention of the package count matches the workspace", async () 
   const expected = PACKAGE_DIRS.length;
   const wrong: string[] = [];
   for (const path of PACKAGE_COUNT_PROSE) {
-    const text = await Deno.readTextFile(path);
+    const text = await FileTasks.readText(path);
     const counts = [...text.matchAll(PACKAGE_COUNT)].map((m) => Number(m[1]));
     assertEquals(
       counts.length > 0,

@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../../tests/_assert.ts";
-import { InsecureBackendUrlError } from "@zuke/core";
+import { FileTasks, InsecureBackendUrlError } from "@zuke/core";
 import {
   SignPathApiError,
   SignPathRequestError,
@@ -55,9 +55,9 @@ const GITHUB_ENV = new Map([
 
 /** A temp file holding `content`, the artifact to sign. */
 async function artifact(content = "MZ unsigned"): Promise<string> {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const path = `${dir}/zuke.exe`;
-  await Deno.writeTextFile(path, content);
+  await FileTasks.writeText(path, content);
   return path;
 }
 
@@ -65,7 +65,7 @@ async function artifact(content = "MZ unsigned"): Promise<string> {
 const path = await artifact();
 
 test("submit: uploads the artifact, waits, and downloads the signed file", async () => {
-  const output = `${await Deno.makeTempDir()}/signed/zuke.exe`;
+  const output = `${await FileTasks.makeTempDirectory()}/signed/zuke.exe`;
   const net = routes({
     [`POST ${SUBMIT_URL}`]: [created],
     [`GET ${STATUS_URL}`]: [
@@ -88,7 +88,7 @@ test("submit: uploads the artifact, waits, and downloads the signed file", async
   assertEquals(result.webUrl, WEB_URL);
   assertEquals(result.status.status, "Completed");
   assertEquals(result.signedArtifact, { path: output, bytes: 9 });
-  assertEquals(await Deno.readTextFile(output), "MZ signed");
+  assertEquals(await FileTasks.readText(output), "MZ signed");
   assertEquals(sleeps, [5000, 5000]);
   assertEquals(lines, [
     `SignPath: submitted signing request ${REQUEST} — ${WEB_URL}`,

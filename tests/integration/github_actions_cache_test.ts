@@ -9,9 +9,10 @@
  * file runs in its own process.
  */
 
+import { setEnv } from "../_env.ts";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import { withTempCwd } from "../_temp.ts";
 
@@ -62,16 +63,16 @@ test("the GitHub Actions cache store restores outputs on a fresh checkout", asyn
       const service = fakeService();
       const realFetch = globalThis.fetch;
       globalThis.fetch = service.fetch;
-      Deno.env.set("ACTIONS_RUNTIME_TOKEN", "runtime-token");
-      Deno.env.set("ACTIONS_RESULTS_URL", RESULTS_URL);
+      setEnv("ACTIONS_RUNTIME_TOKEN", "runtime-token");
+      setEnv("ACTIONS_RESULTS_URL", RESULTS_URL);
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await Deno.writeTextFile("out.txt", "built");
+              await FileTasks.writeText("out.txt", "built");
             },
           );
         }
@@ -82,17 +83,17 @@ test("the GitHub Actions cache store restores outputs on a fresh checkout", asyn
         assertEquals(service.blobs.size, 1); // the first run uploaded an entry
 
         // A fresh checkout: no local cache, no output, the service still populated.
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/out.txt`);
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/out.txt`);
 
         const second = await runCli(B, ["build"]);
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored, body not re-run
-        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
       } finally {
         globalThis.fetch = realFetch;
-        Deno.env.delete("ACTIONS_RUNTIME_TOKEN");
-        Deno.env.delete("ACTIONS_RESULTS_URL");
+        setEnv("ACTIONS_RUNTIME_TOKEN", undefined);
+        setEnv("ACTIONS_RESULTS_URL", undefined);
       }
     });
   });

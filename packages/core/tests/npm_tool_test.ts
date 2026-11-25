@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -30,9 +31,9 @@ function fakeNpm(
     calls.push(args);
     const prefix = args[args.indexOf("--prefix") + 1];
     const dir = `${prefix}/node_modules/.bin`;
-    await Deno.mkdir(dir, { recursive: true });
+    await FileTasks.createDirectory(dir);
     const file = os === "windows" ? `${bin}.cmd` : bin;
-    await Deno.writeTextFile(`${dir}/${file}`, "#!/bin/sh\n");
+    await FileTasks.writeText(`${dir}/${file}`, "#!/bin/sh\n");
   };
   return { run, calls };
 }
@@ -128,7 +129,7 @@ test("a marker recording a different package is ignored (re-installs)", async ()
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     const prefix = bin.parent().parent().parent();
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       String(prefix(".zuke-npm-tool.json")),
       JSON.stringify({ name: "vitest", version: "9.9.9" }),
     );
@@ -146,9 +147,9 @@ test("a malformed marker is treated as absent (re-installs)", async () => {
       bin.parent().parent().parent()(".zuke-npm-tool.json"),
     );
     // Unparseable JSON, then valid JSON of the wrong shape — both re-install.
-    await Deno.writeTextFile(marker, "{not json");
+    await FileTasks.writeText(marker, "{not json");
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
-    await Deno.writeTextFile(marker, JSON.stringify({ name: 123 }));
+    await FileTasks.writeText(marker, JSON.stringify({ name: 123 }));
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     assertEquals(calls.length, 3);
   });
@@ -159,7 +160,7 @@ test("a valid marker whose bin has gone re-installs", async () => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
-    await Deno.remove(String(bin)); // marker stays, but the bin is gone
+    await FileTasks.remove(String(bin)); // marker stays, but the bin is gone
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     assertEquals(calls.length, 2);
   });
@@ -203,7 +204,7 @@ test("installNpmTool throws when npm plants no bin, writing no marker", async ()
     // that ships no executable: npm exits 0 without creating node_modules/.bin.
     const emptyRun: NpmRunner = async (args) => {
       calls.push(args);
-      await Deno.mkdir(args[args.indexOf("--prefix") + 1], { recursive: true });
+      await FileTasks.createDirectory(args[args.indexOf("--prefix") + 1]);
     };
     const spec = { name: "vitest", version: "4.1.9" };
     await assertRejects(
@@ -254,8 +255,8 @@ test("a non-NotFound error reading the marker surfaces (not swallowed)", async (
     const marker = String(
       bin.parent().parent().parent()(".zuke-npm-tool.json"),
     );
-    await Deno.remove(marker);
-    await Deno.mkdir(marker);
+    await FileTasks.remove(marker);
+    await FileTasks.createDirectory(marker, { recursive: false });
     await assertRejects(
       () => installNpmTool(spec, { destDir: dir, run, os: "linux" }),
     );
@@ -270,8 +271,8 @@ test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", async () 
     // Turn node_modules into a file: stat-ing the bin path now traverses through
     // a non-directory → NotADirectory, which is not NotFound and must propagate.
     const prefix = bin.parent().parent().parent();
-    await Deno.remove(String(prefix("node_modules")), { recursive: true });
-    await Deno.writeTextFile(String(prefix("node_modules")), "not a dir");
+    await FileTasks.remove(String(prefix("node_modules")), { recursive: true });
+    await FileTasks.writeText(String(prefix("node_modules")), "not a dir");
     await assertRejects(
       () => installNpmTool(spec, { destDir: dir, run, os: "linux" }),
     );

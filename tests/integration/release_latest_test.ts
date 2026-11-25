@@ -10,7 +10,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import { GhTasks } from "../../packages/gh/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -89,7 +89,7 @@ function releaseBuild(
         return;
       }
       const archive = `${root}/zuke.tar.gz`;
-      await Deno.writeFile(archive, new Uint8Array([9, 9, 9]));
+      await FileTasks.writeBytes(archive, new Uint8Array([9, 9, 9]));
       const asset = await GhTasks.uploadReleaseAsset((s) =>
         s.file(archive).tag("v1.0.2").repo("acme/app").token("tok").refresh()
           .fetch(fakeGithub(calls, options))
@@ -101,7 +101,7 @@ function releaseBuild(
 }
 
 test("the release wiring pins Latest back and refreshes the archive", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await FileTasks.makeTempDirectory();
   try {
     const calls: string[] = [];
     const { code, out } = await runCli(releaseBuild(root, calls), [
@@ -122,7 +122,7 @@ test("the release wiring pins Latest back and refreshes the archive", async () =
       "POST /assets",
     ]);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
@@ -131,7 +131,7 @@ test("the not-yet-cut release window writes nowhere at all", async () => {
   // not yet cut, a refresh resolved through "latest" would have deleted and
   // replaced assets on that package release. The wiring must stop after the
   // no-release answer — no PATCH, no DELETE, no upload.
-  const root = await Deno.makeTempDir();
+  const root = await FileTasks.makeTempDirectory();
   try {
     const calls: string[] = [];
     const { code, out } = await runCli(
@@ -143,6 +143,6 @@ test("the not-yet-cut release window writes nowhere at all", async () => {
     assertStringIncludes(out, "archive: skipped");
     assertEquals(calls, ["GET /repos/acme/app/releases/tags/v1.0.2"]);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });

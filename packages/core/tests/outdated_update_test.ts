@@ -9,6 +9,7 @@
  * so nothing here touches the network or spawns `deno`.
  */
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   dropLockEntries,
@@ -58,14 +59,14 @@ async function withLock(
   text: string,
   fn: (path: string) => Promise<void>,
 ): Promise<string> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-lock-" });
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-lock-"));
   const path = `${dir}/deno.lock`;
   try {
-    await Deno.writeTextFile(path, text);
+    await FileTasks.writeText(path, text);
     await fn(path);
-    return await Deno.readTextFile(path);
+    return await FileTasks.readText(path);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -115,9 +116,9 @@ test("updateOutdated moves a package whose range admits the release", async () =
       fetch: registryFetch({ "@zuke/git": "1.9.0", "@std/yaml": "1.0.5" }),
       // Stand in for `deno install`: resolve the dropped entry to the latest.
       resolve: async (p) => {
-        const lock = JSON.parse(await Deno.readTextFile(p));
+        const lock = JSON.parse(await FileTasks.readText(p));
         lock.specifiers["jsr:@zuke/git@^1"] = "1.9.0";
-        await Deno.writeTextFile(p, JSON.stringify(lock, null, 2));
+        await FileTasks.writeText(p, JSON.stringify(lock, null, 2));
       },
     });
     assertEquals(report.updated, [
@@ -137,9 +138,9 @@ test("updateOutdated reports a package its specifier pins as held", async () => 
       // An exact specifier resolves to the same version however often you ask,
       // so re-resolution puts the entry back exactly as it was.
       resolve: async (p) => {
-        const lock = JSON.parse(await Deno.readTextFile(p));
+        const lock = JSON.parse(await FileTasks.readText(p));
         lock.specifiers["jsr:@std/yaml@1.0.5"] = "1.0.5";
-        await Deno.writeTextFile(p, JSON.stringify(lock, null, 2));
+        await FileTasks.writeText(p, JSON.stringify(lock, null, 2));
       },
     });
     assertEquals(report.updated, []);
@@ -182,9 +183,9 @@ test("updateOutdated narrows to the named packages", async () => {
       fetch: registryFetch({ "@zuke/git": "1.9.0", "@std/yaml": "1.3.0" }),
       only: ["@zuke/git"],
       resolve: async (p) => {
-        const lock = JSON.parse(await Deno.readTextFile(p));
+        const lock = JSON.parse(await FileTasks.readText(p));
         lock.specifiers["jsr:@zuke/git@^1"] = "1.9.0";
-        await Deno.writeTextFile(p, JSON.stringify(lock, null, 2));
+        await FileTasks.writeText(p, JSON.stringify(lock, null, 2));
       },
     });
     assertEquals(report.updated.map((p) => p.name), ["@zuke/git"]);
@@ -299,9 +300,9 @@ test("updateOutdated accepts a resolver that normalises the specifier", async ()
       registry: "https://registry.test",
       fetch: registryFetch({ "@zuke/git": "1.9.0" }),
       resolve: async (p) => {
-        const lock = JSON.parse(await Deno.readTextFile(p));
+        const lock = JSON.parse(await FileTasks.readText(p));
         lock.specifiers["jsr:@zuke/git@1"] = "1.9.0";
-        await Deno.writeTextFile(p, JSON.stringify(lock, null, 2));
+        await FileTasks.writeText(p, JSON.stringify(lock, null, 2));
       },
     });
     assertEquals(report.updated, [
@@ -355,11 +356,11 @@ const dependantLock = JSON.stringify({
 /** A resolver that puts `@zuke/git` back at 1.9.0, and its dependant's edge only if `relink`. */
 function gitResolver(relink: boolean) {
   return async (p: string) => {
-    const lock = JSON.parse(await Deno.readTextFile(p));
+    const lock = JSON.parse(await FileTasks.readText(p));
     lock.specifiers["jsr:@zuke/git@^1"] = "1.9.0";
     lock.jsr["@zuke/git@1.9.0"] = { integrity: "ccc" };
     if (relink) lock.jsr["@zuke/cmd@1.0.1"].dependencies = ["jsr:@zuke/git@^1"];
-    await Deno.writeTextFile(p, JSON.stringify(lock));
+    await FileTasks.writeText(p, JSON.stringify(lock));
   };
 }
 
@@ -409,7 +410,7 @@ test("updateOutdated restores the lock when the resolver writes something unread
         lockPath: path,
         registry: "https://registry.test",
         fetch: registryFetch({ "@zuke/git": "1.9.0", "@zuke/cmd": "1.0.1" }),
-        resolve: (p) => Deno.writeTextFile(p, "not json"),
+        resolve: (p) => FileTasks.writeText(p, "not json"),
       });
     } catch (error) {
       message = String(error);
@@ -473,7 +474,7 @@ test("updateOutdated passes a URL entrypoint through and refuses an empty one", 
       entrypoints: ["file:///repo/zuke.ts", "C:/repo/zuke.ts"],
       resolve: async (p, request) => {
         seen.push(request.entrypoints);
-        await Deno.writeTextFile(p, lockText("1.9.0"));
+        await FileTasks.writeText(p, lockText("1.9.0"));
       },
     });
   });

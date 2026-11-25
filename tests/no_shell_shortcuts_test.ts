@@ -18,6 +18,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { packageSources, withoutComments } from "./_package_sources.ts";
@@ -105,7 +106,7 @@ test("no package source starts a process through a shell", async () => {
   const found: Record<string, number> = {};
   const named: string[] = [];
   for (const file of await packageSources()) {
-    const shortcuts = shortcutsIn(await Deno.readTextFile(file));
+    const shortcuts = shortcutsIn(await FileTasks.readText(file));
     if (shortcuts.length === 0) continue;
     found[file] = shortcuts.length;
     named.push(`${file}: ${shortcuts.join(", ")}`);

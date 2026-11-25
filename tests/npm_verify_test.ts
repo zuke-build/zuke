@@ -12,7 +12,7 @@
  */
 
 import { test } from "./_testing.ts";
-import { absolutePath, HttpError } from "../packages/core/mod.ts";
+import { absolutePath, FileTasks, HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
@@ -104,7 +104,7 @@ async function world(
     packages?: string[];
   } = {},
 ): Promise<World> {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const { integrity, hex } = integrityOf(7);
   const installed = over.installed ?? {
     "package.json": '{"version":"1.0.0","name":"@zuke-build/x"}',
@@ -180,23 +180,21 @@ async function world(
   const project = absolutePath(dir)("consumer");
   const write = async (out: string, files: Record<string, string>) => {
     for (const [path, data] of Object.entries(files)) {
-      await Deno.mkdir(`${out}/${path}`.replace(/\/[^/]*$/, ""), {
-        recursive: true,
-      });
-      await Deno.writeTextFile(`${out}/${path}`, data);
+      await FileTasks.createDirectory(`${out}/${path}`.replace(/\/[^/]*$/, ""));
+      await FileTasks.writeText(`${out}/${path}`, data);
     }
   };
   const npm: NpmProbe = {
     install: async (_p, specs) => {
       log.installs.push(specs);
       log.manifest = JSON.parse(
-        await Deno.readTextFile(`${project}/package.json`),
+        await FileTasks.readText(`${project}/package.json`),
       );
       await write(`${project}/node_modules/@zuke-build/x`, installed);
       if (over.aliasInstalled !== undefined) {
         await write(`${project}/node_modules/@zuke/x`, over.aliasInstalled);
       }
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${project}/package-lock.json`,
         JSON.stringify({
           packages: {
@@ -257,7 +255,7 @@ async function run(
       ),
     };
   } finally {
-    await Deno.remove(w.dir, { recursive: true });
+    await FileTasks.remove(w.dir, { recursive: true });
   }
 }
 

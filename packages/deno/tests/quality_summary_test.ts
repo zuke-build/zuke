@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
@@ -85,10 +86,13 @@ test("deno check: the closing line or the diagnostics yield Errors, silence and 
 // The real deno drives the wrapper end to end: it is always present under the
 // test runner, so these stay hermetic.
 test("DenoTasks.lint, fmt and check report onto the ambient summary for real", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
-    await Deno.writeTextFile(`${dir}/ok.ts`, "export const n: number = 1;\n");
-    await Deno.writeTextFile(`${dir}/bad.ts`, "export const s: number = 'x'\n");
+    await FileTasks.writeText(`${dir}/ok.ts`, "export const n: number = 1;\n");
+    await FileTasks.writeText(
+      `${dir}/bad.ts`,
+      "export const s: number = 'x'\n",
+    );
     const lint = new TargetSummary();
     await withAmbientSummary(
       lint,
@@ -124,6 +128,6 @@ test("DenoTasks.lint, fmt and check report onto the ambient summary for real", a
     );
     assertEquals(check.entries(), [{ key: "Errors", value: "1" }]);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

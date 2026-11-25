@@ -7,6 +7,7 @@
  * CLI runner — plus the wire protocol-version handshake on the HTTP client.
  */
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -99,7 +100,9 @@ test("the kit fails loudly against a CAS-violating store", async () => {
 });
 
 test("runConformanceCli passes over injected FS backends, fails on violations", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-cli-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-conf-cli-")
+  );
   const lines: string[] = [];
   try {
     // Missing --url is a usage error.
@@ -126,7 +129,7 @@ test("runConformanceCli passes over injected FS backends, fails on violations", 
     assertEquals(bad, 1);
     assertEquals(lines.some((l) => l.startsWith("FAIL")), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -219,7 +222,9 @@ test("runConformanceCli reads each token from its own variable", async () => {
   // completes and *both* are actually reached — an earlier cut of this test
   // threw from the state factory, which meant the registry token was captured
   // but never exercised, and asserting it would have been asserting nothing.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-token-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-conf-token-")
+  );
   const seen: Record<string, string | undefined> = {};
   try {
     await runConformanceCli(["--url", "unused"], {
@@ -242,6 +247,6 @@ test("runConformanceCli reads each token from its own variable", async () => {
     assertEquals(seen.state, "state-token");
     assertEquals(seen.registry, "registry-token");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

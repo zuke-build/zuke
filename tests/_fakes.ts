@@ -13,6 +13,14 @@ import type { RunPlan } from "../packages/core/src/run_plan.ts";
 import type { RemoteCacheStore } from "../packages/core/src/remote_cache.ts";
 
 /**
+ * The error a missing file gives on either runtime, which core's not-found
+ * check recognises: Node's `ENOENT` code, which Deno's own errors carry too.
+ */
+export function notFound(message: string): Error {
+  return Object.assign(new Error(message), { code: "ENOENT" });
+}
+
+/**
  * An in-memory {@link GraphHost} that records writes, directories, browser
  * opens, and logs. `existing` lists paths that {@link exists} reports as present
  * (e.g. a `zuke.json` so {@link cwd}'s root resolves).
@@ -88,10 +96,7 @@ export class FakeStateHost implements StateHost {
   rename(from: string, to: string): Promise<void> {
     const content = this.files.get(from);
     if (content === undefined && !this.locks.has(from)) {
-      // The error a real rename gives on either runtime: Node's ENOENT code.
-      return Promise.reject(
-        Object.assign(new Error(`rename ${from}`), { code: "ENOENT" }),
-      );
+      return Promise.reject(notFound(`rename ${from}`));
     }
     if (content !== undefined) {
       this.files.set(to, content);

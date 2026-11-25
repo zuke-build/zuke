@@ -199,8 +199,8 @@ every SDK, and every change must keep it:
    `private-type-ref` lower the package's JSR documentation score. Match the
    existing density and tone when adding docs.
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
-   When a test needs a subprocess, invoke `Deno.execPath()` (the running
-   `deno`), which is always present and shell-free.
+   When a test needs a subprocess, invoke `RuntimeTasks.execPath()` (the running
+   runtime), which is always present and shell-free.
 6. **Public API is task-shaped — no standalone utility functions.** A package
    exposes its operations through a namespaced `*Tasks` object (`FileTasks`,
    `DenoTasks`, `JsrTasks`, …), never as bare exported helper functions. CLI
@@ -361,11 +361,31 @@ ambient tools.
 The gate's `test` target splits the `*_test.ts` files across one `deno test`
 process per CPU (`build/test_shards.ts`), so **files run concurrently with each
 other** in separate processes, while the tests inside one file still run in
-order. A test may set `Deno.env` or change the working directory, which only
-affect its own process, but it must not write to a fixed path that another file
-could also use: work in a `Deno.makeTempDir()` instead. Name every test module
-`*_test.ts`, because the shards run explicit file lists and a test enforces the
-naming convention.
+order. A test may set the environment or change the working directory, which
+only affect its own process, but it must not write to a fixed path that another
+file could also use: work in a `withTemp` directory instead. Name every test
+module `*_test.ts`, because the shards run explicit file lists and a test
+enforces the naming convention.
+
+**Tests reach the runtime and the test framework only through seams of our own,
+never directly.** A test calls neither `Deno.*` nor a `node:` module, and never
+imports a test library, so moving to another runtime or framework is a change to
+those seams, not to every test:
+
+- Runtime operations go through core's tasks, the same seams the code uses:
+  `FileTasks`, `EnvTasks`, `RuntimeTasks` and `ProcessTasks`.
+- Tests register with `test()` from `tests/_testing.ts`, which hands them to
+  Deno's runner or to Vitest, and assert with `tests/_assert.ts`.
+- What core does not offer because only a test needs it (setting the
+  environment, changing the working directory, temp scopes, the integration
+  harness's unhandled-rejection guard) lives in a root helper, `tests/_*.ts`.
+  Those helpers are the only test code that may call the runtime directly, and
+  they too use core wherever it reaches.
+
+The exceptions are the tests whose subject is the boundary itself (core's own
+file, stream and stdio layers), and fixture scripts that a test runs as a
+subprocess. Files still on `tests/node_pending.json` are being ported and follow
+the rule as they leave it.
 
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
    fakes and the local `tests/_assert.ts` helper (never a third-party assert
@@ -397,8 +417,8 @@ naming convention.
    an in-process test cannot prove: genuine **inter-process** behaviour (e.g.
    two real processes racing a resume's compare-and-swap) and real **OS
    boundaries** (Windows file-locking). Spawn real `deno` subprocesses with
-   `Deno.execPath()` (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture
-   is a runnable `Build` ending in `await run(...)`. **Name these files
+   `RuntimeTasks.execPath()` (guideline 5) against a temp `ZUKE_STATE_DIR`; the
+   fixture is a runnable `Build` ending in `await run(...)`. **Name these files
    `*_e2e.ts`** so default `deno test` discovery skips them — they stay out of
    the fast gate. They run only via the `integration` build target in
    `build.ts`, which the generated `.github/workflows/integration.yml` fans out

@@ -3,7 +3,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target, toolchain } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+  toolchain,
+} from "../../packages/core/mod.ts";
 import type { NpmRunner } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -17,9 +23,9 @@ let toolsDir = "";
 const fakeNpm: NpmRunner = async (args) => {
   npmCalls.push(args);
   const prefix = args[args.indexOf("--prefix") + 1];
-  await Deno.mkdir(`${prefix}/node_modules/.bin`, { recursive: true });
-  const exe = Deno.build.os === "windows" ? ".cmd" : "";
-  await Deno.writeTextFile(`${prefix}/node_modules/.bin/vitest${exe}`, "x");
+  await FileTasks.createDirectory(`${prefix}/node_modules/.bin`);
+  const exe = RuntimeTasks.os() === "windows" ? ".cmd" : "";
+  await FileTasks.writeText(`${prefix}/node_modules/.bin/vitest${exe}`, "x");
 };
 
 class ProvisionBuild extends Build {
@@ -38,7 +44,7 @@ class ProvisionBuild extends Build {
 
 test("a build provisions an npm-package tool end-to-end via the CLI", async () => {
   npmCalls = [];
-  toolsDir = await Deno.makeTempDir({ prefix: "zuke-npm-it-" });
+  toolsDir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-npm-it-"));
   try {
     const { code, out } = await runCli(ProvisionBuild, ["provision"]);
     assertEquals(code, 0);
@@ -46,18 +52,18 @@ test("a build provisions an npm-package tool end-to-end via the CLI", async () =
     assertEquals(npmCalls.length, 1);
     assertEquals(npmCalls[0][4], "vitest@4.1.9");
   } finally {
-    await Deno.remove(toolsDir, { recursive: true });
+    await FileTasks.remove(toolsDir, { recursive: true });
   }
 });
 
 test("re-provisioning the same pin reuses the cache (npm runs once)", async () => {
   npmCalls = [];
-  toolsDir = await Deno.makeTempDir({ prefix: "zuke-npm-it-" });
+  toolsDir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-npm-it-"));
   try {
     await runCli(ProvisionBuild, ["provision"]);
     await runCli(ProvisionBuild, ["provision"]); // second run hits the marker
     assertEquals(npmCalls.length, 1);
   } finally {
-    await Deno.remove(toolsDir, { recursive: true });
+    await FileTasks.remove(toolsDir, { recursive: true });
   }
 });

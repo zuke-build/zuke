@@ -4,7 +4,7 @@
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { withTemp } from "../_temp.ts";
-import { Build, glob, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, glob, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 // A build that globs a *computed* absolute path — a directory it was told about
@@ -26,10 +26,10 @@ class ManifestBuild extends Build {
 test("a target globbing an absolute path finds its files", async () => {
   await withTemp(async (dir) => {
     root = dir;
-    await Deno.mkdir(`${dir}/one`);
-    await Deno.mkdir(`${dir}/two`);
-    await Deno.writeTextFile(`${dir}/one/deno.json`, "{}");
-    await Deno.writeTextFile(`${dir}/two/deno.json`, "{}");
+    await FileTasks.createDirectory(`${dir}/one`, { recursive: false });
+    await FileTasks.createDirectory(`${dir}/two`, { recursive: false });
+    await FileTasks.writeText(`${dir}/one/deno.json`, "{}");
+    await FileTasks.writeText(`${dir}/two/deno.json`, "{}");
 
     const { code, out } = await runCli(ManifestBuild, ["manifests"]);
     assertEquals(code, 0, out);

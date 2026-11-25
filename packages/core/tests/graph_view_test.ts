@@ -3,7 +3,7 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
-import { Build, target } from "../mod.ts";
+import { Build, FileTasks, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import {
@@ -58,7 +58,7 @@ test("graphCommand falls back to the cwd when no config is found", async () => {
 });
 
 test("defaultGraphHost performs real filesystem effects", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const logs: string[] = [];
   const origLog = console.log;
   console.log = (...args: unknown[]) => void logs.push(args.join(" "));
@@ -68,11 +68,11 @@ test("defaultGraphHost performs real filesystem effects", async () => {
     assertEquals(defaultGraphHost.exists(`${dir}/nope`), false);
     await defaultGraphHost.mkdir(`${dir}/.zuke`);
     await defaultGraphHost.writeText(`${dir}/.zuke/graph.html`, "<html>");
-    assertEquals(await Deno.readTextFile(`${dir}/.zuke/graph.html`), "<html>");
+    assertEquals(await FileTasks.readText(`${dir}/.zuke/graph.html`), "<html>");
     defaultGraphHost.log("hello");
     assertEquals(logs, ["hello"]);
   } finally {
     console.log = origLog;
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

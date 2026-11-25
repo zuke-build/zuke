@@ -1,16 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { denoCalls } from "./_runtime_neutral.ts";
 
 /** A package root holding `mod.ts` and `src/a.ts` with `source`. */
 async function fixture(source: string): Promise<URL> {
-  const root = await Deno.makeTempDir();
-  await Deno.mkdir(`${root}/src`);
-  await Deno.writeTextFile(`${root}/mod.ts`, "");
-  await Deno.writeTextFile(`${root}/src/a.ts`, source);
+  const root = await FileTasks.makeTempDirectory();
+  await FileTasks.createDirectory(`${root}/src`, { recursive: false });
+  await FileTasks.writeText(`${root}/mod.ts`, "");
+  await FileTasks.writeText(`${root}/src/a.ts`, source);
   return new URL(`file://${root}/`);
 }
 

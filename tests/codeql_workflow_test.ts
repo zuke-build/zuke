@@ -15,6 +15,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 
@@ -24,7 +25,7 @@ test("codeql.yml analyzes every pull request and push to master", async () => {
   // Per-commit analysis is the point: the Scorecard SAST check counts the
   // commits that carry a code-scanning check run, so a schedule-only CodeQL
   // workflow would scan the code without ever crediting a commit.
-  const text = await Deno.readTextFile(WORKFLOW);
+  const text = await FileTasks.readText(WORKFLOW);
   assertStringIncludes(text, "pull_request:");
   assertStringIncludes(text, "- master");
   assertStringIncludes(text, "schedule:");
@@ -34,7 +35,7 @@ test("codeql.yml grants the analyze job only what uploading needs", async () => 
   // `security-events: write` is what lets `analyze` upload the SARIF; contents
   // stays read-only and nothing else is granted, keeping the workflow within
   // the least-privilege posture the other workflows hold.
-  const text = await Deno.readTextFile(WORKFLOW);
+  const text = await FileTasks.readText(WORKFLOW);
   assertStringIncludes(text, "security-events: write");
   assertEquals(text.includes("contents: write"), false);
   assertEquals(text.includes("id-token"), false);
@@ -44,14 +45,14 @@ test("codeql.yml covers the TypeScript sources and the workflows", async () => {
   // Two languages, one job: the `actions` pack audits the workflow YAML
   // itself, which for a repository that generates its workflows is the
   // artifact most worth scanning.
-  const text = await Deno.readTextFile(WORKFLOW);
+  const text = await FileTasks.readText(WORKFLOW);
   assertStringIncludes(text, "javascript-typescript,actions");
 });
 
 test("codeql.yml pins both codeql-action halves to one SHA", async () => {
   // init and analyze ship as one release, so their pins must move together —
   // and each `uses:` must be a full SHA, like every other generated workflow.
-  const text = await Deno.readTextFile(WORKFLOW);
+  const text = await FileTasks.readText(WORKFLOW);
   const uses = text.split("\n")
     .filter((line) => /^\s*(?:-\s+)?uses:\s*github\/codeql-action\//.test(line))
     .map((line) => {

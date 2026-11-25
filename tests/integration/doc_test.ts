@@ -3,7 +3,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { absolutePath, Build, target } from "../../packages/core/mod.ts";
+import {
+  absolutePath,
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 import { withTemp } from "../_temp.ts";
 import { withEnv } from "../_env.ts";
@@ -17,7 +23,7 @@ class Noop extends Build {
 test("zuke doc runs deno doc for a local module in an isolated cwd", async () => {
   await withTemp(async (dir) => {
     const mod = `${dir}/lib.ts`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       mod,
       '/** A documented greeting. */\nexport function greet(): string {\n  return "hi";\n}\n',
     );
@@ -40,13 +46,13 @@ test("zuke doc ignores a deno.json planted above its isolated temp dir", async (
   // workspace-root config stops the walk.
   await withTemp(async (dir) => {
     const shared = `${dir}/shared`;
-    await Deno.mkdir(shared);
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory(shared, { recursive: false });
+    await FileTasks.writeText(
       `${shared}/deno.json`,
       '{ "workspace": ["./*"], ',
     );
     const mod = `${dir}/lib.ts`;
-    await Deno.writeTextFile(mod, "/** Kept. */\nexport const kept = 1;\n");
+    await FileTasks.writeText(mod, "/** Kept. */\nexport const kept = 1;\n");
     let code = -1;
     await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
       code = (await runCli(Noop, ["doc", mod])).code;
@@ -85,7 +91,7 @@ test("the build's doc still treats a path as a path", async () => {
   // Deno.cwd(): on Windows the cwd comes back with backslashes and the
   // resolver normalises them, so a hand-built string disagrees there and
   // nowhere else — which is what the three-OS matrix is for.
-  assertEquals(seen, absolutePath(Deno.cwd(), "lib.ts").path);
+  assertEquals(seen, absolutePath(RuntimeTasks.cwd(), "lib.ts").path);
 
   await runCli(Noop, ["doc", "@scope/pkg"], { docRunner: runner });
   assertEquals(seen, "jsr:@scope/pkg");

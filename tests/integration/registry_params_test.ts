@@ -15,7 +15,9 @@ import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   denoExecutable,
+  FileTasks,
   parameter,
+  RuntimeTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { registerCommand } from "../../packages/core/src/registry/register.ts";
@@ -75,8 +77,8 @@ test("a registered build's parameters flow into the registry run tool", async ()
         // by default — as `zuke register` in this checkout would write it.
         location: {
           kind: "module",
-          module: `${Deno.cwd()}/deploy.ts`,
-          cwd: Deno.cwd(),
+          module: `${RuntimeTasks.cwd()}/deploy.ts`,
+          cwd: RuntimeTasks.cwd(),
         },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
@@ -163,7 +165,7 @@ test("a registered remote entry module is refused by the run tool, not spawned",
         location: {
           kind: "module",
           module: "https://attacker.example/x.ts",
-          cwd: Deno.cwd(),
+          cwd: RuntimeTasks.cwd(),
         },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
@@ -301,15 +303,15 @@ test("a registered command location is refused by the run tool, not spawned", as
 });
 
 test("a registered local module is confined to the allowed directories", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
-    const root = await Deno.realPath(dir);
+    const root = await FileTasks.realPath(dir);
     const registry = new FileSystemBuildRegistry(`${root}/registry`);
-    await Deno.mkdir(`${root}/repo`);
-    await Deno.mkdir(`${root}/outside`);
+    await FileTasks.createDirectory(`${root}/repo`, { recursive: false });
+    await FileTasks.createDirectory(`${root}/outside`, { recursive: false });
     // A link inside the allowed directory to a file a second party planted.
-    await Deno.writeTextFile(`${root}/outside/evil.ts`, "");
-    await Deno.symlink(`${root}/outside`, `${root}/repo/link`);
+    await FileTasks.writeText(`${root}/outside/evil.ts`, "");
+    await FileTasks.symlink(`${root}/outside`, `${root}/repo/link`);
 
     const register = async (id: string, module: string, cwd: string) => {
       await silence(async () => {

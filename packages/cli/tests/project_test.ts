@@ -25,6 +25,7 @@ import {
   runDependencies,
 } from "../src/dependencies.ts";
 import { noProjectProbe } from "../../../tests/support/cli/_fakes.ts";
+import { notFound } from "../../../tests/_fakes.ts";
 
 /** The fake project's root. */
 const ROOT = "/work/app";
@@ -66,7 +67,7 @@ class FakeProjectHost implements ProjectHost {
   readText(path: string): Promise<string> {
     const text = this.files.get(path);
     return text === undefined
-      ? Promise.reject(new Deno.errors.NotFound(path))
+      ? Promise.reject(notFound(path))
       : Promise.resolve(text);
   }
   writeText(path: string, text: string): Promise<void> {

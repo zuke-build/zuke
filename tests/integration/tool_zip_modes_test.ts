@@ -10,7 +10,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+  ToolTasks,
+} from "../../packages/core/mod.ts";
 import { makeZip } from "../_zip.ts";
 import { withTemp } from "../_temp.ts";
 import { runCli } from "./_harness.ts";
@@ -19,7 +25,7 @@ const enc = (s: string) => new TextEncoder().encode(s);
 
 test({
   name: "a build installs a Unix zip tree keeping its modes and symlinks",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       const bytes = await makeZip([
@@ -32,11 +38,13 @@ test({
           const root = await ToolTasks.installTree((s) =>
             s.name("sdk").archive("zip").strip(1).destDir(dir)
               .url(() => "https://example.test/sdk.zip")
-              .download((_url, dest) => Deno.writeFile(String(dest), bytes))
+              .download((_url, dest) =>
+                FileTasks.writeBytes(String(dest), bytes)
+              )
           );
-          const mode = (await Deno.stat(String(root("bin", "tool")))).mode;
+          const mode = (await FileTasks.stat(String(root("bin", "tool")))).mode;
           seen.push(((mode ?? 0) & 0o111).toString(8));
-          seen.push(await Deno.readLink(String(root("bin", "alias"))));
+          seen.push(await FileTasks.readLink(String(root("bin", "alias"))));
         });
       }
       const result = await runCli(Sdk, ["sdk"]);

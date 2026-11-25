@@ -8,6 +8,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import {
@@ -51,17 +52,17 @@ test("only an exact match of the installed files with the rebuild is accepted", 
 });
 
 test("readTree lists nested files by relative path, and refuses a symlink", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
-    await Deno.mkdir(`${dir}/src`);
-    await Deno.writeTextFile(`${dir}/mod.js`, "m");
-    await Deno.writeTextFile(`${dir}/src/a.js`, "a");
+    await FileTasks.createDirectory(`${dir}/src`, { recursive: false });
+    await FileTasks.writeText(`${dir}/mod.js`, "m");
+    await FileTasks.writeText(`${dir}/src/a.js`, "a");
     assertEquals([...(await readTree(dir)).keys()].sort(), [
       "mod.js",
       "src/a.js",
     ]);
-    if (Deno.build.os !== "windows") {
-      await Deno.symlink(`${dir}/mod.js`, `${dir}/link.js`);
+    if (RuntimeTasks.os() !== "windows") {
+      await FileTasks.symlink(`${dir}/mod.js`, `${dir}/link.js`);
       await assertRejects(
         () => readTree(dir),
         Error,
@@ -69,7 +70,7 @@ test("readTree lists nested files by relative path, and refuses a symlink", asyn
       );
     }
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
