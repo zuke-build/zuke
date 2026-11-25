@@ -3,7 +3,13 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
-import { Build, type McpRequestContext, target } from "../mod.ts";
+import {
+  Build,
+  FileTasks,
+  type McpRequestContext,
+  NetTasks,
+  target,
+} from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import { originAllowed, serveHttp } from "../src/mcp/http.ts";
@@ -321,7 +327,7 @@ test("serveMcp applies the build's identity hook to HTTP requests", async () => 
       };
     }
   }
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
   const ac = new AbortController();
   let setPort = (_: number) => {};
@@ -368,7 +374,7 @@ test("serveMcp applies the build's identity hook to HTTP requests", async () => 
   } finally {
     ac.abort();
     await finished;
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -759,7 +765,7 @@ test("serveMcp applies the build's mcpAuth() to HTTP requests", async () => {
       };
     }
   }
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
   const ac = new AbortController();
   let setPort = (_: number) => {};
@@ -806,17 +812,17 @@ test("serveMcp applies the build's mcpAuth() to HTTP requests", async () => {
   } finally {
     ac.abort();
     await finished;
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 // ---- Regressions: a malformed Host, and what unlocks a non-loopback bind ----
 
-test("a Host the URL parser rejects still serves, with no request view", async () => {
+test("a Host the URL parser rejects still serves, with a request view on the bound address", async () => {
   // Deno builds `request.url` from the raw Host header and accepts hosts the
-  // WHATWG parser rejects (`Host: bad host`). Building the authenticator's view
-  // of such a request throws, so the view is simply absent — the headers, where
-  // a credential lives, are intact, and the exchange completes rather than
+  // WHATWG parser rejects (`Host: bad host`). Core's server puts such a request
+  // on its own bound address, on either runtime, so the authenticator gets its
+  // view as for any other request, and the exchange completes rather than
   // failing on a header the server itself accepted.
   const seen: Array<{ hasRequest: boolean; token: string | null }> = [];
   const authenticator: McpAuthenticator = {
@@ -839,7 +845,7 @@ test("a Host the URL parser rejects still serves, with no request view", async (
   );
   try {
     // A raw socket, because `fetch` will not send a Host this malformed.
-    const conn = await Deno.connect({ hostname: "127.0.0.1", port: s.port });
+    const conn = await NetTasks.connect(s.port);
     const body = '{"jsonrpc":"2.0","id":1,"method":"tools/call"}';
     await conn.write(
       new TextEncoder().encode(
@@ -847,15 +853,16 @@ test("a Host the URL parser rejects still serves, with no request view", async (
           `Content-Length: ${body.length}\r\n\r\n${body}`,
       ),
     );
-    const buf = new Uint8Array(1024);
-    const n = await conn.read(buf);
-    const response = new TextDecoder().decode(buf.subarray(0, n ?? 0));
+    const reader = conn.readable.getReader();
+    const { value } = await reader.read();
+    const response = new TextDecoder().decode(value);
+    reader.releaseLock();
     conn.close();
 
     assertStringIncludes(response, "200 OK");
     assertStringIncludes(response, '"actor":"ada"');
-    // The authenticator ran, saw no request view, and still read its header.
-    assertEquals(seen, [{ hasRequest: false, token: "t" }]);
+    // The authenticator ran, with the request view and its header.
+    assertEquals(seen, [{ hasRequest: true, token: "t" }]);
   } finally {
     await s.stop();
   }

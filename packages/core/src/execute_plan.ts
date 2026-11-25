@@ -38,15 +38,18 @@ import { promptLine } from "./stdio.ts";
  *
  * @param interactive whether stdin is a terminal; defaults to asking the
  * system (a test seam).
+ * @param ask shows the label and returns the typed line, or `null` at the end
+ * of input; defaults to the terminal (a test seam).
  */
 export function defaultPrompt(
   flag: string,
   description: string | undefined,
   interactive: boolean = isatty(0),
+  ask: (message: string) => string | null = promptLine,
 ): string | undefined {
   if (!interactive || isCI()) return undefined;
   const label = description ? `--${flag} (${description})` : `--${flag}`;
-  return promptLine(`${label}:`) ?? undefined;
+  return ask(`${label}:`) ?? undefined;
 }
 
 /**

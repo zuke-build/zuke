@@ -52,18 +52,20 @@ export async function serve(
   if (options.signal?.aborted) return;
   if (!ON_DENO) return await serveOnNode(options, handler);
   let failure: { error: unknown } | undefined;
+  let bound = `http://${options.hostname}`;
   const server = Deno.serve({
     hostname: options.hostname,
     port: options.port,
     signal: options.signal,
     onListen: (address) => {
+      bound = origin(address.hostname, address.port);
       try {
         options.onListen(address);
       } catch (error) {
         failure = { error };
       }
     },
-  }, handler);
+  }, (request) => handler(onBound(request, bound)));
   if (failure !== undefined) {
     await server.shutdown();
     throw failure.error;
@@ -120,6 +122,37 @@ export function bodyStream(incoming: Readable): ReadableStream<Uint8Array> {
   }, { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength });
 }
 
+/** The origin of a server bound to `hostname` and `port`. */
+function origin(hostname: string, port: number): string {
+  return `http://${
+    hostname.includes(":") ? `[${hostname}]` : hostname
+  }:${port}`;
+}
+
+/**
+ * `given`, the URL a request's `Host` header makes with `path`, or the same
+ * path on `bound`, the server's own address, when the header makes no URL.
+ * Every handler can then parse what it is given, on either runtime.
+ */
+function parseableUrl(given: string, path: string, bound: string): string {
+  return URL.canParse(given)
+    ? given
+    : URL.canParse(`${bound}${path}`)
+    ? `${bound}${path}`
+    : `${bound}/`;
+}
+
+/**
+ * `request`, or a copy on the bound address when Deno built its URL from a
+ * `Host` header that makes none, as `Host: bad host` does.
+ */
+function onBound(request: Request, bound: string): Request {
+  if (URL.canParse(request.url)) return request;
+  const at = request.url.indexOf("/", "http://".length);
+  const path = at < 0 ? "/" : request.url.slice(at);
+  return new Request(parseableUrl(request.url, path, bound), request);
+}
+
 /**
  * The web request for `incoming`. Its URL is built from the `Host` header,
  * as Deno builds it, or from the bound address when that header does not
@@ -128,12 +161,11 @@ export function bodyStream(incoming: Readable): ReadableStream<Uint8Array> {
  */
 export function webRequest(incoming: IncomingMessage, bound: string): Request {
   const path = incoming.url ?? "/";
-  const given = `http://${incoming.headers.host ?? ""}${path}`;
-  const url = URL.canParse(given)
-    ? given
-    : URL.canParse(`${bound}${path}`)
-    ? `${bound}${path}`
-    : `${bound}/`;
+  const url = parseableUrl(
+    `http://${incoming.headers.host ?? ""}${path}`,
+    path,
+    bound,
+  );
   const headers = new Headers();
   const raw = incoming.rawHeaders;
   for (let at = 0; at + 1 < raw.length; at += 2) {
@@ -320,9 +352,7 @@ export async function serveOnNode(
   const port = typeof address === "object" && address !== null
     ? address.port
     : options.port;
-  bound = `http://${
-    options.hostname.includes(":") ? `[${options.hostname}]` : options.hostname
-  }:${port}`;
+  bound = origin(options.hostname, port);
   const closed = new Promise<void>((resolve) => server.once("close", resolve));
   const stop = () => {
     stopping = true;
