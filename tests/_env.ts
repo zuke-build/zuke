@@ -10,7 +10,6 @@
  * @module
  */
 
-import process from "node:process";
 import { EnvTasks } from "@zuke/core";
 
 /**
@@ -26,22 +25,17 @@ export async function withEnv(
   const saved = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(values)) {
     saved.set(name, EnvTasks.get(name));
-    setEnv(name, value);
+    set(name, value);
   }
   try {
     await fn();
   } finally {
-    for (const [name, value] of saved) setEnv(name, value);
+    for (const [name, value] of saved) set(name, value);
   }
 }
 
-/**
- * Set `name` for the rest of the process, or delete it when `value` is
- * `undefined`. Core reads the environment but never writes it, so a test that
- * must leave a variable changed comes here; {@link withEnv}, which restores
- * it, is the better fit wherever the change has a scope.
- */
-export function setEnv(name: string, value: string | undefined): void {
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
+/** Set `name` to `value`, or delete it when `value` is `undefined`. */
+function set(name: string, value: string | undefined): void {
+  if (value === undefined) EnvTasks.delete(name);
+  else EnvTasks.set(name, value);
 }

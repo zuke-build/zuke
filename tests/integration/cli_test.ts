@@ -9,7 +9,6 @@
  * unknown-target error path.
  */
 
-import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
@@ -29,11 +28,11 @@ async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
     s.prefix("zuke-it-cli-")
   );
   const prev = RuntimeTasks.cwd();
-  chdir(dir);
+  RuntimeTasks.chdir(dir);
   try {
     await fn(dir);
   } finally {
-    chdir(prev);
+    RuntimeTasks.chdir(prev);
     await FileTasks.remove(dir, { recursive: true });
   }
 }

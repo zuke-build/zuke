@@ -16,7 +16,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, target } from "../../packages/core/mod.ts";
 import type { Reporter } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
@@ -182,10 +182,10 @@ test("a lock holder's actor cannot forge a command in the waiting notice", async
   // line beside it.
   const NL = String.fromCharCode(10);
   const forged = ["ci-bot", "::stop-commands::deadbeef"].join(NL);
-  const prevActor = Deno.env.get("ZUKE_ACTOR");
-  const prevActions = Deno.env.get("GITHUB_ACTIONS");
-  Deno.env.set("ZUKE_ACTOR", forged);
-  Deno.env.set("GITHUB_ACTIONS", "true");
+  const prevActor = EnvTasks.get("ZUKE_ACTOR");
+  const prevActions = EnvTasks.get("GITHUB_ACTIONS");
+  EnvTasks.set("ZUKE_ACTOR", forged);
+  EnvTasks.set("GITHUB_ACTIONS", "true");
   try {
     await withStateDir(async () => {
       const { HolderBuild, release, held } = sharedResource();
@@ -232,9 +232,9 @@ test("a lock holder's actor cannot forge a command in the waiting notice", async
       );
     });
   } finally {
-    if (prevActor === undefined) Deno.env.delete("ZUKE_ACTOR");
-    else Deno.env.set("ZUKE_ACTOR", prevActor);
-    if (prevActions === undefined) Deno.env.delete("GITHUB_ACTIONS");
-    else Deno.env.set("GITHUB_ACTIONS", prevActions);
+    if (prevActor === undefined) EnvTasks.delete("ZUKE_ACTOR");
+    else EnvTasks.set("ZUKE_ACTOR", prevActor);
+    if (prevActions === undefined) EnvTasks.delete("GITHUB_ACTIONS");
+    else EnvTasks.set("GITHUB_ACTIONS", prevActions);
   }
 });

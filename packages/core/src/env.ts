@@ -59,6 +59,15 @@ export interface EnvTasksApi {
    * as unset rather than throwing.
    */
   get(name: string): string | undefined;
+
+  /**
+   * Set the environment variable `name` to `value` for this process and the
+   * processes it starts from now on.
+   */
+  set(name: string, value: string): void;
+
+  /** Remove the environment variable `name`; a no-op when it is not set. */
+  delete(name: string): void;
 }
 
 /**
@@ -73,5 +82,13 @@ export interface EnvTasksApi {
 export const EnvTasks: EnvTasksApi = {
   get(name: string): string | undefined {
     return defaultReadEnv(name);
+  },
+
+  set(name: string, value: string): void {
+    process.env[name] = value;
+  },
+
+  delete(name: string): void {
+    delete process.env[name];
   },
 };

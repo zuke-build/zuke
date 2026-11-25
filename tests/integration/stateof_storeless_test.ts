@@ -10,14 +10,14 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
 test("store-less ctx.stateOf(self) is equivalent to ctx.state", async () => {
   // Ensure no store resolves, so env.writer is undefined (the store-less path).
   const keys = ["ZUKE_STATE_DIR", "ZUKE_STATE_URL"];
-  const saved = keys.map((k) => [k, Deno.env.get(k)] as const);
-  for (const k of keys) Deno.env.delete(k);
+  const saved = keys.map((k) => [k, EnvTasks.get(k)] as const);
+  for (const k of keys) EnvTasks.delete(k);
 
   const log: string[] = [];
   try {
@@ -38,6 +38,6 @@ test("store-less ctx.stateOf(self) is equivalent to ctx.state", async () => {
       '{"version":"1.2.3","k":1}',
     ]);
   } finally {
-    for (const [k, v] of saved) if (v !== undefined) Deno.env.set(k, v);
+    for (const [k, v] of saved) if (v !== undefined) EnvTasks.set(k, v);
   }
 });

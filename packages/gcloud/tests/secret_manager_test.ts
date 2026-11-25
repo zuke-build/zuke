@@ -1,14 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { setEnv } from "../../../tests/_env.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
 } from "../../../tests/_assert.ts";
-import { HttpError } from "@zuke/core";
+import { EnvTasks, HttpError } from "@zuke/core";
 import { SecretManagerTasks } from "../src/secret_manager.ts";
 
 /** A `fetch` double that records calls and answers from a handler. */
@@ -164,14 +163,14 @@ test("the project falls back to the ambient GOOGLE_CLOUD_PROJECT env var", async
     })
   );
   // No project and no injected readEnv → the default reader reads the real env.
-  setEnv("GOOGLE_CLOUD_PROJECT", "ambient-proj");
+  EnvTasks.set("GOOGLE_CLOUD_PROJECT", "ambient-proj");
   try {
     assertEquals(
       await SecretManagerTasks.access("s", { token: "t0", fetch }),
       "x",
     );
   } finally {
-    setEnv("GOOGLE_CLOUD_PROJECT", undefined);
+    EnvTasks.delete("GOOGLE_CLOUD_PROJECT");
   }
 });
 

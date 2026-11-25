@@ -30,6 +30,7 @@ import {
   type FileInfo,
   lstat,
   makeTempDir,
+  makeTempFile,
   mkdir,
   mkdirRecursive,
   readDir,
@@ -50,7 +51,11 @@ import {
   isNotFound,
   lstatOrNull,
 } from "./internal.ts";
-import { TempDirectorySettings, WriteSettings } from "./file_settings.ts";
+import {
+  TempDirectorySettings,
+  TempFileSettings,
+  WriteSettings,
+} from "./file_settings.ts";
 import type { PathLike } from "./path.ts";
 import type { Configure } from "./tooling.ts";
 
@@ -299,6 +304,12 @@ export interface FileTasksApi {
     configure?: Configure<TempDirectorySettings>,
   ): Promise<string>;
 
+  /**
+   * Create an empty file of its own under the system's temporary directory
+   * and return its path. Removing it is the caller's job.
+   */
+  makeTempFile(configure?: Configure<TempFileSettings>): Promise<string>;
+
   /** Set the permission bits of `path`. Not for Windows, which has none. */
   chmod(path: PathLike, mode: number): Promise<void>;
 
@@ -307,6 +318,12 @@ export interface FileTasksApi {
    * a caller makes before treating a missing file as empty.
    */
   isNotFound(error: unknown): error is Error;
+
+  /**
+   * Whether `error` means something was already at the path, on any runtime:
+   * the check a caller makes when a create that must be new loses a race.
+   */
+  isAlreadyExists(error: unknown): error is Error;
 }
 
 /** Filesystem task functions for build scripts. */
@@ -468,11 +485,22 @@ export const FileTasks: FileTasksApi = {
     return makeTempDir(configure(new TempDirectorySettings()).prefix_);
   },
 
+  makeTempFile(
+    configure: Configure<TempFileSettings> = (s) => s,
+  ): Promise<string> {
+    const { prefix_, suffix_ } = configure(new TempFileSettings());
+    return makeTempFile(prefix_, suffix_);
+  },
+
   chmod(path: PathLike, mode: number): Promise<void> {
     return chmod(String(path), mode);
   },
 
   isNotFound(error: unknown): error is Error {
     return isNotFound(error);
+  },
+
+  isAlreadyExists(error: unknown): error is Error {
+    return isAlreadyExists(error);
   },
 };

@@ -11,7 +11,6 @@
  */
 
 import { FileTasks, RuntimeTasks } from "../mod.ts";
-import { chdir } from "../../../tests/_temp.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import {
@@ -305,11 +304,11 @@ test("the host filesystem resolves symlinks and missing tails", async () => {
     const fs = hostLaunchFileSystem();
     assertEquals(fs.defaultDir, RuntimeTasks.cwd());
     const previous = RuntimeTasks.cwd();
-    chdir(dir);
+    RuntimeTasks.chdir(dir);
     try {
       assertEquals(hostLaunchFileSystem().defaultDir, dir);
     } finally {
-      chdir(previous);
+      RuntimeTasks.chdir(previous);
     }
     await FileTasks.createDirectory(`${dir}/inside`, { recursive: false });
     await FileTasks.createDirectory(`${dir}/outside`, { recursive: false });

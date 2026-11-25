@@ -11,7 +11,6 @@
  * @module
  */
 
-import process from "node:process";
 import { FileTasks, RuntimeTasks } from "@zuke/core";
 
 /** Where a scope's directory goes, and the start of its name. */
@@ -78,19 +77,10 @@ export async function withTempCwd(
   const dir = await makeTempDir(options);
   const cwd = RuntimeTasks.cwd();
   try {
-    chdir(dir);
+    RuntimeTasks.chdir(dir);
     await fn(dir);
   } finally {
-    chdir(cwd);
+    RuntimeTasks.chdir(cwd);
     await discard(dir);
   }
-}
-
-/**
- * Change the process's working directory. Core reads it but never changes
- * it, so a test that must move comes here; {@link withTempCwd}, which moves
- * back, is the better fit wherever the move has a scope.
- */
-export function chdir(dir: string): void {
-  process.chdir(dir);
 }

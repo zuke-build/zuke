@@ -18,6 +18,7 @@ import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
   target,
@@ -268,15 +269,15 @@ test("a foreign build cannot force another build's run", async () => {
       fn: () => Promise<T>,
     ) => {
       const prev = Object.entries(vars).map(([k]) =>
-        [k, Deno.env.get(k)] as const
+        [k, EnvTasks.get(k)] as const
       );
-      for (const [k, v] of Object.entries(vars)) Deno.env.set(k, v);
+      for (const [k, v] of Object.entries(vars)) EnvTasks.set(k, v);
       try {
         return await fn();
       } finally {
         for (const [k, v] of prev) {
-          if (v === undefined) Deno.env.delete(k);
-          else Deno.env.set(k, v);
+          if (v === undefined) EnvTasks.delete(k);
+          else EnvTasks.set(k, v);
         }
       }
     };

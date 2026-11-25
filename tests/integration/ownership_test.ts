@@ -20,6 +20,7 @@ import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   FileSystemStateStore,
   target,
 } from "../../packages/core/mod.ts";
@@ -43,13 +44,13 @@ async function onlyRun(dir: string): Promise<RunRecord> {
  * from the environment, so an integration test has to set it there.
  */
 async function withBuildId(id: string, fn: () => Promise<void>): Promise<void> {
-  const prev = Deno.env.get("ZUKE_BUILD_ID");
-  Deno.env.set("ZUKE_BUILD_ID", id);
+  const prev = EnvTasks.get("ZUKE_BUILD_ID");
+  EnvTasks.set("ZUKE_BUILD_ID", id);
   try {
     await fn();
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_BUILD_ID");
-    else Deno.env.set("ZUKE_BUILD_ID", prev);
+    if (prev === undefined) EnvTasks.delete("ZUKE_BUILD_ID");
+    else EnvTasks.set("ZUKE_BUILD_ID", prev);
   }
 }
 
@@ -118,10 +119,10 @@ test("a run recorded with no origin is still swept", async () => {
       });
     }
 
-    const prevId = Deno.env.get("ZUKE_BUILD_ID");
-    const prevRepo = Deno.env.get("GITHUB_REPOSITORY");
-    Deno.env.delete("ZUKE_BUILD_ID");
-    Deno.env.delete("GITHUB_REPOSITORY");
+    const prevId = EnvTasks.get("ZUKE_BUILD_ID");
+    const prevRepo = EnvTasks.get("GITHUB_REPOSITORY");
+    EnvTasks.delete("ZUKE_BUILD_ID");
+    EnvTasks.delete("GITHUB_REPOSITORY");
     try {
       assertEquals((await runCli(Cd, ["promote"])).code, 0);
       const suspended = await onlyRun(dir);
@@ -133,8 +134,8 @@ test("a run recorded with no origin is still swept", async () => {
       assertEquals(promoted, ["promote"]);
       assertEquals((await onlyRun(dir)).status, "succeeded");
     } finally {
-      if (prevId !== undefined) Deno.env.set("ZUKE_BUILD_ID", prevId);
-      if (prevRepo !== undefined) Deno.env.set("GITHUB_REPOSITORY", prevRepo);
+      if (prevId !== undefined) EnvTasks.set("ZUKE_BUILD_ID", prevId);
+      if (prevRepo !== undefined) EnvTasks.set("GITHUB_REPOSITORY", prevRepo);
     }
   });
 });

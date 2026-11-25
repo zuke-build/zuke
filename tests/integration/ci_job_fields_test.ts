@@ -9,7 +9,6 @@
  * refuse one of those fields stopping the command with the reason.
  */
 
-import { chdir } from "../_temp.ts";
 import { test } from "../_testing.ts";
 import {
   assertEquals,
@@ -31,11 +30,11 @@ async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
     s.prefix("zuke-it-ci-fields-")
   );
   const prev = RuntimeTasks.cwd();
-  chdir(dir);
+  RuntimeTasks.chdir(dir);
   try {
     await fn(dir);
   } finally {
-    chdir(prev);
+    RuntimeTasks.chdir(prev);
     await FileTasks.remove(dir, { recursive: true });
   }
 }

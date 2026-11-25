@@ -1697,6 +1697,14 @@ class CiFile
   render(): string
     Render the file's YAML content (the base pipeline; fan-out is resolved at discovery).
 
+class ConnectSettings
+  Where {@link NetTasks.connect} connects.
+
+  hostname_: string
+    The address to connect to; see {@link hostname}.
+  hostname(address: string): this
+    The address to connect to (default `127.0.0.1`, this machine).
+
 class DiscordAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.discord}. Bot mode
   (`.bot().token(t).channel(c)`) posts through the REST API with a bot token.
@@ -2937,6 +2945,18 @@ class TempDirectorySettings
   prefix(start: string): this
     How the directory's name starts (default `zuke-`).
 
+class TempFileSettings
+  How `FileTasks.makeTempFile` names its file.
+
+  prefix_: string | undefined
+    How the file's name starts; see {@link prefix}.
+  suffix_: string | undefined
+    How the file's name ends; see {@link suffix}.
+  prefix(start: string): this
+    How the file's name starts (default `zuke-`).
+  suffix(end: string): this
+    How the file's name ends, such as an extension (default none).
+
 class ToolInstallSettings
   Fluent settings for installing a release tool. Configure it in a
   settings-lambda (`(s) => s.name(...).url(...)`), the same shape as Zuke's tool
@@ -4045,6 +4065,11 @@ interface EnvTasksApi
     The value of the environment variable `name`, or `undefined` when it is
     not set. A runtime that denies reading the environment, as Deno can, reads
     as unset rather than throwing.
+  set(name: string, value: string): void
+    Set the environment variable `name` to `value` for this process and the
+    processes it starts from now on.
+  delete(name: string): void
+    Remove the environment variable `name`; a no-op when it is not set.
 
 interface ExecuteOptions
   Options for {@link execute}.
@@ -4270,11 +4295,17 @@ interface FileTasksApi
   makeTempDirectory(configure?: Configure<TempDirectorySettings>): Promise<string>
     Create a directory of its own under the system's temporary directory and
     return its path. Removing it is the caller's job.
+  makeTempFile(configure?: Configure<TempFileSettings>): Promise<string>
+    Create an empty file of its own under the system's temporary directory
+    and return its path. Removing it is the caller's job.
   chmod(path: PathLike, mode: number): Promise<void>
     Set the permission bits of `path`. Not for Windows, which has none.
   isNotFound(error: unknown): error is Error
     Whether `error` means the path was not there, on any runtime: the check
     a caller makes before treating a missing file as empty.
+  isAlreadyExists(error: unknown): error is Error
+    Whether `error` means something was already at the path, on any runtime:
+    the check a caller makes when a create that must be new loses a race.
 
 interface ForEachItem
   One materialised fan-out item: a unique label plus its pipeline stages.
@@ -4666,7 +4697,7 @@ interface McpRequestContext
     there. Everything else — method, URL, headers — is the real request's.
 
 interface NetConnection
-  One accepted TCP connection.
+  One TCP connection, accepted or opened.
 
   readonly readable: ReadableStream<Uint8Array>
     What the other side sends. It ends when the other side closes its half,
@@ -4692,6 +4723,14 @@ interface NetListener
   close(): void
     Stop listening. Connections already accepted stay open.
 
+interface NetServer
+  An HTTP server {@link NetTasks.serve} started.
+
+  readonly port: number
+    The port, which the system chose when `0` was asked for.
+  close(): Promise<void>
+    Stop serving, resolving once the server has closed.
+
 interface NetTasksApi
   The shape of {@link NetTasks}.
 
@@ -4702,6 +4741,25 @@ interface NetTasksApi
 
     ```ts
     const listener = await NetTasks.listen((s) => s.port(8080));
+    ```
+  connect(port: number, configure?: Configure<ConnectSettings>): Promise<NetConnection>
+    Connect to `port`, on loopback unless `configure` names another host.
+
+    ```ts
+    const connection = await NetTasks.connect(8080);
+    ```
+
+    @throws
+        when nothing accepts the connection.
+
+  serve(handler: FetchHandler, configure?: Configure<ListenSettings>): Promise<NetServer>
+    Answer HTTP requests with `handler`, listening where `configure` says, as
+    {@link listen} does, until the server is closed.
+
+    ```ts
+    const server = await NetTasks.serve(() => new Response("ok"));
+    await fetch(`http://127.0.0.1:${server.port}/`);
+    await server.close();
     ```
 
 interface NpmToolSpec
@@ -5417,6 +5475,8 @@ interface RuntimeTasksApi
     reports it.
   cwd(): string
     The process's current working directory.
+  chdir(path: PathLike): void
+    Make `path` the process's working directory.
   isTerminal(stream: StandardStream): boolean
     Whether `stream` is connected to a terminal.
   exit(code: number): never
@@ -6058,6 +6118,9 @@ type EffectStatus = "pending" | "done" | "failed"
   `pending` is the load-bearing one: it means the intent was committed and the
   body may or may not have run. A process that dies mid-effect leaves exactly
   that, which is what tells a later resume to drive it again.
+
+type FetchHandler = (request: Request) => Response | Promise<Response>
+  A handler that answers a web request with a web response.
 
 type ForEachFactory<Item> = (item: Item, index: number) => Record<string, TargetBuilder>
   Builds one item's ordered pipeline of sub-targets for {@link TargetBuilder.forEach}.

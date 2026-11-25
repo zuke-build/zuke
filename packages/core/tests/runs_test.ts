@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
@@ -328,9 +329,9 @@ test("runsCommand show reports an unknown run id", async () => {
 });
 
 test("runsCommand resolves the store from ZUKE_STATE_DIR", async () => {
-  const dir = await Deno.makeTempDir();
-  const prev = Deno.env.get("ZUKE_STATE_DIR");
-  Deno.env.set("ZUKE_STATE_DIR", `${dir}/runs`);
+  const dir = await FileTasks.makeTempDirectory();
+  const prev = EnvTasks.get("ZUKE_STATE_DIR");
+  EnvTasks.set("ZUKE_STATE_DIR", `${dir}/runs`);
   try {
     const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
     await store.putRun(sampleRecord({ id: "env-run" }), null);
@@ -341,9 +342,9 @@ test("runsCommand resolves the store from ZUKE_STATE_DIR", async () => {
     assertEquals(code, 0);
     assertStringIncludes(out, "env-run");
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_STATE_DIR");
-    else Deno.env.set("ZUKE_STATE_DIR", prev);
-    await Deno.remove(dir, { recursive: true });
+    if (prev === undefined) EnvTasks.delete("ZUKE_STATE_DIR");
+    else EnvTasks.set("ZUKE_STATE_DIR", prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

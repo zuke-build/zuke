@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
 import type { Plugin, RunRecord } from "@zuke/core";
@@ -156,13 +157,13 @@ test("with no reader injected, the endpoint comes from the ambient env", () => {
   // Both directions matter: an endpoint present makes the plugin live, and
   // absent leaves it inert, so a default reader wired to nothing cannot pass.
   assertEquals(otelWith(undefined, {}).onRunStateChange, undefined);
-  Deno.env.set("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test");
+  EnvTasks.set("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test");
   try {
     const plugin = otelWith(undefined, {});
     assertEquals(plugin.name, "otel");
     assertEquals(typeof plugin.onRunStateChange, "function");
   } finally {
-    Deno.env.delete("OTEL_EXPORTER_OTLP_ENDPOINT");
+    EnvTasks.delete("OTEL_EXPORTER_OTLP_ENDPOINT");
   }
 });
 
@@ -216,12 +217,12 @@ test("otel() reads the environment and is inert with no endpoint", () => {
     "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
     "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
   ];
-  const saved = keys.map((k) => [k, Deno.env.get(k)] as const);
-  for (const k of keys) Deno.env.delete(k);
+  const saved = keys.map((k) => [k, EnvTasks.get(k)] as const);
+  for (const k of keys) EnvTasks.delete(k);
   try {
     assertEquals(otel().onRunStateChange, undefined);
   } finally {
-    for (const [k, v] of saved) if (v !== undefined) Deno.env.set(k, v);
+    for (const [k, v] of saved) if (v !== undefined) EnvTasks.set(k, v);
   }
 });
 

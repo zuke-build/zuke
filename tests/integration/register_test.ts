@@ -11,7 +11,9 @@ import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
+  EnvTasks,
   FileSystemBuildRegistry,
+  FileTasks,
   parameter,
   target,
 } from "../../packages/core/mod.ts";
@@ -28,15 +30,17 @@ class RegBuild extends Build {
 async function withRegistryDir(
   fn: (dir: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-reg-it-" });
-  const prev = Deno.env.get("ZUKE_REGISTRY_DIR");
-  Deno.env.set("ZUKE_REGISTRY_DIR", dir);
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-reg-it-")
+  );
+  const prev = EnvTasks.get("ZUKE_REGISTRY_DIR");
+  EnvTasks.set("ZUKE_REGISTRY_DIR", dir);
   try {
     await fn(dir);
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_REGISTRY_DIR");
-    else Deno.env.set("ZUKE_REGISTRY_DIR", prev);
-    await Deno.remove(dir, { recursive: true });
+    if (prev === undefined) EnvTasks.delete("ZUKE_REGISTRY_DIR");
+    else EnvTasks.set("ZUKE_REGISTRY_DIR", prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -78,7 +82,7 @@ test("zuke register recovers from a mutex marker a killed register left behind",
     // register used to wedge and fail until a human deleted the file; the shared
     // mutex reclaims it instead.
     const marker = `${dir}/RegBuild.json.lock`;
-    await Deno.writeTextFile(marker, String(Date.now() - 600_000));
+    await FileTasks.writeText(marker, String(Date.now() - 600_000));
 
     const res = await runCli(RegBuild, ["register"]);
     assertEquals(res.code, 0, res.err);
@@ -93,7 +97,7 @@ test("zuke register recovers from a mutex marker a killed register left behind",
 /** Whether `path` exists, for asserting a marker was cleaned up. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.lstat(path);
+    await FileTasks.lstat(path);
     return true;
   } catch {
     return false;
