@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.85.0](https://github.com/zuke-build/zuke/compare/core-v1.84.0...core-v1.85.0) (2026-11-25)
+
+
+### Features
+
+* **core:** tasks for writing the environment, changing directory, temp files, TCP connections and serving HTTP ([#1154](https://github.com/zuke-build/zuke/issues/1154)) ([7f18230](https://github.com/zuke-build/zuke/commit/7f18230df9d24107b7640ab4dece9ad3fbe605b4))
+
 ## [1.84.0](https://github.com/zuke-build/zuke/compare/core-v1.83.2...core-v1.84.0) (2026-11-23)
 
 
