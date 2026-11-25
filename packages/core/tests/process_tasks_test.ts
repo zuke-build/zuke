@@ -49,7 +49,9 @@ test("ProcessTasks passes the working directory and environment it is given", as
       (s) =>
         s.args(
           EVAL,
-          "console.log(process.cwd(), process.env['ZUKE_ONLY'], process.env['HOME'])",
+          "const fs = process.getBuiltinModule('node:fs'); " +
+            "console.log(fs.realpathSync.native(process.cwd()), " +
+            "process.env['ZUKE_ONLY'], process.env['HOME'])",
         )
           .cwd(dir)
           .env("ZUKE_ONLY", "set")
