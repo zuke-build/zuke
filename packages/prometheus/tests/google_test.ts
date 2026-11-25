@@ -14,7 +14,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../../tests/_assert.ts";
-import { InsecureBackendUrlError } from "@zuke/core";
+import { type HostOs, InsecureBackendUrlError } from "@zuke/core";
 import { PrometheusGoogleSettings, PrometheusTasks } from "../mod.ts";
 import { googleCredentials } from "../src/google.ts";
 import {
@@ -43,7 +43,7 @@ async function headers(
   seams: Seams,
   configure: (g: PrometheusGoogleSettings) => PrometheusGoogleSettings = (g) =>
     g,
-  platform: typeof Deno.build.os = "linux",
+  platform: HostOs = "linux",
 ) {
   return await googleCredentials(
     configure(new PrometheusGoogleSettings()),

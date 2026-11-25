@@ -1,6 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
+import { notFound } from "../../../tests/_fakes.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { publishFile } from "../src/state/json_file_cas.ts";
@@ -37,7 +39,7 @@ function flakyRenameHost(
 
 /** What Windows raises when the destination is open elsewhere. */
 function sharingViolation(): Error {
-  return new Deno.errors.PermissionDenied("os error 32");
+  return Object.assign(new Error("os error 32"), { code: "EPERM" });
 }
 
 test("publishFile lands once the reader holding the destination lets go", async () => {
@@ -59,7 +61,6 @@ test("publishFile gives the caller the real error once the budget is spent", asy
 
   const error = await assertRejects(
     () => publishFile(host, "/runs/run-1.json.tmp-x", "/runs/run-1.json"),
-    Deno.errors.PermissionDenied,
   );
   // The platform's own message, not one this layer invented on top of it.
   assertEquals(error.message.includes("os error 32"), true);
@@ -69,14 +70,14 @@ test("publishFile gives the caller the real error once the budget is spent", asy
 test("publishFile does not retry a missing temp file", async () => {
   const { host, attempts } = flakyRenameHost(
     Number.MAX_SAFE_INTEGER,
-    () => new Deno.errors.NotFound("rename /runs/run-1.json.tmp-x"),
+    () => notFound("rename /runs/run-1.json.tmp-x"),
   );
 
   // Nothing to publish is a bug in the caller, not a race with a reader:
   // waiting cannot make the temp file appear, so it fails on the first try.
-  await assertRejects(
+  const error = await assertRejects(
     () => publishFile(host, "/runs/run-1.json.tmp-x", "/runs/run-1.json"),
-    Deno.errors.NotFound,
   );
+  assertEquals(FileTasks.isNotFound(error), true);
   assertEquals(attempts(), 1);
 });

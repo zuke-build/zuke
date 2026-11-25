@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -167,11 +168,11 @@ test("a target without inputs is never cached", async () => {
 
 test("defaultCacheHost hashes a real directory and tolerates missing paths", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/src`);
-    await Deno.writeTextFile(`${dir}/src/a.ts`, "a");
+    await FileTasks.createDirectory(`${dir}/src`, { recursive: false });
+    await FileTasks.writeText(`${dir}/src/a.ts`, "a");
     const t = target().inputs(`${dir}/src`, `${dir}/missing.ts`);
     const before = await fingerprint(t, defaultCacheHost);
-    await Deno.writeTextFile(`${dir}/src/a.ts`, "changed");
+    await FileTasks.writeText(`${dir}/src/a.ts`, "changed");
     const after = await fingerprint(t, defaultCacheHost);
     assertEquals(before === after, false);
   });
@@ -512,10 +513,10 @@ test("defaultCacheHost spools to a temporary file it can reopen and remove", asy
         const bytes = await new Response(await spooled.open()).arrayBuffer();
         assertEquals(dec(new Uint8Array(bytes)), "artifact bytes");
       }
-      assertEquals([...Deno.readDirSync(dir)].length, 1);
+      assertEquals((await FileTasks.readDirectory(dir)).length, 1);
       await spooled.remove();
       await spooled.remove(); // already gone: still no throw
-      assertEquals([...Deno.readDirSync(dir)].length, 0);
+      assertEquals((await FileTasks.readDirectory(dir)).length, 0);
 
       // A download that fails part-way leaves no file behind.
       const failing = new ReadableStream<Uint8Array<ArrayBuffer>>({
@@ -527,7 +528,7 @@ test("defaultCacheHost spools to a temporary file it can reopen and remove", asy
         defaultCacheHost.spool?.(failing) ?? Promise.resolve()
       );
       assertStringIncludes(err.message, "connection reset");
-      assertEquals([...Deno.readDirSync(dir)].length, 0);
+      assertEquals((await FileTasks.readDirectory(dir)).length, 0);
     });
   });
 });
@@ -559,15 +560,15 @@ async function withTempDirEnv(
   fn: () => Promise<void>,
 ): Promise<void> {
   const names = ["TMPDIR", "TMP", "TEMP"];
-  const previous = names.map((name) => Deno.env.get(name));
-  for (const name of names) Deno.env.set(name, dir);
+  const previous = names.map((name) => EnvTasks.get(name));
+  for (const name of names) EnvTasks.set(name, dir);
   try {
     await fn();
   } finally {
     names.forEach((name, i) => {
       const value = previous[i];
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     });
   }
 }

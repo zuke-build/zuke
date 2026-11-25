@@ -18,7 +18,7 @@
  * @module
  */
 
-import { glob, reportTestCounts, type TestCounts } from "@zuke/core";
+import { FileTasks, glob, reportTestCounts, type TestCounts } from "@zuke/core";
 import { stripAnsi } from "@zuke/core/render";
 import { parseTestSummary } from "../packages/deno/src/test_summary.ts";
 
@@ -215,11 +215,11 @@ export async function runShards(
  */
 export async function pruneEmptyProfiles(dir: string): Promise<number> {
   let pruned = 0;
-  for await (const entry of Deno.readDir(dir)) {
+  for (const entry of await FileTasks.readDirectory(dir)) {
     if (!entry.isFile) continue;
     const path = `${dir}/${entry.name}`;
-    if ((await Deno.stat(path)).size === 0) {
-      await Deno.remove(path);
+    if ((await FileTasks.stat(path)).size === 0) {
+      await FileTasks.remove(path);
       pruned++;
     }
   }

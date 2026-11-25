@@ -15,7 +15,11 @@ import {
   assertStringIncludes,
 } from "./_assert.ts";
 import { withTemp } from "./_temp.ts";
-import { envCacheStore } from "../packages/core/mod.ts";
+import {
+  type DirectoryEntry,
+  envCacheStore,
+  FileTasks,
+} from "../packages/core/mod.ts";
 import {
   discoverTestFiles,
   HERMETIC_ENV,
@@ -62,10 +66,8 @@ test("discover: every *_test.ts, sorted, never inside node_modules", async () =>
         "x/node_modules/pkg/dep_test.ts",
       ]
     ) {
-      await Deno.mkdir(`${dir}/${path.replace(/\/[^/]+$/, "")}`, {
-        recursive: true,
-      });
-      await Deno.writeTextFile(`${dir}/${path}`, "");
+      await FileTasks.createDirectory(`${dir}/${path.replace(/\/[^/]+$/, "")}`);
+      await FileTasks.writeText(`${dir}/${path}`, "");
     }
     assertEquals(await discoverTestFiles(dir), [
       "a/one_test.ts",
@@ -80,14 +82,14 @@ const DENO_DEFAULT_TEST = /^(?:.*[_.])?test\.(?:ts|tsx|mts|js|mjs|jsx)$/;
 /** Every file under `dir` deno's default discovery would run, skipping `.git` and `node_modules`. */
 async function denoDiscoverable(dir: string): Promise<string[]> {
   const found: string[] = [];
-  let entries: Deno.DirEntry[];
+  let entries: DirectoryEntry[];
   try {
-    entries = await Array.fromAsync(Deno.readDir(dir));
+    entries = await FileTasks.readDirectory(dir);
   } catch (error) {
     // A gate target's scratch directory in the repository root, such as
     // snippetsCheck's `.snippets-*`, can be gone between the listing that
     // found it and this read; it held no test either way.
-    if (error instanceof Deno.errors.NotFound) return found;
+    if (FileTasks.isNotFound(error)) return found;
     throw error;
   }
   for (const entry of entries) {
@@ -104,8 +106,8 @@ async function denoDiscoverable(dir: string): Promise<string[]> {
 }
 
 test("discover: a directory gone before it is read holds no test", async () => {
-  const dir = await Deno.makeTempDir();
-  await Deno.remove(dir);
+  const dir = await FileTasks.makeTempDirectory();
+  await FileTasks.remove(dir);
   assertEquals(await denoDiscoverable(dir), []);
 });
 
@@ -280,12 +282,14 @@ test("the hermetic env blanks the job's summary and remote cache", () => {
 
 test("pruneEmptyProfiles: drops the zero-byte profiles and keeps the rest", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/full.json`, "{}");
-    await Deno.writeTextFile(`${dir}/cut-off.json`, "");
-    await Deno.mkdir(`${dir}/nested`);
+    await FileTasks.writeText(`${dir}/full.json`, "{}");
+    await FileTasks.writeText(`${dir}/cut-off.json`, "");
+    await FileTasks.createDirectory(`${dir}/nested`, { recursive: false });
     assertEquals(await pruneEmptyProfiles(dir), 1);
     const left = [];
-    for await (const entry of Deno.readDir(dir)) left.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      left.push(entry.name);
+    }
     assertEquals(left.sort(), ["full.json", "nested"]);
     assertEquals(await pruneEmptyProfiles(dir), 0);
   });

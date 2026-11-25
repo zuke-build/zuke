@@ -16,11 +16,14 @@ import {
   affectedTargets,
   Build,
   type ChangedFilesFn,
+  EnvTasks,
+  FileTasks,
   plan,
+  RuntimeTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
-// The incremental cache resolves `.zuke/cache.json` relative to `Deno.cwd()`
+// The incremental cache resolves `.zuke/cache.json` relative to the working directory
 // (see `resolveCache` in `packages/core/src/executor.ts`), so a caching test
 // must isolate the cwd the way `packages/core/tests/executor_test.ts` does —
 // otherwise a run through the real CLI would write its cache store into this
@@ -34,7 +37,7 @@ const enc = (text: string) => new TextEncoder().encode(text);
 test("a target with unchanged inputs is skipped as cached, and reruns when the input changes", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+      await FileTasks.writeText(`${dir}/input.txt`, "v1");
       const log: string[] = [];
       class B extends Build {
         build = target().inputs("input.txt").executes(() =>
@@ -51,7 +54,7 @@ test("a target with unchanged inputs is skipped as cached, and reruns when the i
       assertEquals(log, ["build"]); // unchanged input → skipped, body not re-run
       assertStringIncludes(second.out, "Cached");
 
-      await Deno.writeTextFile(`${dir}/input.txt`, "v2");
+      await FileTasks.writeText(`${dir}/input.txt`, "v2");
       const third = await runCli(B, ["build"]);
       assertEquals(third.code, 0);
       assertEquals(log, ["build", "build"]); // changed input → rebuilt
@@ -113,7 +116,7 @@ test("always() still runs after a build-wide failure, but is not exempt from the
       // executor.ts) happens before the always/halted check, so an always()
       // target with unchanged inputs is skipped exactly like any other
       // cacheable target.
-      await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+      await FileTasks.writeText(`${dir}/input.txt`, "v1");
       class Cached extends Build {
         maintain = target().inputs("input.txt").always().executes(() =>
           void log.push("maintain")
@@ -134,23 +137,25 @@ test("always() still runs after a build-wide failure, but is not exempt from the
 test("a FileSystemCacheStore (env-configured) restores outputs on a fresh checkout", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
-      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-remote-")
+      );
+      const prevRemote = EnvTasks.get("ZUKE_REMOTE_CACHE_DIR");
       // `ZUKE_REMOTE_CACHE_DIR` selects a FileSystemCacheStore via the
       // `envCacheStore` seam (see remote_cache.ts); the CLI passes
       // `remoteCache: undefined` unless `--no-remote-cache` is given, so this
       // env var is picked up automatically by a plain `runCli` call.
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await Deno.writeTextFile("out.txt", "built");
-              if (Deno.build.os !== "windows") {
-                await Deno.chmod("out.txt", 0o755);
+              await FileTasks.writeText("out.txt", "built");
+              if (RuntimeTasks.os() !== "windows") {
+                await FileTasks.chmod("out.txt", 0o755);
               }
             },
           );
@@ -162,98 +167,105 @@ test("a FileSystemCacheStore (env-configured) restores outputs on a fresh checko
 
         // Simulate a fresh checkout: drop the local cache store and the
         // output, but keep the remote store populated by the first run.
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/out.txt`);
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/out.txt`);
 
         const second = await runCli(B, ["build"]);
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored from the remote store, body not re-run
-        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
         // A restored binary must still run: the executable bit survived the
         // archive. Windows has no permission bits to check.
-        if (Deno.build.os !== "windows") {
-          const mode = (await Deno.stat(`${dir}/out.txt`)).mode ?? 0;
+        if (RuntimeTasks.os() !== "windows") {
+          const mode = (await FileTasks.stat(`${dir}/out.txt`)).mode ?? 0;
           assertEquals(mode & 0o111, 0o111);
         }
       } finally {
         if (prevRemote === undefined) {
-          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+          EnvTasks.delete("ZUKE_REMOTE_CACHE_DIR");
         } else {
-          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+          EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
         }
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
 });
 
 test("a node_modules output restores its .bin links as links, so tools still resolve", async () => {
-  if (Deno.build.os === "windows") return; // npm writes .cmd shims there, not links
+  if (RuntimeTasks.os() === "windows") return; // npm writes .cmd shims there, not links
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
-      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-remote-")
+      );
+      const prevRemote = EnvTasks.get("ZUKE_REMOTE_CACHE_DIR");
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
       try {
-        await Deno.writeTextFile(`${dir}/package-lock.json`, "{}");
+        await FileTasks.writeText(`${dir}/package-lock.json`, "{}");
         const log: string[] = [];
         class B extends Build {
           deps = target().inputs("package-lock.json").outputs("node_modules")
             .executes(async () => {
               log.push("npm ci");
-              await Deno.mkdir("node_modules/.bin", { recursive: true });
-              await Deno.mkdir("node_modules/tool/dist", { recursive: true });
-              await Deno.writeTextFile(
+              await FileTasks.createDirectory("node_modules/.bin");
+              await FileTasks.createDirectory("node_modules/tool/dist");
+              await FileTasks.writeText(
                 "node_modules/tool/cli.mjs",
                 "import './dist/x.js';\n",
               );
-              await Deno.writeTextFile("node_modules/tool/dist/x.js", "\n");
-              await Deno.symlink("../tool/cli.mjs", "node_modules/.bin/tool");
+              await FileTasks.writeText("node_modules/tool/dist/x.js", "\n");
+              await FileTasks.symlink(
+                "../tool/cli.mjs",
+                "node_modules/.bin/tool",
+              );
             });
         }
         assertEquals((await runCli(B, ["deps"])).code, 0);
 
         // A fresh runner: no local cache, no node_modules.
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/node_modules`, { recursive: true });
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/node_modules`, { recursive: true });
         const second = await runCli(B, ["deps"]);
         assertEquals(second.code, 0);
         assertEquals(log, ["npm ci"]); // restored, not reinstalled
         assertEquals(
-          await Deno.readLink(`${dir}/node_modules/.bin/tool`),
+          await FileTasks.readLink(`${dir}/node_modules/.bin/tool`),
           "../tool/cli.mjs",
         );
       } finally {
         if (prevRemote === undefined) {
-          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+          EnvTasks.delete("ZUKE_REMOTE_CACHE_DIR");
         } else {
-          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+          EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
         }
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
 });
 
 test("an output with a looping directory link uploads and restores", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
-      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-remote-")
+      );
+      const prevRemote = EnvTasks.get("ZUKE_REMOTE_CACHE_DIR");
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("dist").executes(
             async () => {
               log.push("build");
-              await Deno.mkdir("dist", { recursive: true });
-              await Deno.writeTextFile("dist/app.js", "built");
+              await FileTasks.createDirectory("dist");
+              await FileTasks.writeText("dist/app.js", "built");
               // Absolute, so it is copied rather than kept — and it loops.
-              await Deno.symlink(
-                `${await Deno.realPath(".")}/dist`,
+              await FileTasks.symlink(
+                `${await FileTasks.realPath(".")}/dist`,
                 "dist/self",
               );
             },
@@ -264,18 +276,18 @@ test("an output with a looping directory link uploads and restores", async () =>
         // The upload used to descend until ELOOP and fail with a warning.
         assertEquals((first.err + first.out).includes("upload"), false);
 
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/dist`, { recursive: true });
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/dist`, { recursive: true });
         assertEquals((await runCli(B, ["build"])).code, 0);
         assertEquals(log, ["build"]); // restored, not rebuilt
-        assertEquals(await Deno.readTextFile(`${dir}/dist/app.js`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/dist/app.js`), "built");
       } finally {
         if (prevRemote === undefined) {
-          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+          EnvTasks.delete("ZUKE_REMOTE_CACHE_DIR");
         } else {
-          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+          EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
         }
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
@@ -284,51 +296,53 @@ test("an output with a looping directory link uploads and restores", async () =>
 test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-remote-")
+      );
       const vars = [
         "ZUKE_REMOTE_CACHE_DIR",
         "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES",
       ];
-      const prev = vars.map((name) => Deno.env.get(name));
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
-      Deno.env.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1048576");
+      const prev = vars.map((name) => EnvTasks.get(name));
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      EnvTasks.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1048576");
       const sdk = ".zuke/tools/sdk";
       // Past ustar's 100-byte name field, so it rides in a pax header.
       const deep = `${sdk}/${"packages/".repeat(12)}lib.dart`;
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           sdk = target().inputs("input.txt").outputs(sdk).executes(
             async () => {
               log.push("install");
-              await Deno.mkdir(`${sdk}/.git`, { recursive: true });
-              await Deno.writeTextFile(`${sdk}/.git/HEAD`, "ref: stable\n");
-              await Deno.mkdir(deep.slice(0, deep.lastIndexOf("/")), {
-                recursive: true,
-              });
-              await Deno.writeTextFile(deep, "library sdk;\n");
+              await FileTasks.createDirectory(`${sdk}/.git`);
+              await FileTasks.writeText(`${sdk}/.git/HEAD`, "ref: stable\n");
+              await FileTasks.createDirectory(
+                deep.slice(0, deep.lastIndexOf("/")),
+              );
+              await FileTasks.writeText(deep, "library sdk;\n");
             },
           );
         }
         assertEquals((await runCli(B, ["sdk"])).code, 0);
         // A fresh checkout: the local cache and the SDK both gone.
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
         assertEquals((await runCli(B, ["sdk"])).code, 0);
         assertEquals(log, ["install"]); // restored, not reinstalled
         assertEquals(
-          await Deno.readTextFile(`${dir}/${sdk}/.git/HEAD`),
+          await FileTasks.readText(`${dir}/${sdk}/.git/HEAD`),
           "ref: stable\n",
         );
         assertEquals(
-          await Deno.readTextFile(`${dir}/${deep}`),
+          await FileTasks.readText(`${dir}/${deep}`),
           "library sdk;\n",
         );
 
         // Below what the artifact inflates to, the restore is refused and
         // the target rebuilds rather than failing.
-        Deno.env.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1024");
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        EnvTasks.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1024");
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
         const refused = await runCli(B, ["sdk"]);
         assertEquals(refused.code, 0);
         assertEquals(log, ["install", "install"]);
@@ -336,30 +350,32 @@ test("an SDK under .zuke/tools caches with its .git and long paths, within the c
       } finally {
         vars.forEach((name, i) => {
           const value = prev[i];
-          if (value === undefined) Deno.env.delete(name);
-          else Deno.env.set(name, value);
+          if (value === undefined) EnvTasks.delete(name);
+          else EnvTasks.set(name, value);
         });
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
 });
 
 test("a remote restore onto a symlinked output is refused, and rebuilds", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
-      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-remote-")
+      );
+      const prevRemote = EnvTasks.get("ZUKE_REMOTE_CACHE_DIR");
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await Deno.writeTextFile("out.txt", "built");
+              await FileTasks.writeText("out.txt", "built");
             },
           );
         }
@@ -370,20 +386,22 @@ test("a remote restore onto a symlinked output is refused, and rebuilds", async 
 
         // Fresh checkout, except the workspace now has a symlink where the
         // declared output goes — pointing at a file outside the workspace.
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/out.txt`);
-        const outside = await Deno.makeTempDir({ prefix: "zuke-it-outside-" });
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/out.txt`);
+        const outside = await FileTasks.makeTempDirectory((s) =>
+          s.prefix("zuke-it-outside-")
+        );
         const victim = `${outside}/victim.txt`;
-        await Deno.writeTextFile(victim, "untouched");
-        await Deno.symlink(victim, `${dir}/out.txt`);
+        await FileTasks.writeText(victim, "untouched");
+        await FileTasks.symlink(victim, `${dir}/out.txt`);
 
         // Poison the stored artifact. The rebuild writes "built" through the
         // link itself — that is the workspace owner's own symlink doing what
         // they asked for — so only content the *store* chose distinguishes a
         // restore that followed the link from an honest rebuild.
-        const stored = [...Deno.readDirSync(remoteDir)];
+        const stored = await FileTasks.readDirectory(remoteDir);
         assertEquals(stored.length, 1);
-        await Deno.writeFile(
+        await FileTasks.writeBytes(
           `${remoteDir}/${stored[0].name}`,
           await gzip(tar([{ name: "out.txt", data: enc("poisoned") }])),
         );
@@ -395,15 +413,15 @@ test("a remote restore onto a symlinked output is refused, and rebuilds", async 
         assertStringIncludes(second.err + second.out, "refused, rebuilding");
 
         // The store's bytes never reached the file the link named.
-        assertEquals(await Deno.readTextFile(victim), "built");
-        await Deno.remove(outside, { recursive: true });
+        assertEquals(await FileTasks.readText(victim), "built");
+        await FileTasks.remove(outside, { recursive: true });
       } finally {
         if (prevRemote === undefined) {
-          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+          EnvTasks.delete("ZUKE_REMOTE_CACHE_DIR");
         } else {
-          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+          EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
         }
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
@@ -439,7 +457,7 @@ test("affectedTargets selects only the targets a changed file can reach, with no
 test("a cancelled run does not leave its targets recorded as up to date", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+      await FileTasks.writeText(`${dir}/input.txt`, "v1");
       const log: string[] = [];
       const controller = new AbortController();
       class B extends Build {
@@ -455,13 +473,13 @@ test("a cancelled run does not leave its targets recorded as up to date", async 
           .onCancel(() => this.rollback)
           .executes(async () => {
             log.push("build");
-            await Deno.writeTextFile("out.txt", "built");
-            await Deno.writeTextFile("deployed.txt", "yes");
+            await FileTasks.writeText("out.txt", "built");
+            await FileTasks.writeText("deployed.txt", "yes");
             controller.abort();
           });
         rollback = target().executes(async () => {
           log.push("rollback");
-          await Deno.remove("deployed.txt");
+          await FileTasks.remove("deployed.txt");
         });
       }
 
@@ -469,13 +487,13 @@ test("a cancelled run does not leave its targets recorded as up to date", async 
       assertEquals(first.code, 1);
       assertEquals(log, ["build", "rollback"]);
       // The output survived the rollback; the deployment it represents did not.
-      assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+      assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
 
       const second = await runCli(B, ["build"]);
       assertEquals(second.code, 0);
       // Rebuilt rather than skipped, so the rolled-back work is done again.
       assertEquals(log, ["build", "rollback", "build"]);
-      assertEquals(await Deno.readTextFile(`${dir}/deployed.txt`), "yes");
+      assertEquals(await FileTasks.readText(`${dir}/deployed.txt`), "yes");
     });
   });
 });
@@ -483,30 +501,34 @@ test("a cancelled run does not leave its targets recorded as up to date", async 
 test("with a signing key, a store writer's swapped artifact is rebuilt, not restored", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-signed-" });
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-signed-")
+      );
       const names = ["ZUKE_REMOTE_CACHE_DIR", "ZUKE_REMOTE_CACHE_SIGNING_KEY"];
-      const prev = names.map((name) => Deno.env.get(name));
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
-      Deno.env.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
+      const prev = names.map((name) => EnvTasks.get(name));
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      EnvTasks.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         const log: string[] = [];
         class B extends Build {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await Deno.writeTextFile("out.txt", "built");
+              await FileTasks.writeText("out.txt", "built");
             },
           );
         }
         const fresh = async () => {
-          await Deno.remove(`${dir}/.zuke`, { recursive: true });
-          await Deno.remove(`${dir}/out.txt`);
+          await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+          await FileTasks.remove(`${dir}/out.txt`);
         };
 
         assertEquals((await runCli(B, ["build"])).code, 0);
         const entries: string[] = [];
-        for await (const e of Deno.readDir(remoteDir)) entries.push(e.name);
+        for (const e of await FileTasks.readDirectory(remoteDir)) {
+          entries.push(e.name);
+        }
         // One entry: the archive with its MAC trailer, under the signed key.
         assertEquals(entries.length, 1);
         const artifact = entries[0];
@@ -514,35 +536,35 @@ test("with a signing key, a store writer's swapped artifact is rebuilt, not rest
 
         // The store writer replaces the archive and keeps the old trailer.
         await fresh();
-        const genuine = await Deno.readFile(`${remoteDir}/${artifact}`);
-        await Deno.writeFile(
+        const genuine = await FileTasks.readBytes(`${remoteDir}/${artifact}`);
+        await FileTasks.writeBytes(
           `${remoteDir}/${artifact}`,
           new Uint8Array([
             ...await gzip(tar([{ name: "out.txt", data: enc("evil") }])),
             ...genuine.slice(-32),
           ]),
         );
-        if (Deno.build.os !== "windows") {
-          await Deno.chmod(`${remoteDir}/${artifact}`, 0o644);
+        if (RuntimeTasks.os() !== "windows") {
+          await FileTasks.chmod(`${remoteDir}/${artifact}`, 0o644);
         }
         const poisoned = await runCli(B, ["build"]);
         assertEquals(poisoned.code, 0);
         assertEquals(log, ["build", "build"]); // refused, so rebuilt
-        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
         assertStringIncludes(poisoned.out + poisoned.err, "does not match");
 
         // The rebuild re-signed what it uploaded, so the next checkout restores.
         await fresh();
         assertEquals((await runCli(B, ["build"])).code, 0);
         assertEquals(log, ["build", "build"]);
-        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
       } finally {
         names.forEach((name, i) => {
           const value = prev[i];
-          if (value === undefined) Deno.env.delete(name);
-          else Deno.env.set(name, value);
+          if (value === undefined) EnvTasks.delete(name);
+          else EnvTasks.set(name, value);
         });
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });
@@ -551,13 +573,15 @@ test("with a signing key, a store writer's swapped artifact is rebuilt, not rest
 test("a signed output larger than one stream slice restores byte for byte", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-large-" });
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-large-")
+      );
       const names = ["ZUKE_REMOTE_CACHE_DIR", "ZUKE_REMOTE_CACHE_SIGNING_KEY"];
-      const prev = names.map((name) => Deno.env.get(name));
-      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
-      Deno.env.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
+      const prev = names.map((name) => EnvTasks.get(name));
+      EnvTasks.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      EnvTasks.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
       try {
-        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        await FileTasks.writeText(`${dir}/input.txt`, "v1");
         // Several of the 64 KiB slices the archive is streamed in, so the
         // upload, the signature and the restore each span more than one.
         let seed = 0x2545f491;
@@ -573,29 +597,29 @@ test("a signed output larger than one stream slice restores byte for byte", asyn
           build = target().inputs("input.txt").outputs("out.bin").executes(
             async () => {
               log.push("build");
-              await Deno.writeFile("out.bin", payload);
+              await FileTasks.writeBytes("out.bin", payload);
             },
           );
         }
 
         assertEquals((await runCli(B, ["build"])).code, 0);
-        await Deno.remove(`${dir}/.zuke`, { recursive: true });
-        await Deno.remove(`${dir}/out.bin`);
+        await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+        await FileTasks.remove(`${dir}/out.bin`);
         assertEquals((await runCli(B, ["build"])).code, 0);
         let stored = 0;
-        for await (const entry of Deno.readDir(remoteDir)) {
-          stored += (await Deno.stat(`${remoteDir}/${entry.name}`)).size;
+        for (const entry of await FileTasks.readDirectory(remoteDir)) {
+          stored += (await FileTasks.stat(`${remoteDir}/${entry.name}`)).size;
         }
         assertEquals(stored > 128 * 1024, true); // the archive spans slices
         assertEquals(log, ["build"]); // restored, not rebuilt
-        assertEquals(await Deno.readFile(`${dir}/out.bin`), payload);
+        assertEquals(await FileTasks.readBytes(`${dir}/out.bin`), payload);
       } finally {
         names.forEach((name, i) => {
           const value = prev[i];
-          if (value === undefined) Deno.env.delete(name);
-          else Deno.env.set(name, value);
+          if (value === undefined) EnvTasks.delete(name);
+          else EnvTasks.set(name, value);
         });
-        await Deno.remove(remoteDir, { recursive: true });
+        await FileTasks.remove(remoteDir, { recursive: true });
       }
     });
   });

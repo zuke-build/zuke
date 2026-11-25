@@ -18,6 +18,7 @@
  * @module
  */
 
+import { type DirectoryEntry, FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 
@@ -57,11 +58,11 @@ function deviceName(fileName: string): string {
  */
 async function walk(dir: string): Promise<string[]> {
   const found: string[] = [];
-  let entries: Deno.DirEntry[];
+  let entries: DirectoryEntry[];
   try {
-    entries = await Array.fromAsync(Deno.readDir(dir));
+    entries = await FileTasks.readDirectory(dir);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return found;
+    if (FileTasks.isNotFound(error)) return found;
     throw error;
   }
   for (const entry of entries) {

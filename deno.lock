@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/yaml@*": "1.1.1",
     "jsr:@std/yaml@^1.2.0": "1.2.0",
+    "npm:@jsr/std__yaml@1.2.0": "1.2.0",
     "npm:@types/deno@2.7.0": "2.7.0",
     "npm:@types/node@24.19.2": "24.19.2",
     "npm:@vitest/coverage-v8@5.1.0": "5.1.0_vitest@5.1.0_@types+node@24.19.2_vite@8.3.8__@types+node@24.19.2",
@@ -514,6 +515,10 @@
       "dependencies": [
         "jsep"
       ]
+    },
+    "@jsr/std__yaml@1.2.0": {
+      "integrity": "sha512-fTUHQaAs2fOsPnuHHztJfp3WcmwDBvbbtpRZoNcpuUnRGPpCS+jN5UPXHDB+R/R1bvna6Ih0iUjWH6PryjKZPA==",
+      "tarball": "https://npm.jsr.io/~/11/@jsr/std__yaml/1.2.0.tgz"
     },
     "@napi-rs/wasm-runtime@1.2.6_@emnapi+core@2.0.0-beta.2_@emnapi+runtime@2.0.0-beta.2": {
       "integrity": "sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw==",
@@ -2376,6 +2381,7 @@
     ],
     "packageJson": {
       "dependencies": [
+        "npm:@jsr/std__yaml@1.2.0",
         "npm:@types/deno@2.7.0",
         "npm:@types/node@24.19.2",
         "npm:@vitest/coverage-v8@5.1.0",

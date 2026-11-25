@@ -36,6 +36,7 @@ import {
   type TemporaryKeychainSettings,
 } from "@zuke/apple";
 import { ConsoleTasks } from "@zuke/console";
+import { FileTasks } from "@zuke/core";
 import { binaryPath } from "./cli_package.ts";
 import { MACOS_TARGETS } from "./cli_release.ts";
 
@@ -159,7 +160,7 @@ export async function signMacBinaries(
   const binaries = MACOS_TARGETS.map((t) => binaryPath(binDir, t.triple));
   // Artifacts do not keep file modes, so the binaries arrive here without
   // their execute bit; the signed binary is run once signing is done.
-  for (const binary of binaries) await Deno.chmod(binary, 0o755);
+  for (const binary of binaries) await FileTasks.chmod(binary, 0o755);
 
   await tools.temporaryKeychain(
     (s) =>
@@ -180,20 +181,23 @@ export async function signMacBinaries(
 
   // The key file and the zip live in a private directory removed on every
   // path; the key is written exclusive and owner-only.
-  const scratch = await Deno.makeTempDir({ prefix: "zuke-notary-" });
+  const scratch = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-notary-")
+  );
   try {
-    await Deno.chmod(scratch, 0o700);
+    await FileTasks.chmod(scratch, 0o700);
     const key = `${scratch}/AuthKey.p8`;
-    await Deno.writeTextFile(key, credentials.notaryKey, {
-      createNew: true,
-      mode: 0o600,
-    });
+    await FileTasks.writeText(
+      key,
+      credentials.notaryKey,
+      (s) => s.createNew().mode(0o600),
+    );
     // One submission for both binaries: notarization tickets are per binary
     // (by code hash), not per upload.
     const staged = `${scratch}/zuke`;
-    await Deno.mkdir(staged);
+    await FileTasks.createDirectory(staged, { recursive: false });
     for (const target of MACOS_TARGETS) {
-      await Deno.copyFile(
+      await FileTasks.copy(
         binaryPath(binDir, target.triple),
         `${staged}/zuke-${target.triple}`,
       );
@@ -210,6 +214,6 @@ export async function signMacBinaries(
         "accepted.",
     );
   } finally {
-    await Deno.remove(scratch, { recursive: true });
+    await FileTasks.remove(scratch, { recursive: true });
   }
 }

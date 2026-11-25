@@ -10,6 +10,7 @@
  * @module
  */
 
+import { notFound } from "../../_fakes.ts";
 import type { ProvisioningHost } from "../../../packages/apple/src/provisioning_host.ts";
 
 /** What a fake profile holds; every field has a default. */
@@ -102,7 +103,7 @@ export class MemoryHost implements ProvisioningHost {
   readFile(path: string): Promise<Uint8Array> {
     const data = this.files.get(path);
     return data === undefined
-      ? Promise.reject(new Deno.errors.NotFound(path))
+      ? Promise.reject(notFound(path))
       : Promise.resolve(data);
   }
   makeDirectory(path: string): Promise<void> {
