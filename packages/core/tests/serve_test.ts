@@ -316,9 +316,13 @@ test("every Set-Cookie header is sent, not only the last", async () => {
   assertEquals(set, { "x-one": "1", "set-cookie": ["a=1", "b=2"] });
 });
 
-for (
-  const [name, start] of [["Node", serveOnNode], ["serve", serve]] as const
-) {
+/** Each server the malformed-`Host` case runs against. */
+const STARTS: Array<[name: string, start: Serve]> = [
+  ["Node", serveOnNode],
+  ["serve", serve],
+];
+
+for (const [name, start] of STARTS) {
   test(`${name}: a Host header that makes no URL is answered on the bound address`, async () => {
     await serving(start, (request) => {
       return new Response(new URL(request.url).pathname);
