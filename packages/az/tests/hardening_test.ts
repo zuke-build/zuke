@@ -256,7 +256,7 @@ test("H3: the spawned CLI receives the credential on standard input", async () =
   const output = await new StdinEcho().toolPath(RuntimeTasks.execPath())
     .command(
       EVAL,
-      "console.log(new TextDecoder().decode(await new Response(process.stdin).arrayBuffer()))",
+      "console.log(process.getBuiltinModule('node:fs').readFileSync(0, 'utf8'))",
     )
     .quiet().run();
   assertEquals(output.stdout.trim(), "piped-secret");
