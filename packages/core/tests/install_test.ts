@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
@@ -22,7 +23,7 @@ import { fixture, FLUTTER_TAR_XZ } from "../../../tests/_xz.ts";
  * platform. Tests that install for the default (host) platform must expect it,
  * since the Windows runner names the binary `<tool>.exe`.
  */
-const EXE = Deno.build.os === "windows" ? ".exe" : "";
+const EXE = RuntimeTasks.os() === "windows" ? ".exe" : "";
 
 /** A download seam that writes fixed bytes to `dest`, recording the URL it saw. */
 function fakeDownload(
@@ -34,24 +35,24 @@ function fakeDownload(
     : body;
   return async (url, dest) => {
     seen.url = url;
-    await Deno.writeFile(String(dest), bytes);
+    await FileTasks.writeBytes(String(dest), bytes);
   };
 }
 
 test("hostPlatform reports a normalised os and labels the os/arch", () => {
   const p = hostPlatform();
   assertEquals(p.os, operatingSystem()); // "macos", not "darwin"
-  assertEquals(p.arch, Deno.build.arch);
+  assertEquals(p.arch, RuntimeTasks.arch());
   // A label with no alias falls back to the value itself…
   assertEquals(p.osLabel(), operatingSystem());
-  assertEquals(p.archLabel(), Deno.build.arch);
+  assertEquals(p.archLabel(), RuntimeTasks.arch());
   // …and an alias for the current os/arch is applied.
   assertEquals(p.osLabel({ [operatingSystem()]: "mapped" }), "mapped");
-  assertEquals(p.archLabel({ [Deno.build.arch]: "mapped" }), "mapped");
+  assertEquals(p.archLabel({ [RuntimeTasks.arch()]: "mapped" }), "mapped");
 });
 
 test("the url callback receives a normalised, labelled Platform", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const seen: { url?: string } = {};
   try {
     // A foreign platform so the labels are deterministic regardless of host.
@@ -69,7 +70,7 @@ test("the url callback receives a normalised, labelled Platform", async () => {
     assertEquals(seen.url, "https://example.com/darwin-arm64");
     assertEquals(bin.name, "labelled"); // macos → no .exe
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -89,12 +90,14 @@ test("installRelease (raw) downloads the binary and returns its path", async () 
     // The callback receives the normalised os (macos, not darwin).
     assertEquals(
       seen.url,
-      `https://example.com/mytool-${operatingSystem()}-${Deno.build.arch}`,
+      `https://example.com/mytool-${operatingSystem()}-${RuntimeTasks.arch()}`,
     );
-    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    const contents = new TextDecoder().decode(
+      await FileTasks.readBytes(String(bin)),
+    );
     assertEquals(contents.includes("echo hi"), true);
-    if (Deno.build.os !== "windows") {
-      const mode = (await Deno.stat(String(bin))).mode ?? 0;
+    if (RuntimeTasks.os() !== "windows") {
+      const mode = (await FileTasks.stat(String(bin))).mode ?? 0;
       assertEquals(mode & 0o111, 0o111); // executable bits set
     }
   });
@@ -110,14 +113,14 @@ test("installRelease (raw) creates a missing destination directory", async () =>
       download: fakeDownload("binary"),
     });
     assertEquals(bin.path.endsWith(`/nested/bin/tool${EXE}`), true);
-    assertEquals((await Deno.stat(String(bin))).isFile, true);
+    assertEquals((await FileTasks.stat(String(bin))).isFile, true);
   });
 });
 
 test("installRelease (raw) resolves a relative destDir against cwd", async () => {
-  const root = await Deno.makeTempDir();
-  const prev = Deno.cwd();
-  Deno.chdir(root);
+  const root = await FileTasks.makeTempDirectory();
+  const prev = RuntimeTasks.cwd();
+  RuntimeTasks.chdir(root);
   try {
     const bin = await installRelease({
       name: "rel",
@@ -129,24 +132,24 @@ test("installRelease (raw) resolves a relative destDir against cwd", async () =>
     // really there. `bin.path` uses forward slashes on every platform.
     assertEquals(bin.path.endsWith(`/out/bin/rel${EXE}`), true);
     assertEquals(bin.path === "out/bin/rel", false); // not left relative
-    assertEquals((await Deno.stat(String(bin))).isFile, true);
+    assertEquals((await FileTasks.stat(String(bin))).isFile, true);
   } finally {
-    Deno.chdir(prev);
-    await Deno.remove(root, { recursive: true });
+    RuntimeTasks.chdir(prev);
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 
 test("installRelease (tar.gz) unpacks and installs the inner binary", async () => {
   await withTemp(async (root) => {
     // Build a real .tar.gz containing bin/mytool, then serve it via the seam.
-    await Deno.mkdir(`${root}/pkg/bin`, { recursive: true });
-    await Deno.writeFile(
+    await FileTasks.createDirectory(`${root}/pkg/bin`);
+    await FileTasks.writeBytes(
       `${root}/pkg/bin/mytool`,
       new TextEncoder().encode("tarred-binary"),
     );
     const archive = `${root}/mytool.tar.gz`;
     await createTarGzip(["bin/mytool"], archive, { cwd: `${root}/pkg` });
-    const bytes = await Deno.readFile(archive);
+    const bytes = await FileTasks.readBytes(archive);
 
     const dest = `${root}/install`;
     const bin = await installRelease({
@@ -158,7 +161,9 @@ test("installRelease (tar.gz) unpacks and installs the inner binary", async () =
       download: fakeDownload(bytes),
     });
     assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
-    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    const contents = new TextDecoder().decode(
+      await FileTasks.readBytes(String(bin)),
+    );
     assertEquals(contents, "tarred-binary");
   });
 });
@@ -175,7 +180,7 @@ test("installRelease (tar.xz) unpacks and installs the inner binary", async () =
     });
     assertEquals(bin.path.endsWith(`/flutter${EXE}`), true);
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      new TextDecoder().decode(await FileTasks.readBytes(String(bin))),
       "#!/bin/sh\necho flutter\n",
     );
   });
@@ -183,13 +188,13 @@ test("installRelease (tar.xz) unpacks and installs the inner binary", async () =
 
 test("installRelease (tar.gz) defaults binaryPath to the tool name", async () => {
   await withTemp(async (root) => {
-    await Deno.writeFile(
+    await FileTasks.writeBytes(
       `${root}/flat`,
       new TextEncoder().encode("flat-binary"),
     );
     const archive = `${root}/flat.tar.gz`;
     await createTarGzip(["flat"], archive, { cwd: root });
-    const bytes = await Deno.readFile(archive);
+    const bytes = await FileTasks.readBytes(archive);
 
     const dest = `${root}/install`;
     const bin = await installRelease({
@@ -199,7 +204,9 @@ test("installRelease (tar.gz) defaults binaryPath to the tool name", async () =>
       url: () => "https://example.com/flat.tar.gz",
       download: fakeDownload(bytes),
     });
-    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    const contents = new TextDecoder().decode(
+      await FileTasks.readBytes(String(bin)),
+    );
     assertEquals(contents, "flat-binary");
   });
 });
@@ -211,12 +218,12 @@ test("installRelease resolves a per-platform archive and binaryPath", async () =
     const zipped = await makeZip([
       { name: "mytool.exe", data: new TextEncoder().encode("windows-binary") },
     ]);
-    await Deno.writeFile(
+    await FileTasks.writeBytes(
       `${root}/mytool`,
       new TextEncoder().encode("unix-binary"),
     );
     await createTarGzip(["mytool"], `${root}/mytool.tar.gz`, { cwd: root });
-    const tarred = await Deno.readFile(`${root}/mytool.tar.gz`);
+    const tarred = await FileTasks.readBytes(`${root}/mytool.tar.gz`);
 
     const seen: { url?: string } = {};
     const declare = (platform: InstallPlatform, body: Uint8Array) => ({
@@ -237,7 +244,7 @@ test("installRelease resolves a per-platform archive and binaryPath", async () =
     assertEquals(seen.url, "https://example.com/mytool.zip");
     assertEquals(win.path.endsWith("/mytool.exe"), true);
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(String(win))),
+      new TextDecoder().decode(await FileTasks.readBytes(String(win))),
       "windows-binary",
     );
 
@@ -247,7 +254,7 @@ test("installRelease resolves a per-platform archive and binaryPath", async () =
     assertEquals(seen.url, "https://example.com/mytool.tar.gz");
     assertEquals(nix.path.endsWith("/mytool"), true);
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(String(nix))),
+      new TextDecoder().decode(await FileTasks.readBytes(String(nix))),
       "unix-binary",
     );
   });
@@ -269,7 +276,9 @@ test("installRelease (zip) unpacks and installs the inner binary", async () => {
       download: fakeDownload(bytes),
     });
     assertEquals(bin.path.endsWith(`/dprint${EXE}`), true);
-    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    const contents = new TextDecoder().decode(
+      await FileTasks.readBytes(String(bin)),
+    );
     assertEquals(contents, "zipped-binary");
   });
 });
@@ -298,7 +307,9 @@ test("installRelease (zip) defaults binaryPath to the tool name and verifies a c
       url: () => "https://example.com/flat.zip",
       download: fakeDownload(bytes),
     });
-    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    const contents = new TextDecoder().decode(
+      await FileTasks.readBytes(String(bin)),
+    );
     assertEquals(contents, "flat-zip");
 
     // A wrong checksum on the same archive fails, installing nothing new.
@@ -366,10 +377,10 @@ test("installRelease cleans up its scratch dir even when extraction fails", asyn
 /** Whether a path exists on disk. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.lstat(path);
+    await FileTasks.lstat(path);
     return true;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
+    if (FileTasks.isNotFound(error)) return false;
     throw error;
   }
 }
@@ -411,7 +422,7 @@ test("installRelease reuses a cached install without downloading again", async (
     let calls = 0;
     const counting: DownloadFn = async (_url, dest) => {
       calls++;
-      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+      await FileTasks.writeBytes(String(dest), new TextEncoder().encode(body));
     };
     const spec = {
       name: "cached",
@@ -433,7 +444,7 @@ test("installRelease re-downloads when the cached binary was tampered with", asy
     let calls = 0;
     const counting: DownloadFn = async (_url, dest) => {
       calls++;
-      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+      await FileTasks.writeBytes(String(dest), new TextEncoder().encode(body));
     };
     const spec = {
       name: "guarded",
@@ -444,11 +455,11 @@ test("installRelease re-downloads when the cached binary was tampered with", asy
     };
     const bin = await installRelease(spec);
     // Swap the installed binary while leaving the marker intact.
-    await Deno.writeTextFile(String(bin), "evil-binary");
+    await FileTasks.writeText(String(bin), "evil-binary");
     await installRelease(spec);
     assertEquals(calls, 2); // the on-disk binary no longer matches → re-fetched
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      new TextDecoder().decode(await FileTasks.readBytes(String(bin))),
       body, // the trusted binary was restored
     );
   });
@@ -460,7 +471,7 @@ test("installRelease re-downloads a raw binary whose marker was swapped with it"
     let calls = 0;
     const counting: DownloadFn = async (_url, dest) => {
       calls++;
-      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+      await FileTasks.writeBytes(String(dest), new TextEncoder().encode(body));
     };
     const checksum = await sha256Hex(body);
     const spec = {
@@ -472,15 +483,15 @@ test("installRelease re-downloads a raw binary whose marker was swapped with it"
     };
     const bin = await installRelease(spec);
     // Whoever swaps the binary rewrites the marker to vouch for it too.
-    await Deno.writeTextFile(String(bin), "evil-binary");
-    await Deno.writeTextFile(
+    await FileTasks.writeText(String(bin), "evil-binary");
+    await FileTasks.writeText(
       `${bin}.install.json`,
       JSON.stringify({ checksum, binary: await sha256Hex("evil-binary") }),
     );
     await installRelease(spec);
     assertEquals(calls, 2); // the pinned checksum, not the marker, decides
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      new TextDecoder().decode(await FileTasks.readBytes(String(bin))),
       body,
     );
   });
@@ -492,7 +503,7 @@ test("installRelease re-downloads when the cache marker is corrupt", async () =>
     let calls = 0;
     const counting: DownloadFn = async (_url, dest) => {
       calls++;
-      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+      await FileTasks.writeBytes(String(dest), new TextEncoder().encode(body));
     };
     const spec = {
       name: "corrupt",
@@ -502,7 +513,7 @@ test("installRelease re-downloads when the cache marker is corrupt", async () =>
       checksum: await sha256Hex(body),
     };
     const bin = await installRelease(spec);
-    await Deno.writeTextFile(`${String(bin)}.install.json`, "not json{"); // corrupt marker
+    await FileTasks.writeText(`${String(bin)}.install.json`, "not json{"); // corrupt marker
     await installRelease(spec);
     assertEquals(calls, 2); // an unreadable marker is treated as a miss
   });
@@ -513,7 +524,7 @@ test("installRelease re-downloads when the pinned checksum changes", async () =>
     let calls = 0;
     const versioned = (body: string): DownloadFn => async (_url, dest) => {
       calls++;
-      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+      await FileTasks.writeBytes(String(dest), new TextEncoder().encode(body));
     };
     await installRelease({
       name: "bump",
@@ -531,21 +542,21 @@ test("installRelease re-downloads when the pinned checksum changes", async () =>
     });
     assertEquals(calls, 2);
     assertEquals(
-      new TextDecoder().decode(await Deno.readFile(`${dir}/bump${EXE}`)),
+      new TextDecoder().decode(await FileTasks.readBytes(`${dir}/bump${EXE}`)),
       "v2",
     );
   });
 });
 
 test("installRelease (tar.gz) verifies the archive checksum", async () => {
-  const dir = await Deno.makeTempDir();
-  const src = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
+  const src = await FileTasks.makeTempDirectory();
   try {
-    await Deno.writeTextFile(`${src}/tool`, "#!/bin/sh\n");
+    await FileTasks.writeText(`${src}/tool`, "#!/bin/sh\n");
     await createTarGzip(["tool"], `${src}/archive.tar.gz`, { cwd: src });
-    const archive = await Deno.readFile(`${src}/archive.tar.gz`);
+    const archive = await FileTasks.readBytes(`${src}/archive.tar.gz`);
     const download: DownloadFn = async (_url, dest) => {
-      await Deno.writeFile(String(dest), archive);
+      await FileTasks.writeBytes(String(dest), archive);
     };
 
     const bin = await installRelease({
@@ -570,8 +581,8 @@ test("installRelease (tar.gz) verifies the archive checksum", async () => {
     );
     assertEquals(bad.message.includes("checksum mismatch"), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
-    await Deno.remove(src, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
+    await FileTasks.remove(src, { recursive: true });
   }
 });
 
@@ -607,7 +618,7 @@ test("installRelease rejects a malformed checksum before downloading", async () 
         url: () => "https://example.com/bad",
         download: async (_url, dest) => {
           downloaded = true;
-          await Deno.writeFile(String(dest), new Uint8Array());
+          await FileTasks.writeBytes(String(dest), new Uint8Array());
         },
         checksum: "not-a-valid-sha256", // wrong length / non-hex
       })

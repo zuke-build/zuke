@@ -10,6 +10,7 @@
  * @module
  */
 
+import { EnvTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -209,16 +210,16 @@ async function withEnv(
 ): Promise<void> {
   const saved = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
+    saved.set(name, EnvTasks.get(name));
+    if (value === undefined) EnvTasks.delete(name);
+    else EnvTasks.set(name, value);
   }
   try {
     await fn();
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     }
   }
 }

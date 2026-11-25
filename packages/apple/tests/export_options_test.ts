@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { ExportOptionsSettings, XcodebuildTasks } from "../mod.ts";
@@ -82,7 +83,9 @@ test("export options: method is required and control characters are refused", ()
 });
 
 test("writeExportOptions writes the rendered plist", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-export-options-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-export-options-")
+  );
   try {
     const path = `${dir}/ExportOptions.plist`;
     await XcodebuildTasks.writeExportOptions(
@@ -90,11 +93,11 @@ test("writeExportOptions writes the rendered plist", async () => {
       (o) => o.method("release-testing"),
     );
     assertEquals(
-      await Deno.readTextFile(path),
+      await FileTasks.readText(path),
       HEAD + "\t<key>method</key>\n\t<string>release-testing</string>\n" +
         "</dict>\n</plist>\n",
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

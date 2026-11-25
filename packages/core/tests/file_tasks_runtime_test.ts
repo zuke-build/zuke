@@ -65,8 +65,8 @@ test("readDirectory lists files and directories", async () => {
     const entries = (await FileTasks.readDirectory(dir))
       .sort((left, right) => left.name.localeCompare(right.name));
     assertEquals(entries, [
-      { name: "a.txt", isFile: true, isDirectory: false },
-      { name: "sub", isFile: false, isDirectory: true },
+      { name: "a.txt", isFile: true, isDirectory: false, isSymlink: false },
+      { name: "sub", isFile: false, isDirectory: true, isSymlink: false },
     ]);
   });
 });

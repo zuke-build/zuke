@@ -15,6 +15,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -137,15 +138,15 @@ test("the spec's name shape and length limits are enforced", () => {
 
 test("a tree reports missing SKILL.md files and prefixes paths", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/good`);
-    await Deno.writeTextFile(`${dir}/good/SKILL.md`, doc("good"));
-    await Deno.mkdir(`${dir}/empty`);
-    await Deno.mkdir(`${dir}/renamed`);
-    await Deno.writeTextFile(`${dir}/renamed/SKILL.md`, doc("old-name"));
+    await FileTasks.createDirectory(`${dir}/good`, { recursive: false });
+    await FileTasks.writeText(`${dir}/good/SKILL.md`, doc("good"));
+    await FileTasks.createDirectory(`${dir}/empty`, { recursive: false });
+    await FileTasks.createDirectory(`${dir}/renamed`, { recursive: false });
+    await FileTasks.writeText(`${dir}/renamed/SKILL.md`, doc("old-name"));
     // A stray file at the root is not a skill folder and is ignored.
-    await Deno.writeTextFile(`${dir}/README.md`, "not a skill");
+    await FileTasks.writeText(`${dir}/README.md`, "not a skill");
     // A SKILL.md that is not a regular file is a finding, not a crash.
-    await Deno.mkdir(`${dir}/odd/SKILL.md`, { recursive: true });
+    await FileTasks.createDirectory(`${dir}/odd/SKILL.md`);
 
     const problems = await checkSkillTree(dir);
     assertEquals(problems.length, 3);
@@ -160,15 +161,15 @@ test("a tree reports missing SKILL.md files and prefixes paths", async () => {
 test({
   name: "a symlinked skill folder is validated, not skipped",
   // Creating symlinks on Windows needs a privilege the CI runner may lack.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.mkdir(`${dir}/real`);
-      await Deno.writeTextFile(`${dir}/real/SKILL.md`, doc("wrong-name"));
-      await Deno.mkdir(`${dir}/tree`);
-      await Deno.symlink(`${dir}/real`, `${dir}/tree/linked`);
+      await FileTasks.createDirectory(`${dir}/real`, { recursive: false });
+      await FileTasks.writeText(`${dir}/real/SKILL.md`, doc("wrong-name"));
+      await FileTasks.createDirectory(`${dir}/tree`, { recursive: false });
+      await FileTasks.symlink(`${dir}/real`, `${dir}/tree/linked`);
       // A dangling link resolves to nothing a harness could serve.
-      await Deno.symlink(`${dir}/gone`, `${dir}/tree/dangling`);
+      await FileTasks.symlink(`${dir}/gone`, `${dir}/tree/dangling`);
 
       const problems = await checkSkillTree(`${dir}/tree`);
       assertEquals(problems.length, 1);

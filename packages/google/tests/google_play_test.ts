@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore Здравей
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -25,8 +26,8 @@ const KEY = await serviceAccountKey();
 const PACKAGE = "com.example.app";
 const EDITS =
   `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/edits`;
-const BUNDLE = await Deno.makeTempFile({ suffix: ".aab" });
-await Deno.writeFile(BUNDLE, new Uint8Array(1234));
+const BUNDLE = await FileTasks.makeTempFile((s) => s.suffix(".aab"));
+await FileTasks.writeBytes(BUNDLE, new Uint8Array(1234));
 
 /** A fake Google that signs in and accepts an edit; `extra` answers first. */
 function google(extra: PlayRoute = () => undefined) {

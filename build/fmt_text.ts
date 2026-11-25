@@ -20,7 +20,7 @@
  * @module
  */
 
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 
 /**
@@ -44,7 +44,9 @@ export async function formatText(
   source: string,
   extension: string,
 ): Promise<string> {
-  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".fmt-text-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix(".fmt-text-").dir(RuntimeTasks.cwd())
+  );
   try {
     const path = `${dir}/out.${extension}`;
     await FileTasks.writeText(path, source);

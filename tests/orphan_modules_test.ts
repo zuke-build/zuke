@@ -25,6 +25,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { withTemp } from "./_temp.ts";
@@ -54,9 +55,9 @@ const SKIP_DIRS: ReadonlySet<string> = new Set(["tests"]);
 /** A file's contents, or `undefined` when it does not exist. */
 async function readIfPresent(path: string): Promise<string | undefined> {
   try {
-    return await Deno.readTextFile(path);
+    return await FileTasks.readText(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
+    if (FileTasks.isNotFound(error)) return undefined;
     throw error;
   }
 }
@@ -64,7 +65,7 @@ async function readIfPresent(path: string): Promise<string | undefined> {
 /** Every `.ts` file a package ships, recursively, skipping {@link SKIP_DIRS}. */
 async function tsFiles(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
+  for (const entry of await FileTasks.readDirectory(dir)) {
     const path = `${dir}/${entry.name}`;
     if (entry.isDirectory) {
       if (!SKIP_DIRS.has(entry.name)) found.push(...await tsFiles(path));
@@ -113,7 +114,7 @@ async function survey(
   const modules: string[] = [];
   const roots: Edge[] = [];
   const problems: string[] = [];
-  for await (const entry of Deno.readDir(packagesDir)) {
+  for (const entry of await FileTasks.readDirectory(packagesDir)) {
     if (!entry.isDirectory) continue;
     const dir = `${packagesDir}/${entry.name}`;
     const configPath = `${dir}/deno.json`;
@@ -199,10 +200,8 @@ async function withFixture(
   await withTemp(async (root) => {
     for (const [path, contents] of Object.entries(files)) {
       const full = `${root}/${path}`;
-      await Deno.mkdir(full.slice(0, full.lastIndexOf("/")), {
-        recursive: true,
-      });
-      await Deno.writeTextFile(full, contents);
+      await FileTasks.createDirectory(full.slice(0, full.lastIndexOf("/")));
+      await FileTasks.writeText(full, contents);
     }
     await fn(root);
   }, { prefix: "zuke-orphan-" });
@@ -292,14 +291,16 @@ test("a read failure that is not a missing file is not swallowed", async () => {
   await withFixture(
     { "fx/deno.json": `{"exports":"./mod.ts"}` },
     async (root) => {
-      await Deno.mkdir(`${root}/fx/mod.ts`);
+      await FileTasks.createDirectory(`${root}/fx/mod.ts`, {
+        recursive: false,
+      });
       let raised: Error | undefined;
       try {
         await problemsIn(root);
       } catch (error) {
         raised = error instanceof Error ? error : new Error(String(error));
       }
-      assertEquals(raised instanceof Deno.errors.NotFound, false);
+      assertEquals(FileTasks.isNotFound(raised), false);
       assertEquals(raised !== undefined, true);
     },
   );

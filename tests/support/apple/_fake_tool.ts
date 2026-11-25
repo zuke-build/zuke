@@ -3,11 +3,11 @@
 
 /**
  * Fake `xcrun notarytool` and `security` subprocesses, built from the running
- * `deno` alone (AGENTS.md guideline 5).
+ * runtime alone (AGENTS.md guideline 5).
  *
  * Both tools put a subcommand right after the binary — `xcrun notarytool
- * submit …`, `security import …` — and Deno 2 runs `deno <file> <args…>` as
- * `deno run <file> <args…>`. So pointing a wrapper at `Deno.execPath()` and
+ * submit …`, `security import …` — and both runtimes run `<runtime> <file>
+ * <args…>` as a script. So pointing a wrapper at `RuntimeTasks.execPath()` and
  * running it in a directory holding a script named after that first token
  * (`notarytool`, `import`, …) spawns the script with the wrapper's real argv.
  * No shell, no copied binary, and it works the same on every OS. The scripts
@@ -16,6 +16,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { assertRejects } from "../../_assert.ts";
 
 /**
@@ -44,8 +45,9 @@ export interface FakeResponse {
 }
 
 /**
- * The script for one fake: it dispatches on `Deno.args[0]` — the notarytool
- * subcommand — or, when `dispatch` is false, answers the same for any argv.
+ * The script for one fake: it dispatches on its first argument — the
+ * notarytool subcommand — or, when `dispatch` is false, answers the same for
+ * any argv. It reads `process`, which both runtimes provide as a global.
  */
 function script(
   responses: Record<string, FakeResponse>,
@@ -53,27 +55,30 @@ function script(
 ): string {
   return [
     `const responses = ${JSON.stringify(responses)};`,
-    `const r = ${dispatch ? "responses[Deno.args[0]]" : 'responses[""]'};`,
-    `if (r === undefined) { console.error("unexpected " + Deno.args[0]); Deno.exit(3); }`,
-    `if (r.needs && !r.needs.every((a) => Deno.args.includes(a))) {`,
-    `  console.error("missing " + r.needs.join(" ")); Deno.exit(4);`,
+    `const args = process.argv.slice(2);`,
+    `const r = ${dispatch ? "responses[args[0]]" : 'responses[""]'};`,
+    `if (r === undefined) { console.error("unexpected " + args[0]); process.exit(3); }`,
+    `if (r.needs && !r.needs.every((a) => args.includes(a))) {`,
+    `  console.error("missing " + r.needs.join(" ")); process.exit(4);`,
     `}`,
     `if (r.stderr) console.error(r.stderr);`,
     `if (r.stdout) console.log(r.stdout);`,
-    `Deno.exit(r.code ?? 0);`,
+    `process.exit(r.code ?? 0);`,
   ].join("\n");
 }
 
 /**
  * A temp directory holding a fake `notarytool` that answers each subcommand
  * (`submit`, `log`, …) from `responses`. Run a notarytool wrapper against it
- * with `.toolPath(Deno.execPath()).cwd(dir)`.
+ * with `.toolPath(RuntimeTasks.execPath()).cwd(dir)`.
  */
 export async function fakeNotarytool(
   responses: Record<string, FakeResponse>,
 ): Promise<string> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-apple-fake-" });
-  await Deno.writeTextFile(`${dir}/notarytool`, script(responses, true));
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-apple-fake-")
+  );
+  await FileTasks.writeText(`${dir}/notarytool`, script(responses, true));
   return dir;
 }
 
@@ -81,7 +86,7 @@ export async function fakeNotarytool(
  * Write a fake `security` subcommand per entry of `responses` (keyed by the
  * subcommand, e.g. `find-identity`) into `dir`, each answering the same for any
  * argv. Run a security wrapper against it with
- * `.toolPath(Deno.execPath()).cwd(dir)`, or from `dir` as the working
+ * `.toolPath(RuntimeTasks.execPath()).cwd(dir)`, or from `dir` as the working
  * directory.
  */
 export async function writeFakeSecurity(
@@ -89,7 +94,7 @@ export async function writeFakeSecurity(
   responses: Record<string, FakeResponse>,
 ): Promise<void> {
   for (const [subcommand, response] of Object.entries(responses)) {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/${subcommand}`,
       script({ "": response }, false),
     );

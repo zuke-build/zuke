@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
@@ -893,7 +894,7 @@ test("a .noThrow() in the helm lambda does not hide a failed read or rollback", 
   // exit 1, and the lambda asks run() not to throw on them.
   const p = helmCanary((h) =>
     h.stableRelease("api").namespace("prod").stableRevision(3).helm((s) =>
-      s.noThrow().quiet().toolPath(Deno.execPath())
+      s.noThrow().quiet().toolPath(RuntimeTasks.execPath())
     )
   );
   // With a record, the first-deployed check cannot be skipped this way.

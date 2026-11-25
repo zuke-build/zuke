@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -120,7 +121,7 @@ test("whoamiName reports a missing login as undefined, not a failure", async () 
   // Hermetic: the running `deno` stands in for npm — it exits non-zero on a
   // subcommand it does not have, exactly as `npm whoami` does when logged out.
   const name = await NpmTasks.whoamiName((s) =>
-    s.toolPath(Deno.execPath()).quiet()
+    s.toolPath(RuntimeTasks.execPath()).quiet()
   );
   assertEquals(name, undefined);
 });

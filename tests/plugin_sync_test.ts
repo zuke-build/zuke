@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
@@ -43,9 +44,9 @@ test("a missing destination file is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
-    await Deno.mkdir(source, { recursive: true });
-    await Deno.mkdir(dest, { recursive: true });
-    await Deno.writeTextFile(`${source}/a.md`, "a");
+    await FileTasks.createDirectory(source);
+    await FileTasks.createDirectory(dest);
+    await FileTasks.writeText(`${source}/a.md`, "a");
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/a.md (missing)`,
     ]);
@@ -56,9 +57,9 @@ test("an extra destination file not in the source is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
-    await Deno.mkdir(source, { recursive: true });
-    await Deno.mkdir(dest, { recursive: true });
-    await Deno.writeTextFile(`${dest}/b.md`, "b");
+    await FileTasks.createDirectory(source);
+    await FileTasks.createDirectory(dest);
+    await FileTasks.writeText(`${dest}/b.md`, "b");
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/b.md (extra, not present in ${source}/)`,
     ]);
@@ -69,10 +70,10 @@ test("a content mismatch is reported", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
-    await Deno.mkdir(source, { recursive: true });
-    await Deno.mkdir(dest, { recursive: true });
-    await Deno.writeTextFile(`${source}/c.md`, "original");
-    await Deno.writeTextFile(`${dest}/c.md`, "drifted");
+    await FileTasks.createDirectory(source);
+    await FileTasks.createDirectory(dest);
+    await FileTasks.writeText(`${source}/c.md`, "original");
+    await FileTasks.writeText(`${dest}/c.md`, "drifted");
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/c.md (content differs from ${source}/c.md)`,
     ]);
@@ -83,8 +84,8 @@ test("a missing destination directory reports every source file as missing", asy
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest-does-not-exist`;
-    await Deno.mkdir(source, { recursive: true });
-    await Deno.writeTextFile(`${source}/d.md`, "d");
+    await FileTasks.createDirectory(source);
+    await FileTasks.writeText(`${source}/d.md`, "d");
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/d.md (missing)`,
     ]);
@@ -95,9 +96,9 @@ test("syncPluginSkills copies nested directories and reports them written", asyn
   await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
-    await Deno.mkdir(`${source}/nested`, { recursive: true });
-    await Deno.writeTextFile(`${source}/top.md`, "top");
-    await Deno.writeTextFile(`${source}/nested/deep.md`, "deep");
+    await FileTasks.createDirectory(`${source}/nested`);
+    await FileTasks.writeText(`${source}/top.md`, "top");
+    await FileTasks.writeText(`${source}/nested/deep.md`, "deep");
     const written = await syncPluginSkills(source, dest);
     assertEquals(written.sort(), [
       `${dest}/nested/deep.md`,

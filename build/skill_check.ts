@@ -16,6 +16,8 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
+
 /** The skills tree that every distribution surface serves. */
 export const SKILLS_ROOT = "skills";
 
@@ -153,17 +155,19 @@ export async function checkSkillTree(
   const problems: string[] = [];
   const dirs: string[] = [];
   try {
-    for await (const entry of Deno.readDir(root)) {
+    for (const entry of await FileTasks.readDirectory(root)) {
       if (entry.isDirectory) {
         dirs.push(entry.name);
       } else if (entry.isSymlink) {
         // A dangling link resolves to nothing a harness could serve; skip it.
-        const info = await Deno.stat(`${root}/${entry.name}`).catch(() => null);
+        const info = await FileTasks.stat(`${root}/${entry.name}`).catch(() =>
+          null
+        );
         if (info?.isDirectory === true) dirs.push(entry.name);
       }
     }
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (FileTasks.isNotFound(error)) {
       return [`${root}: missing — the skills tree is gone entirely`];
     }
     throw error;
@@ -171,8 +175,8 @@ export async function checkSkillTree(
   dirs.sort();
   for (const dir of dirs) {
     const doc = `${root}/${dir}/SKILL.md`;
-    const info = await Deno.stat(doc).catch((error: unknown) => {
-      if (error instanceof Deno.errors.NotFound) return null;
+    const info = await FileTasks.stat(doc).catch((error: unknown) => {
+      if (FileTasks.isNotFound(error)) return null;
       throw error;
     });
     if (info === null) {
@@ -183,7 +187,7 @@ export async function checkSkillTree(
       problems.push(`${doc}: is not a regular file`);
       continue;
     }
-    for (const problem of checkSkillDoc(dir, await Deno.readTextFile(doc))) {
+    for (const problem of checkSkillDoc(dir, await FileTasks.readText(doc))) {
       problems.push(`${doc}: ${problem}`);
     }
   }

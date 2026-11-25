@@ -1,7 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-/** Tests for `FileTasks.makeTempFile` and `FileTasks.isAlreadyExists`. */
+/**
+ * Tests for `FileTasks.makeTempFile`, `makeTempDirectory` in a chosen
+ * directory, and `FileTasks.isAlreadyExists`.
+ */
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
@@ -66,5 +69,22 @@ test("isAlreadyExists names a create that found something there, and nothing els
     assertEquals(FileTasks.isAlreadyExists("text"), false);
   } finally {
     await FileTasks.remove(path);
+  }
+});
+
+test("makeTempDirectory makes its directory inside the one dir names", async () => {
+  const parent = await FileTasks.makeTempDirectory();
+  try {
+    const made = await FileTasks.makeTempDirectory((s) =>
+      s.dir(parent).prefix("inside-")
+    );
+    const names = (await FileTasks.readDirectory(parent)).map((e) => e.name);
+    assertEquals(names, [nameOf(made)]);
+    assertEquals(nameOf(made).startsWith("inside-"), true);
+    await assertRejects(
+      () => FileTasks.makeTempDirectory((s) => s.dir(`${parent}/missing`)),
+    );
+  } finally {
+    await FileTasks.remove(parent, { recursive: true });
   }
 });

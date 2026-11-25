@@ -11,7 +11,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import {
   checkPluginSkillsSync,
   syncPluginSkills,
@@ -41,8 +41,8 @@ test("pluginSyncCheck fails loudly when the destination has drifted", async () =
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
-    await Deno.mkdir(`${source}/a`, { recursive: true });
-    await Deno.writeTextFile(`${source}/a/SKILL.md`, "hello");
+    await FileTasks.createDirectory(`${source}/a`);
+    await FileTasks.writeText(`${source}/a/SKILL.md`, "hello");
 
     const { code, err } = await runCli(gateBuild(source, dest), ["check"]);
     assertEquals(code, 1);
@@ -55,8 +55,8 @@ test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async 
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
-    await Deno.mkdir(`${source}/a`, { recursive: true });
-    await Deno.writeTextFile(`${source}/a/SKILL.md`, "hello");
+    await FileTasks.createDirectory(`${source}/a`);
+    await FileTasks.writeText(`${source}/a/SKILL.md`, "hello");
 
     const Gate = gateBuild(source, dest);
     const synced = await runCli(Gate, ["sync"]);

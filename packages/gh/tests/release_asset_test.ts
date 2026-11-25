@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -86,7 +87,7 @@ function fakeGithub(
 /** Write a small file to upload and return its path. */
 async function assetFixture(dir: string): Promise<string> {
   const path = `${dir}/extension.tar.gz`;
-  await Deno.writeFile(path, new Uint8Array([1, 2, 3, 4]));
+  await FileTasks.writeBytes(path, new Uint8Array([1, 2, 3, 4]));
   return path;
 }
 
@@ -232,7 +233,7 @@ async function digestOf(data: Uint8Array<ArrayBuffer>): Promise<string> {
 }
 
 test("refresh replaces an asset whose digest differs", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -274,12 +275,12 @@ test("refresh replaces an asset whose digest differs", async () => {
     assertStringIncludes(seen[1].url, "/releases/assets/100");
     assertEquals(seen[2].body, new Uint8Array([1, 2, 3, 4]));
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("refresh keeps an asset whose digest matches the file", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const file = await assetFixture(dir);
     const digest = await digestOf(new Uint8Array([1, 2, 3, 4]));
@@ -309,14 +310,14 @@ test("refresh keeps an asset whose digest matches the file", async () => {
     // Only the lookup went out: same bytes, nothing to replace.
     assertEquals(seen.length, 1);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("refresh keeps an asset whose digest the API does not report", async () => {
   // Without a comparison to trust, replacing would churn the release's
   // assets on every run — the exact thing the default protects against.
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   try {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
@@ -327,7 +328,7 @@ test("refresh keeps an asset whose digest the API does not report", async () => 
     assertEquals(result.state, "already-exists");
     assertEquals(seen.length, 1);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

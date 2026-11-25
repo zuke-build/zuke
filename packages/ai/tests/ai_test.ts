@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
@@ -392,16 +393,16 @@ test("skipIfKeyMissing stays silent under quiet()", async () => {
 });
 
 test("a skipped review is noted in the GitHub Actions job summary", async () => {
-  const summaryFile = await Deno.makeTempFile();
-  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const summaryFile = await FileTasks.makeTempFile();
+  const prev = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.set("GITHUB_STEP_SUMMARY", summaryFile);
   const { log } = console;
   console.log = () => {};
   try {
     await securityReviewer((r) =>
       r.provider("claude").apiKey("").skipIfKeyMissing()
     ).validate(noRedactionContext("deploy"));
-    const md = await Deno.readTextFile(summaryFile);
+    const md = await FileTasks.readText(summaryFile);
     assertEquals(
       md.includes("## ⏭️ security review — `deploy`"),
       true,
@@ -409,9 +410,9 @@ test("a skipped review is noted in the GitHub Actions job summary", async () => 
     assertEquals(md.includes("_Skipped — no API key._"), true);
   } finally {
     console.log = log;
-    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
-    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
-    await Deno.remove(summaryFile);
+    if (prev === undefined) EnvTasks.delete("GITHUB_STEP_SUMMARY");
+    else EnvTasks.set("GITHUB_STEP_SUMMARY", prev);
+    await FileTasks.remove(summaryFile);
   }
 });
 
@@ -855,9 +856,9 @@ test("a Claude reply with only a thinking block fails closed", async () => {
 });
 
 test("the assessment is appended to the GitHub Actions job summary", async () => {
-  const summaryFile = await Deno.makeTempFile();
-  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const summaryFile = await FileTasks.makeTempFile();
+  const prev = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.set("GITHUB_STEP_SUMMARY", summaryFile);
   const { log } = console;
   console.log = () => {};
   try {
@@ -888,7 +889,7 @@ test("the assessment is appended to the GitHub Actions job summary", async () =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(b.fetch)
     ).validate(noRedactionContext("deploy"));
 
-    const md = await Deno.readTextFile(summaryFile);
+    const md = await FileTasks.readText(summaryFile);
     assertEquals(md.includes("## 🔎 security review — `deploy`"), true);
     assertEquals(md.includes("**Score:** 4/10 · **Severity:** high"), true);
     assertEquals(md.includes("| high | sql \\| injection | db.ts:9 |"), true);
@@ -897,16 +898,16 @@ test("the assessment is appended to the GitHub Actions job summary", async () =>
     assertEquals(md.includes("**Score:** 0/10"), true);
   } finally {
     console.log = log;
-    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
-    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
-    await Deno.remove(summaryFile);
+    if (prev === undefined) EnvTasks.delete("GITHUB_STEP_SUMMARY");
+    else EnvTasks.set("GITHUB_STEP_SUMMARY", prev);
+    await FileTasks.remove(summaryFile);
   }
 });
 
 test("an unwritable job-summary file never fails the review", async () => {
-  const dir = await Deno.makeTempDir(); // a directory is not a writable file
-  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.set("GITHUB_STEP_SUMMARY", dir);
+  const dir = await FileTasks.makeTempDirectory(); // a directory is not a writable file
+  const prev = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.set("GITHUB_STEP_SUMMARY", dir);
   const { log } = console;
   console.log = () => {};
   try {
@@ -916,9 +917,9 @@ test("an unwritable job-summary file never fails the review", async () => {
     ).validate(noRedactionContext("t")); // resolves despite the unwritable summary
   } finally {
     console.log = log;
-    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
-    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
-    await Deno.remove(dir, { recursive: true });
+    if (prev === undefined) EnvTasks.delete("GITHUB_STEP_SUMMARY");
+    else EnvTasks.set("GITHUB_STEP_SUMMARY", prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -1055,9 +1056,9 @@ test("token usage is read from the openai and gemini response shapes", async () 
 });
 
 test("token usage is included in the job-summary markdown", async () => {
-  const summaryFile = await Deno.makeTempFile();
-  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const summaryFile = await FileTasks.makeTempFile();
+  const prev = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.set("GITHUB_STEP_SUMMARY", summaryFile);
   const { log } = console;
   console.log = () => {};
   try {
@@ -1070,13 +1071,13 @@ test("token usage is included in the job-summary markdown", async () => {
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
     ).validate(noRedactionContext("deploy"));
-    const md = await Deno.readTextFile(summaryFile);
+    const md = await FileTasks.readText(summaryFile);
     assertEquals(md.includes("**Tokens:** 100 in · 20 out · 120 total"), true);
   } finally {
     console.log = log;
-    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
-    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
-    await Deno.remove(summaryFile);
+    if (prev === undefined) EnvTasks.delete("GITHUB_STEP_SUMMARY");
+    else EnvTasks.set("GITHUB_STEP_SUMMARY", prev);
+    await FileTasks.remove(summaryFile);
   }
 });
 

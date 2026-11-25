@@ -25,8 +25,10 @@ export const SKILLS_DEST = "plugins/zuke/skills";
 async function listFiles(dir: string): Promise<string[]> {
   const out: string[] = [];
   const walk = async (rel: string) => {
-    for await (
-      const entry of Deno.readDir(rel === "" ? dir : `${dir}/${rel}`)
+    for (
+      const entry of await FileTasks.readDirectory(
+        rel === "" ? dir : `${dir}/${rel}`,
+      )
     ) {
       const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
       if (entry.isDirectory) {
@@ -39,7 +41,7 @@ async function listFiles(dir: string): Promise<string[]> {
   try {
     await walk("");
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return [];
+    if (FileTasks.isNotFound(error)) return [];
     throw error;
   }
   return out.sort();

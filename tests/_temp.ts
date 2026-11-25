@@ -25,14 +25,11 @@ export interface TempOptions {
  * A fresh directory inside `options.dir`, or the system temp directory, made
  * through core's file tasks like the code under test.
  */
-export async function makeTempDir(options?: TempOptions): Promise<string> {
-  const prefix = options?.prefix ?? "tmp-";
-  if (options?.dir === undefined) {
-    return await FileTasks.makeTempDirectory((s) => s.prefix(prefix));
-  }
-  const dir = `${options.dir}/${prefix}${crypto.randomUUID()}`;
-  await FileTasks.createDirectory(dir, { recursive: false });
-  return dir;
+export function makeTempDir(options?: TempOptions): Promise<string> {
+  const { dir, prefix = "tmp-" } = options ?? {};
+  return FileTasks.makeTempDirectory((s) =>
+    dir === undefined ? s.prefix(prefix) : s.prefix(prefix).dir(dir)
+  );
 }
 
 /**

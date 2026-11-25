@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AppStoreConnectError, AppStoreConnectSettings } from "../mod.ts";
@@ -196,18 +197,18 @@ test("client: credentials and the URL are checked", async () => {
     Error,
     "set exactly one of .privateKey() and .privateKeyFile()",
   );
-  const dir = await Deno.makeTempDir({ prefix: "zuke-asc-" });
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-asc-"));
   try {
-    await Deno.writeTextFile(`${dir}/AuthKey_k.p8`, key.pem);
+    await FileTasks.writeText(`${dir}/AuthKey_k.p8`, key.pem);
     const client = new AppStoreConnectClient(
       base().issuerId("i").keyId("k").privateKeyFile(`${dir}/AuthKey_k.p8`),
     );
     await client.request("GET", "/v1/a");
-    await Deno.remove(`${dir}/AuthKey_k.p8`);
+    await FileTasks.remove(`${dir}/AuthKey_k.p8`);
     // Read once: the second request does not need the file any more.
     await client.request("GET", "/v1/b");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
   let threw = false;
   try {
@@ -236,13 +237,13 @@ test("client: the JSON:API readers take whatever shape comes back", () => {
 });
 
 test("client: the default environment reader is Deno.env", () => {
-  Deno.env.set("ZUKE_ALLOW_INSECURE_URL", "1");
+  EnvTasks.set("ZUKE_ALLOW_INSECURE_URL", "1");
   try {
     // Plaintext is accepted only because the opt-out is set in the environment.
     new AppStoreConnectClient(
       new AppStoreConnectSettings().apiUrl("http://asc.example.com"),
     );
   } finally {
-    Deno.env.delete("ZUKE_ALLOW_INSECURE_URL");
+    EnvTasks.delete("ZUKE_ALLOW_INSECURE_URL");
   }
 });

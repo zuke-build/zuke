@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import type { DownloadFn, InstallPlatform, Platform } from "../src/install.ts";
@@ -34,19 +35,19 @@ function platformFor(data: InstallPlatform): Platform {
 /** A download seam that writes prepared archive bytes to `dest`. */
 function bytesDownload(bytes: Uint8Array): DownloadFn {
   return async (_url, dest) => {
-    await Deno.writeFile(String(dest), bytes);
+    await FileTasks.writeBytes(String(dest), bytes);
   };
 }
 
-const EXE = Deno.build.os === "windows" ? ".exe" : "";
+const EXE = RuntimeTasks.os() === "windows" ? ".exe" : "";
 /** The npm bin-shim suffix on the host (`.cmd` on Windows, else none). */
-const NPM_EXE = Deno.build.os === "windows" ? ".cmd" : "";
+const NPM_EXE = RuntimeTasks.os() === "windows" ? ".cmd" : "";
 
 /** A download seam that writes the URL's own text, recording each URL fetched. */
 function recordingDownload(seen: string[]): DownloadFn {
   return async (url, dest) => {
     seen.push(url);
-    await Deno.writeFile(String(dest), new TextEncoder().encode(url));
+    await FileTasks.writeBytes(String(dest), new TextEncoder().encode(url));
   };
 }
 
@@ -58,8 +59,8 @@ function recordingNpm(
   return async (args) => {
     calls.push(args);
     const prefix = args[args.indexOf("--prefix") + 1];
-    await Deno.mkdir(`${prefix}/node_modules/.bin`, { recursive: true });
-    await Deno.writeTextFile(
+    await FileTasks.createDirectory(`${prefix}/node_modules/.bin`);
+    await FileTasks.writeText(
       `${prefix}/node_modules/.bin/${bin}${NPM_EXE}`,
       "x",
     );
@@ -78,7 +79,7 @@ test("ToolTasks.install fetches a single tool via a settings-lambda", async () =
     );
     assertEquals(bin.name, `kubectl${EXE}`);
     assertEquals(bin.path.endsWith(`/kubectl${EXE}`), true);
-    assertEquals(seen, [`https://tools.test/kubectl-${Deno.build.arch}`]);
+    assertEquals(seen, [`https://tools.test/kubectl-${RuntimeTasks.arch()}`]);
   });
 });
 
@@ -159,8 +160,8 @@ test("ToolTasks.npm provisions a single npm package with a distinct bin", async 
 });
 
 test("a per-tool destDir overrides the toolchain default", async () => {
-  const shared = await Deno.makeTempDir();
-  const special = await Deno.makeTempDir();
+  const shared = await FileTasks.makeTempDirectory();
+  const special = await FileTasks.makeTempDirectory();
   try {
     const tools = toolchain()
       .tool((s) => s.name("one").url(() => "u1"))
@@ -179,8 +180,8 @@ test("a per-tool destDir overrides the toolchain default", async () => {
       true,
     );
   } finally {
-    await Deno.remove(shared, { recursive: true });
-    await Deno.remove(special, { recursive: true });
+    await FileTasks.remove(shared, { recursive: true });
+    await FileTasks.remove(special, { recursive: true });
   }
 });
 
@@ -257,7 +258,7 @@ test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", async
     );
     assertEquals(root.path.endsWith("/node"), true);
     assertEquals(
-      await Deno.readTextFile(String(root("bin", "tool"))),
+      await FileTasks.readText(String(root("bin", "tool"))),
       "TREE-BIN",
     );
   });
@@ -286,7 +287,7 @@ test("toolchain installs a runtime tree alongside release tools", async () => {
     const root = bins.get("node");
     assertEquals(root?.path.endsWith("/node"), true);
     assertEquals(
-      await Deno.readTextFile(String(root?.("bin", "tool"))),
+      await FileTasks.readText(String(root?.("bin", "tool"))),
       "TREE-BIN",
     );
     // The tree carried its own download seam; the toolchain default fetched helm.
@@ -307,7 +308,7 @@ test("a toolchain-level download seam is applied to a tree without its own", asy
       .install({ destDir: dir, download: bytesDownload(tarball) });
     const root = bins.get("node");
     assertEquals(
-      await Deno.readTextFile(String(root?.("bin", "tool"))),
+      await FileTasks.readText(String(root?.("bin", "tool"))),
       "TREE-BIN",
     );
   });

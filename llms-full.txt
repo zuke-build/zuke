@@ -2942,8 +2942,14 @@ class TempDirectorySettings
 
   prefix_: string | undefined
     How the directory's name starts; see {@link prefix}.
+  dir_: string | undefined
+    Where the directory goes; see {@link dir}.
   prefix(start: string): this
     How the directory's name starts (default `zuke-`).
+  dir(parent: string): this
+    The directory to make it in (default the system's temporary directory),
+    for scratch space a tool must find under a project, such as a formatter
+    that reads the project's configuration.
 
 class TempFileSettings
   How `FileTasks.makeTempFile` names its file.
@@ -4024,6 +4030,8 @@ interface DirectoryEntry
     Whether it is a regular file; a link to one is not.
   isDirectory: boolean
     Whether it is a directory; a link to one is not.
+  isSymlink: boolean
+    Whether it is a symbolic link, whatever it points at.
 
 interface EffectContext extends TargetContext
   The context an effect body receives: the target's own context, plus which
@@ -4293,8 +4301,9 @@ interface FileTasksApi
   readDirectory(path: PathLike): Promise<DirectoryEntry[]>
     The entries of the directory at `path`, in no particular order.
   makeTempDirectory(configure?: Configure<TempDirectorySettings>): Promise<string>
-    Create a directory of its own under the system's temporary directory and
-    return its path. Removing it is the caller's job.
+    Create a directory of its own under the system's temporary directory, or
+    the directory `dir` names, and return its path. Removing it is the
+    caller's job.
   makeTempFile(configure?: Configure<TempFileSettings>): Promise<string>
     Create an empty file of its own under the system's temporary directory
     and return its path. Removing it is the caller's job.

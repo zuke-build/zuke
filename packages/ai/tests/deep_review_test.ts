@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AiReviewError, genericReviewer, securityReviewer } from "../mod.ts";
@@ -178,9 +179,9 @@ test("an unreadable conventions file warns and reviews without it", async () => 
 });
 
 test("conventionsFile without a base ref reads from disk, and truncates", async () => {
-  const file = await Deno.makeTempFile({ suffix: ".md" });
+  const file = await FileTasks.makeTempFile((s) => s.suffix(".md"));
   try {
-    await Deno.writeTextFile(file, "rule ".repeat(200)); // 1000 chars
+    await FileTasks.writeText(file, "rule ".repeat(200)); // 1000 chars
     const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
     await genericReviewer((r) =>
       r.provider("claude").apiKey("k").quiet()
@@ -197,7 +198,7 @@ test("conventionsFile without a base ref reads from disk, and truncates", async 
       true,
     );
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
@@ -235,9 +236,9 @@ test("criteriaFile reads from the diff BASE ref and extends the inline criteria"
 });
 
 test("criteriaFile without a base ref reads from disk, and truncates", async () => {
-  const file = await Deno.makeTempFile({ suffix: ".md" });
+  const file = await FileTasks.makeTempFile((s) => s.suffix(".md"));
   try {
-    await Deno.writeTextFile(file, "note ".repeat(200)); // 1000 chars
+    await FileTasks.writeText(file, "note ".repeat(200)); // 1000 chars
     const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
     await genericReviewer((r) =>
       r.provider("claude").apiKey("k").quiet()
@@ -255,7 +256,7 @@ test("criteriaFile without a base ref reads from disk, and truncates", async () 
       true,
     );
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
@@ -364,8 +365,8 @@ test("verify refutes a candidate: reported as refuted, not gated on", async () =
   const lines: string[] = [];
   const log = console.log;
   console.log = (...a: unknown[]) => void lines.push(a.join(" "));
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
+  const summary = EnvTasks.get("GITHUB_STEP_SUMMARY");
+  EnvTasks.delete("GITHUB_STEP_SUMMARY");
   try {
     // Default gate is score > 7: passing proves the refuted high-severity
     // finding stopped gating (score recomputed from the surviving low one).
@@ -376,7 +377,7 @@ test("verify refutes a candidate: reported as refuted, not gated on", async () =
     ).validate(noRedactionContext("t"));
   } finally {
     console.log = log;
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
+    if (summary !== undefined) EnvTasks.set("GITHUB_STEP_SUMMARY", summary);
   }
   assertEquals(calls.length, 2); // review + verify, no more
   const verify = JSON.parse(calls[1].body);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -205,7 +206,7 @@ test("configGet reports an unset key as undefined, not a failure", async () => {
   // subcommand it does not have, which is exactly how `git config --get`
   // reports a key that is not set.
   const value = await GitTasks.configGet((s) =>
-    s.get("zuke.unset.key").toolPath(Deno.execPath()).quiet()
+    s.get("zuke.unset.key").toolPath(RuntimeTasks.execPath()).quiet()
   );
   assertEquals(value, undefined);
 });

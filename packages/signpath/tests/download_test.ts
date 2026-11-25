@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -26,14 +27,16 @@ import {
 async function target(
   name = "zuke.exe",
 ): Promise<{ dir: string; output: string }> {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   return { dir, output: `${dir}/${name}` };
 }
 
 /** The names left in `dir`. */
 async function entries(dir: string): Promise<string[]> {
   const names: string[] = [];
-  for await (const entry of Deno.readDir(dir)) names.push(entry.name);
+  for (const entry of await FileTasks.readDirectory(dir)) {
+    names.push(entry.name);
+  }
   return names.sort();
 }
 
@@ -54,7 +57,7 @@ function download(
 
 test("download: writes exactly the configured path, ignoring the server's file name", async () => {
   const { dir, output } = await target();
-  await Deno.writeTextFile(output, "old");
+  await FileTasks.writeText(output, "old");
   const net = routes({
     [`GET ${ARTIFACT_URL}`]: [() =>
       new Response("MZ signed", {
@@ -65,7 +68,7 @@ test("download: writes exactly the configured path, ignoring the server's file n
   });
   const result = await download(net, output);
   assertEquals(result, { path: output, bytes: 9 });
-  assertEquals(await Deno.readTextFile(output), "MZ signed");
+  assertEquals(await FileTasks.readText(output), "MZ signed");
   assertEquals(await entries(dir), ["zuke.exe"]);
   assertEquals(net.sent[0].headers.get("authorization"), `Bearer ${TOKEN}`);
 });
@@ -77,21 +80,21 @@ test("download: creates the output's directory, and accepts an empty body", asyn
     [`GET ${ARTIFACT_URL}`]: [() => new Response(null, { status: 200 })],
   });
   assertEquals((await download(net, output)).bytes, 0);
-  assertEquals(await Deno.readTextFile(output), "");
+  assertEquals(await FileTasks.readText(output), "");
 });
 
 test("download: a relative bare file name is written in the working directory", async () => {
   const { dir } = await target();
-  const previous = Deno.cwd();
-  Deno.chdir(dir);
+  const previous = RuntimeTasks.cwd();
+  RuntimeTasks.chdir(dir);
   try {
     const net = routes({
       [`GET ${ARTIFACT_URL}`]: [() => new Response("x")],
     });
     await download(net, "zuke.exe");
-    assertEquals(await Deno.readTextFile(`${dir}/zuke.exe`), "x");
+    assertEquals(await FileTasks.readText(`${dir}/zuke.exe`), "x");
   } finally {
-    Deno.chdir(previous);
+    RuntimeTasks.chdir(previous);
   }
 });
 
@@ -110,7 +113,7 @@ test("download: a redirect to storage is followed without the token", async () =
     ["GET https://blob.example/final"]: [() => new Response("signed")],
   });
   await download(net, output);
-  assertEquals(await Deno.readTextFile(output), "signed");
+  assertEquals(await FileTasks.readText(output), "signed");
   assertEquals(net.sent.map((r) => r.headers.has("authorization")), [
     true,
     false,
@@ -182,7 +185,7 @@ test("download: a refusal is an API error and writes nothing", async () => {
 
 test("download: an oversized artifact is refused and leaves no partial file", async () => {
   const { dir, output } = await target();
-  await Deno.writeTextFile(output, "previous");
+  await FileTasks.writeText(output, "previous");
   const net = fakeFetch(() => new Response("0123456789"));
   const error = await assertRejects(
     () => download(net, output, (s) => s.maxDownloadBytes(4)),
@@ -191,7 +194,7 @@ test("download: an oversized artifact is refused and leaves no partial file", as
   );
   assertStringIncludes(error.message, "maxDownloadBytes");
   assertEquals(await entries(dir), ["zuke.exe"]);
-  assertEquals(await Deno.readTextFile(output), "previous");
+  assertEquals(await FileTasks.readText(output), "previous");
 });
 
 test("download: a stream that fails or stalls leaves no partial file", async () => {
@@ -274,7 +277,7 @@ test("download: a redirect to a location that is not a URL is a request error", 
 test("download: a destination that cannot be created releases the connection", async () => {
   // Regression (adversarial review): the response body used to be left unread.
   const { dir } = await target();
-  await Deno.writeTextFile(`${dir}/file`, "x");
+  await FileTasks.writeText(`${dir}/file`, "x");
   let cancelled = false;
   const net = fakeFetch(() =>
     new Response(new ReadableStream({ cancel: () => void (cancelled = true) }))
@@ -285,7 +288,7 @@ test("download: a destination that cannot be created releases the connection", a
 
 test("download: an output that is a directory fails and leaves no partial file", async () => {
   const { dir } = await target();
-  await Deno.mkdir(`${dir}/zuke.exe`);
+  await FileTasks.createDirectory(`${dir}/zuke.exe`, { recursive: false });
   const net = fakeFetch(() => new Response("signed"));
   await assertRejects(
     () => download(net, `${dir}/zuke.exe`),
@@ -304,7 +307,7 @@ test("download: a partial path someone else holds is left alone, and the body re
   crypto.randomUUID = () => fixed;
   try {
     const held = `${dir}/zuke.exe.${fixed}.partial`;
-    await Deno.writeTextFile(held, "theirs");
+    await FileTasks.writeText(held, "theirs");
     let cancelled = false;
     const net = fakeFetch(() =>
       new Response(
@@ -313,7 +316,7 @@ test("download: a partial path someone else holds is left alone, and the body re
     );
     await assertRejects(() => download(net, `${dir}/zuke.exe`));
     assertEquals(cancelled, true);
-    assertEquals(await Deno.readTextFile(held), "theirs");
+    assertEquals(await FileTasks.readText(held), "theirs");
   } finally {
     crypto.randomUUID = original;
   }

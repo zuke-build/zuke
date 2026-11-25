@@ -10,7 +10,7 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { Build, FileTasks, target } from "../../packages/core/mod.ts";
 import { GhTasks } from "../../packages/gh/mod.ts";
 import {
   buildGeminiArchive,
@@ -72,13 +72,13 @@ function releaseBuild(root: string, uploaded: string[]) {
 
 test("the release wiring attaches missing assets and keeps existing ones", async () => {
   await withTemp(async (root) => {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${root}/gemini-extension.json`,
       '{"name":"zuke","version":"0.0.1"}',
     );
-    await Deno.writeTextFile(`${root}/LICENSE`, "MIT");
-    await Deno.mkdir(`${root}/skills/s`, { recursive: true });
-    await Deno.writeTextFile(`${root}/skills/s/SKILL.md`, "s");
+    await FileTasks.writeText(`${root}/LICENSE`, "MIT");
+    await FileTasks.createDirectory(`${root}/skills/s`);
+    await FileTasks.writeText(`${root}/skills/s/SKILL.md`, "s");
 
     const uploaded: string[] = [];
     const { code, out } = await runCli(releaseBuild(root, uploaded), [

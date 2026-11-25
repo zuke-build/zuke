@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -139,7 +140,7 @@ test("pkgGet reads a missing field as undefined rather than failing", async () =
   // is what `npm pkg get` does outside a package.
   const value = await NpmTasks.pkgGet(
     "version",
-    (s) => s.toolPath(Deno.execPath()).quiet(),
+    (s) => s.toolPath(RuntimeTasks.execPath()).quiet(),
   );
   assertEquals(value, undefined);
 });
