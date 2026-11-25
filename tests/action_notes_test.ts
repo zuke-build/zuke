@@ -15,6 +15,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -206,12 +207,12 @@ test("only SHA pins are read, so a floating uses: is not mistaken for one", () =
   assertEquals(pins.get("actions/setup-node")?.version, "v5.0.0");
 });
 
-test("the real action.yml's pins are readable by the notes generator", () => {
+test("the real action.yml's pins are readable by the notes generator", async () => {
   // Against the committed file rather than a fixture: the generator reads
   // whatever `action.yml` actually looks like, and a change to its formatting
   // that stopped the pins parsing would otherwise surface as notes that
   // silently stop naming bumps.
-  const pins = usesPins(Deno.readTextFileSync("action.yml"));
+  const pins = usesPins(await FileTasks.readText("action.yml"));
   assertEquals(pins.has("step-security/harden-runner"), true);
   assertEquals(pins.has("actions/checkout"), true);
   for (const [action, pin] of pins) {

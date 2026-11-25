@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -32,6 +33,7 @@ import {
   resetComposeInvocationCache_,
   resolveComposeInvocation,
 } from "../mod.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 test("the default invocation is the v2 plugin", () => {
   assertEquals(new DockerComposePsSettings().argv(), [
@@ -441,7 +443,7 @@ test("defaultComposeProbe reports presence by exit code", async () => {
   // argv, so `deno eval "0" version` evaluates `0` (exit zero) and ignores the
   // trailing positional — a hermetic stand-in for a working `... version`.
   assertEquals(
-    await defaultComposeProbe([Deno.execPath(), "eval", "0"]),
+    await defaultComposeProbe([RuntimeTasks.execPath(), EVAL, "0"]),
     true,
   );
   // A bogus binary is reported missing rather than throwing.

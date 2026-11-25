@@ -21,6 +21,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { packageSources, withoutComments } from "./_package_sources.ts";
@@ -73,7 +74,7 @@ test("no package outside core imports a node: module outside its allowance", asy
   const found: Record<string, number> = {};
   for (const file of await packageSources()) {
     if (file.startsWith("packages/core/")) continue;
-    const imports = nodeImports(await Deno.readTextFile(file));
+    const imports = nodeImports(await FileTasks.readText(file));
     if (imports > 0) found[file] = imports;
   }
   assertEquals(

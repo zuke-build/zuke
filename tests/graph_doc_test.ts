@@ -9,7 +9,7 @@
  */
 
 import { test } from "./_testing.ts";
-import { Build, discoverTargets, target } from "@zuke/core";
+import { Build, discoverTargets, FileTasks, target } from "@zuke/core";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   canonicalGraphDoc,
@@ -102,7 +102,9 @@ test("renderGraphDoc handles a build with no targets", () => {
 });
 
 test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-graph-doc-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-graph-doc-")
+  );
   const path = `${dir}/graph.md`;
   try {
     const targets = discoverTargets(new Demo());
@@ -116,12 +118,12 @@ test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", async 
     assertEquals(await writeGraphDoc(targets, path), false);
 
     // Hand-edited page: check reports it stale, write repairs it.
-    await Deno.writeTextFile(path, "tampered");
+    await FileTasks.writeText(path, "tampered");
     assertEquals(await checkGraphDoc(targets, path), [`${path} (stale)`]);
     assertEquals(await writeGraphDoc(targets, path), true);
     assertEquals(await checkGraphDoc(targets, path), []);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 

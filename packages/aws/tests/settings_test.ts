@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -15,6 +16,7 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { AwsSettings, AwsTasks } from "../mod.ts";
 import { FakeAws } from "../../../tests/support/aws/_fake.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 test("the default binary is aws", () => {
   assertEquals(new AwsSettings().argv(), ["aws"]);
@@ -88,8 +90,8 @@ test("the pager is switched off in the child's environment", async () => {
   // A real subprocess, but the running deno rather than aws: the settings
   // carry the environment, so whatever they spawn sees it.
   const output = await new AwsSettings()
-    .toolPath(Deno.execPath())
-    .command("eval", "console.log(JSON.stringify(Deno.env.get('AWS_PAGER')))")
+    .toolPath(RuntimeTasks.execPath())
+    .command(EVAL, "console.log(JSON.stringify(process.env['AWS_PAGER']))")
     .quiet()
     .run();
   assertEquals(output.stdout.trim(), '""');

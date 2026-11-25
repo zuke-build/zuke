@@ -7,6 +7,7 @@
  * authz tiers keyed on the qualified `<buildId>:<target>` name, and auditing.
  */
 
+import { EnvTasks, FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
@@ -33,6 +34,7 @@ import type {
 } from "../src/registry/registry.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { FakeStateHost } from "../../../tests/_fakes.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 // ---- fakes ------------------------------------------------------------------
 
@@ -73,7 +75,11 @@ function descriptor(
     location: location ??
       // Inside the server's project root (this checkout), which is where the
       // launch policy confines a module launch by default.
-      { kind: "module", module: `${Deno.cwd()}/${id}.ts`, cwd: Deno.cwd() },
+      {
+        kind: "module",
+        module: `${RuntimeTasks.cwd()}/${id}.ts`,
+        cwd: RuntimeTasks.cwd(),
+      },
     surface: {
       commands: [],
       flags: [],
@@ -284,7 +290,7 @@ test("a run tool spawns the descriptor's module location", async () => {
   assertEquals(calls[0].argv.slice(1), [
     "run",
     "-A",
-    `${Deno.cwd()}/Api.ts`,
+    `${RuntimeTasks.cwd()}/Api.ts`,
     "deploy",
   ]);
 });
@@ -663,33 +669,33 @@ test("a throwing registry on tools/list is a JSON-RPC error, not a crash", async
 
 test("defaultRegistryRunner spawns a real process and captures its output", async () => {
   const result = await defaultRegistryRunner(
-    [Deno.execPath(), "eval", "console.log('spawned-ok')"],
-    Deno.cwd(),
+    [RuntimeTasks.execPath(), EVAL, "console.log('spawned-ok')"],
+    RuntimeTasks.cwd(),
   );
   assertEquals(result.code, 0);
   assertStringIncludes(result.stdout, "spawned-ok");
 });
 
 test("defaultRegistryRunner strips server secrets from the spawned env", async () => {
-  const prev = Deno.env.get("ZUKE_OPERATOR_TOKEN");
-  Deno.env.set("ZUKE_OPERATOR_TOKEN", "server-secret");
+  const prev = EnvTasks.get("ZUKE_OPERATOR_TOKEN");
+  EnvTasks.set("ZUKE_OPERATOR_TOKEN", "server-secret");
   try {
     const result = await defaultRegistryRunner(
       [
-        Deno.execPath(),
-        "eval",
-        "console.log(Deno.env.get('ZUKE_OPERATOR_TOKEN') ?? 'STRIPPED', " +
-        "Deno.env.get('PATH') ? 'HAS_PATH' : 'NO_PATH')",
+        RuntimeTasks.execPath(),
+        EVAL,
+        "console.log(process.env['ZUKE_OPERATOR_TOKEN'] ?? 'STRIPPED', " +
+        "process.env['PATH'] ? 'HAS_PATH' : 'NO_PATH')",
       ],
-      Deno.cwd(),
+      RuntimeTasks.cwd(),
     );
     assertEquals(result.code, 0);
     // The operator token is gone, but the rest of the environment is intact.
     assertStringIncludes(result.stdout, "STRIPPED");
     assertStringIncludes(result.stdout, "HAS_PATH");
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_OPERATOR_TOKEN");
-    else Deno.env.set("ZUKE_OPERATOR_TOKEN", prev);
+    if (prev === undefined) EnvTasks.delete("ZUKE_OPERATOR_TOKEN");
+    else EnvTasks.set("ZUKE_OPERATOR_TOKEN", prev);
   }
 });
 
@@ -697,23 +703,23 @@ test("defaultRegistryRunner suppresses the spawned build's banner", async () => 
   // The child's stdout is returned verbatim as the tool's result, so its
   // opening banner would prepend six lines of ASCII, the server host's
   // directory and a run id that resolves to nothing to every answer an agent reads.
-  const prev = Deno.env.get("ZUKE_NO_BANNER");
-  Deno.env.delete("ZUKE_NO_BANNER");
+  const prev = EnvTasks.get("ZUKE_NO_BANNER");
+  EnvTasks.delete("ZUKE_NO_BANNER");
   try {
     const result = await defaultRegistryRunner(
       [
-        Deno.execPath(),
-        "eval",
-        "console.log(Deno.env.get('ZUKE_NO_BANNER') ?? 'UNSET')",
+        RuntimeTasks.execPath(),
+        EVAL,
+        "console.log(process.env['ZUKE_NO_BANNER'] ?? 'UNSET')",
       ],
-      Deno.cwd(),
+      RuntimeTasks.cwd(),
     );
     assertEquals(result.code, 0);
     assertStringIncludes(result.stdout, "1");
     assertEquals(result.stdout.includes("UNSET"), false, result.stdout);
   } finally {
-    if (prev === undefined) Deno.env.delete("ZUKE_NO_BANNER");
-    else Deno.env.set("ZUKE_NO_BANNER", prev);
+    if (prev === undefined) EnvTasks.delete("ZUKE_NO_BANNER");
+    else EnvTasks.set("ZUKE_NO_BANNER", prev);
   }
 });
 
@@ -1278,7 +1284,7 @@ test("a descriptor pointing at a local module outside the allowed directories is
   // Local is not the same as trusted: on a shared host a registry writer can
   // plant /tmp/evil.ts and name it. The default confinement is the server's
   // project root, which this checkout's temp directory is not inside.
-  const outside = await Deno.makeTempDir();
+  const outside = await FileTasks.makeTempDirectory();
   try {
     const registry = new FakeRegistry();
     registry.add(descriptor("Api", ["deploy"], {
@@ -1318,7 +1324,7 @@ test("a descriptor pointing at a local module outside the allowed directories is
     assertEquals((await call(allowed, "run:Api:deploy")).isError, false);
     assertEquals(calls.length, 1);
   } finally {
-    await Deno.remove(outside, { recursive: true });
+    await FileTasks.remove(outside, { recursive: true });
   }
 });
 
@@ -1327,7 +1333,7 @@ test("an allow-listed remote entry module spawns", async () => {
   registry.add(descriptor("Api", ["deploy"], {
     kind: "module",
     module: "https://builds.example.com/zuke.ts",
-    cwd: Deno.cwd(),
+    cwd: RuntimeTasks.cwd(),
   }));
   const { runner, calls } = recordingRunner();
   const server = new RegistryMcpServer(registry, {
@@ -1429,11 +1435,11 @@ test("the launch check runs before the destructive-confirmation prompt", async (
 test("defaultRegistryRunner exports the resolved actor as ZUKE_ACTOR", async () => {
   const result = await defaultRegistryRunner(
     [
-      Deno.execPath(),
-      "eval",
-      "console.log(Deno.env.get('ZUKE_ACTOR') ?? 'NO_ACTOR')",
+      RuntimeTasks.execPath(),
+      EVAL,
+      "console.log(process.env['ZUKE_ACTOR'] ?? 'NO_ACTOR')",
     ],
-    Deno.cwd(),
+    RuntimeTasks.cwd(),
     { actor: "trusted-caller" },
   );
   assertEquals(result.code, 0);
@@ -1769,9 +1775,9 @@ test("a runner rejecting with a non-Error is still a structured failure", async 
  * can drop an empty-valued variable from a spawned environment altogether, so
  * "no roles" is asserted as unset-or-empty rather than exactly `""`.
  */
-const ACTOR_ECHO = "const v = (n: string) => Deno.env.get(n) ?? '-'; " +
+const ACTOR_ECHO = "const v = (n) => process.env[n] ?? '-'; " +
   "console.log([v('ZUKE_ACTOR'), v('ZUKE_ACTOR_KIND'), " +
-  "Deno.env.get('ZUKE_ACTOR_ROLES') || 'NONE'].join('|'))";
+  "process.env['ZUKE_ACTOR_ROLES'] || 'NONE'].join('|'))";
 
 /** Run `fn` with `vars` set in this process's environment, restoring them after. */
 async function withEnv(
@@ -1780,14 +1786,14 @@ async function withEnv(
 ): Promise<void> {
   const prev = Object.keys(vars).map((
     k,
-  ): [string, string | undefined] => [k, Deno.env.get(k)]);
-  for (const [k, v] of Object.entries(vars)) Deno.env.set(k, v);
+  ): [string, string | undefined] => [k, EnvTasks.get(k)]);
+  for (const [k, v] of Object.entries(vars)) EnvTasks.set(k, v);
   try {
     await fn();
   } finally {
     for (const [k, v] of prev) {
-      if (v === undefined) Deno.env.delete(k);
-      else Deno.env.set(k, v);
+      if (v === undefined) EnvTasks.delete(k);
+      else EnvTasks.set(k, v);
     }
   }
 }
@@ -1852,8 +1858,8 @@ test("without an authenticator the runner gets the actor and no claim", async ()
 
 test("defaultRegistryRunner exports the actor, kind and roles", async () => {
   const withRoles = await defaultRegistryRunner(
-    [Deno.execPath(), "eval", ACTOR_ECHO],
-    Deno.cwd(),
+    [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+    RuntimeTasks.cwd(),
     {
       actor: "scheduler",
       actorKind: "service",
@@ -1865,8 +1871,8 @@ test("defaultRegistryRunner exports the actor, kind and roles", async () => {
 
   // A caller with no roles: the variable is still exported, and it is empty.
   const noRoles = await defaultRegistryRunner(
-    [Deno.execPath(), "eval", ACTOR_ECHO],
-    Deno.cwd(),
+    [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+    RuntimeTasks.cwd(),
     { actor: "engineer-a", actorKind: "human", actorRoles: [] },
   );
   assertEquals(noRoles.code, 0);
@@ -1881,8 +1887,8 @@ test("a fresh actor never inherits the parent's kind and roles", async () => {
     { ZUKE_ACTOR_KIND: "service", ZUKE_ACTOR_ROLES: "operator" },
     async () => {
       const result = await defaultRegistryRunner(
-        [Deno.execPath(), "eval", ACTOR_ECHO],
-        Deno.cwd(),
+        [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+        RuntimeTasks.cwd(),
         { actor: "engineer-a" },
       );
       assertEquals(result.code, 0);
@@ -1903,8 +1909,8 @@ test("with no actor the inherited environment is left alone", async () => {
     },
     async () => {
       const result = await defaultRegistryRunner(
-        [Deno.execPath(), "eval", ACTOR_ECHO],
-        Deno.cwd(),
+        [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+        RuntimeTasks.cwd(),
       );
       assertEquals(result.code, 0);
       assertEquals(result.stdout.trim(), "inherited-actor|service|operator");
@@ -1933,8 +1939,8 @@ test("kind and roles without an actor change nothing", async () => {
         ]
       ) {
         const result = await defaultRegistryRunner(
-          [Deno.execPath(), "eval", ACTOR_ECHO],
-          Deno.cwd(),
+          [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+          RuntimeTasks.cwd(),
           options,
         );
         assertEquals(result.code, 0);
@@ -1954,13 +1960,13 @@ test("the server's tokens are stripped beside the exported claim", async () => {
     async () => {
       const result = await defaultRegistryRunner(
         [
-          Deno.execPath(),
-          "eval",
-          "console.log(Deno.env.get('ZUKE_OPERATOR_TOKEN') ?? 'STRIPPED', " +
-          "Deno.env.get('ZUKE_MCP_TOKEN') ?? 'STRIPPED', " +
-          "Deno.env.get('ZUKE_ACTOR') ?? '-')",
+          RuntimeTasks.execPath(),
+          EVAL,
+          "console.log(process.env['ZUKE_OPERATOR_TOKEN'] ?? 'STRIPPED', " +
+          "process.env['ZUKE_MCP_TOKEN'] ?? 'STRIPPED', " +
+          "process.env['ZUKE_ACTOR'] ?? '-')",
         ],
-        Deno.cwd(),
+        RuntimeTasks.cwd(),
         { actor: "engineer-a", actorKind: "service", actorRoles: ["ops"] },
       );
       assertEquals(result.code, 0);
@@ -2021,8 +2027,8 @@ test("a role name carrying the separator survives the child's env", async () => 
   // Kept in the identity and escaped here, so sanitisation cannot turn a
   // granted role set into the empty one the policy reads as "granted nothing".
   const result = await defaultRegistryRunner(
-    [Deno.execPath(), "eval", ACTOR_ECHO],
-    Deno.cwd(),
+    [RuntimeTasks.execPath(), EVAL, ACTOR_ECHO],
+    RuntimeTasks.cwd(),
     { actor: "ada", actorKind: "human", actorRoles: ["team,ops", "run"] },
   );
   assertEquals(result.code, 0);

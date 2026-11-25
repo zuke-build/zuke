@@ -10,7 +10,12 @@
  */
 
 import { test } from "../_testing.ts";
-import { Build, discoverTargets, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  discoverTargets,
+  FileTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { checkGraphDoc, writeGraphDoc } from "../../build/graph_doc.ts";
 import { runCli } from "./_harness.ts";
@@ -41,7 +46,9 @@ function fixture(path: string): new () => Build {
 }
 
 test("graphDoc target writes the page and graphDocCheck then passes", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-graph-doc-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-graph-doc-")
+  );
   const path = `${dir}/graph.md`;
   try {
     const Demo = fixture(path);
@@ -55,7 +62,7 @@ test("graphDoc target writes the page and graphDocCheck then passes", async () =
     // …the generator target writes it…
     const generate = await runCli(Demo, ["graphDoc"]);
     assertEquals(generate.code, 0);
-    const page = await Deno.readTextFile(path);
+    const page = await FileTasks.readText(path);
     assertStringIncludes(page, "```mermaid");
     assertStringIncludes(page, '"graphDocCheck"');
     // The page is written through `deno fmt`, which pads the table's columns
@@ -71,12 +78,14 @@ test("graphDoc target writes the page and graphDocCheck then passes", async () =
     const after = await runCli(Demo, ["graphDocCheck"]);
     assertEquals(after.code, 0);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("graphDocCheck fails when the build gains a target after generation", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-graph-drift-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-graph-drift-")
+  );
   const path = `${dir}/graph.md`;
   try {
     const generate = await runCli(fixture(path), ["graphDoc"]);
@@ -91,6 +100,6 @@ test("graphDocCheck fails when the build gains a target after generation", async
     assertEquals(check.code, 1);
     assertStringIncludes(check.err, "(stale)");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

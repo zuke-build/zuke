@@ -7,6 +7,7 @@
  * failed against the code before its fix.
  */
 
+import { EnvTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -49,6 +50,7 @@ import {
   json,
   withEmptyPath,
 } from "../../../tests/support/aws/_fake.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AwsSettings>(settings: S): {
@@ -255,8 +257,8 @@ test("S10: debug output's credentials are masked", () => {
     "AWS_SESSION_TOKEN",
     "AWS_ACCESS_KEY_ID",
   ];
-  const previous = names.map((name) => Deno.env.get(name));
-  names.forEach((name, i) => Deno.env.set(name, `debug-${i}-credential`));
+  const previous = names.map((name) => EnvTasks.get(name));
+  names.forEach((name, i) => EnvTasks.set(name, `debug-${i}-credential`));
   try {
     const { settings, marked } = recording(new AwsSettings());
     settings.debug();
@@ -268,8 +270,8 @@ test("S10: debug output's credentials are masked", () => {
   } finally {
     names.forEach((name, i) => {
       const value = previous[i];
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     });
   }
 });
@@ -516,8 +518,8 @@ test("C5/C7: the off output format, and auto-prompt off in the environment", asy
     "off",
   ]);
   const output = await new AwsSettings()
-    .toolPath(Deno.execPath())
-    .command("eval", "console.log(Deno.env.get('AWS_CLI_AUTO_PROMPT'))")
+    .toolPath(RuntimeTasks.execPath())
+    .command(EVAL, "console.log(process.env['AWS_CLI_AUTO_PROMPT'])")
     .quiet()
     .run();
   assertEquals(output.stdout.trim(), "off");

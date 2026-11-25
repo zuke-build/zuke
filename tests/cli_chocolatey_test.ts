@@ -8,6 +8,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
@@ -101,8 +102,6 @@ test("publishCliChocolatey pushes the pinned package with the API key", async ()
 });
 
 test("the package's copyright is the LICENSE's own line", async () => {
-  const license = await Deno.readTextFile(
-    new URL("../LICENSE", import.meta.url),
-  );
+  const license = await FileTasks.readText("LICENSE");
   assertEquals(license.split("\n").includes(COPYRIGHT), true, COPYRIGHT);
 });

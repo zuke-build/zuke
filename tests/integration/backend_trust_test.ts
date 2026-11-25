@@ -10,7 +10,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, gzip, tar, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  gzip,
+  tar,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import { withEnv } from "../_env.ts";
 import { withTempCwd } from "../_temp.ts";
@@ -58,16 +64,18 @@ test("a plaintext registry URL fails `register` the same way", async () => {
 test("a poisoned remote-cache artifact rebuilds the target instead of restoring it", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
-      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-poison-" });
+      const remoteDir = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-it-poison-")
+      );
       await withEnv({ ZUKE_REMOTE_CACHE_DIR: remoteDir }, async () => {
         try {
-          await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+          await FileTasks.writeText(`${dir}/input.txt`, "v1");
           const log: string[] = [];
           class B extends Build {
             build = target().inputs("input.txt").outputs("out.txt").executes(
               async () => {
                 log.push("build");
-                await Deno.writeTextFile("out.txt", "built");
+                await FileTasks.writeText("out.txt", "built");
               },
             );
           }
@@ -80,9 +88,11 @@ test("a poisoned remote-cache artifact rebuilds the target instead of restoring 
           // Whoever can write the store replaces that archive with one carrying
           // an extra file outside the target's declared outputs — the shape a
           // cache-poisoning attack takes, since the name itself is innocuous.
-          const stored = [...Deno.readDirSync(remoteDir)].map((e) => e.name);
+          const stored = (await FileTasks.readDirectory(remoteDir)).map((e) =>
+            e.name
+          );
           assertEquals(stored.length, 1);
-          await Deno.writeFile(
+          await FileTasks.writeBytes(
             `${remoteDir}/${stored[0]}`,
             await gzip(tar([
               { name: "out.txt", data: enc("built") },
@@ -92,23 +102,23 @@ test("a poisoned remote-cache artifact rebuilds the target instead of restoring 
 
           // Simulate a fresh checkout: the local cache and output are gone, so
           // the run reaches for the remote store.
-          await Deno.remove(`${dir}/.zuke`, { recursive: true });
-          await Deno.remove(`${dir}/out.txt`);
+          await FileTasks.remove(`${dir}/.zuke`, { recursive: true });
+          await FileTasks.remove(`${dir}/out.txt`);
 
           const second = await runCli(B, ["build"]);
           assertEquals(second.code, 0);
           assertEquals(log, ["build", "build"]); // rebuilt, not restored
-          assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+          assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
           // The out-of-scope entry never landed, and the refusal was reported.
           assertEquals(
-            await Deno.stat(`${dir}/deno.json`).then(() => true).catch(() =>
-              false
+            await FileTasks.stat(`${dir}/deno.json`).then(() => true).catch(
+              () => false,
             ),
             false,
           );
           assertStringIncludes(`${second.out}\n${second.err}`, "refused");
         } finally {
-          await Deno.remove(remoteDir, { recursive: true });
+          await FileTasks.remove(remoteDir, { recursive: true });
         }
       });
     });

@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { FileTasks } from "../src/file.ts";
 import { withTemp } from "../../../tests/_temp.ts";
 
-const WINDOWS = Deno.build.os === "windows";
+const WINDOWS = RuntimeTasks.os() === "windows";
 
 test("readBytes and writeBytes round-trip bytes", async () => {
   await withTemp(async (dir) => {
@@ -45,7 +46,7 @@ test("stat, statSync and lstat describe a file and a link to it", async () => {
     await FileTasks.writeText(`${dir}/file.txt`, "four");
     const info = await FileTasks.stat(`${dir}/file.txt`);
     assertEquals([info.isFile, info.isDirectory, info.size], [true, false, 4]);
-    assertEquals(info.uid, WINDOWS ? null : Deno.uid());
+    assertEquals(info.uid, RuntimeTasks.userId());
     assertEquals(FileTasks.statSync(dir).isDirectory, true);
     if (WINDOWS) return; // a symlink needs a privilege a CI runner lacks
     await FileTasks.symlink("file.txt", `${dir}/link`);

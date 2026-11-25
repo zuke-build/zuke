@@ -24,6 +24,7 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
+import { ARGS, EVAL } from "../_eval.ts";
 
 /** What the targets of {@link RuntimeTasksBuild} observed, in order. */
 const seen: string[] = [];
@@ -43,8 +44,8 @@ class RuntimeTasksBuild extends Build {
     const entries = await FileTasks.readDirectory(staging);
     seen.push(`staged ${entries.map((entry) => entry.name).join(",")}`);
     seen.push(
-      `in ${RuntimeTasks.cwd() === Deno.cwd()} on ${
-        RuntimeTasks.arch() === Deno.build.arch
+      `in ${await FileTasks.exists(RuntimeTasks.cwd())} on ${
+        ["x86_64", "aarch64"].includes(RuntimeTasks.arch())
       }`,
     );
   });
@@ -54,8 +55,8 @@ class RuntimeTasksBuild extends Build {
       RuntimeTasks.execPath(),
       (s) =>
         s.args(
-          "eval",
-          `console.log(await Deno.readTextFile(Deno.args[0]) + Deno.env.get("SUFFIX"))`,
+          EVAL,
+          `console.log(process.getBuiltinModule('node:fs').readFileSync(${ARGS}[0], 'utf8') + process.env["SUFFIX"])`,
           `${staging}/payload.txt`,
         )
           .env("SUFFIX", EnvTasks.get("ZUKE_RUNTIME_TASKS") ?? "unset")
@@ -66,10 +67,7 @@ class RuntimeTasksBuild extends Build {
 
   talk = target().dependsOn(this.run).executes(async () => {
     const listener = await NetTasks.listen();
-    const client = await Deno.connect({
-      hostname: "127.0.0.1",
-      port: listener.port,
-    });
+    const client = await NetTasks.connect(listener.port);
     const server = await listener.accept();
     listener.close();
     await server.write(await FileTasks.readBytes(`${staging}/payload.txt`));
@@ -82,7 +80,7 @@ class RuntimeTasksBuild extends Build {
 test("a build stages, runs and talks through core's runtime tasks", async () => {
   staging = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-runtime-"));
   seen.length = 0;
-  Deno.env.set("ZUKE_RUNTIME_TASKS", "!");
+  EnvTasks.set("ZUKE_RUNTIME_TASKS", "!");
   try {
     const { code, err } = await runCli(RuntimeTasksBuild, ["talk"]);
     assertEquals(code, 0, err);
@@ -93,7 +91,7 @@ test("a build stages, runs and talks through core's runtime tasks", async () => 
       "socket carried streamed",
     ]);
   } finally {
-    Deno.env.delete("ZUKE_RUNTIME_TASKS");
+    EnvTasks.delete("ZUKE_RUNTIME_TASKS");
     await FileTasks.remove(staging, { recursive: true });
   }
 });

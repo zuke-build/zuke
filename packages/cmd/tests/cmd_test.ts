@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -9,6 +10,7 @@ import {
 } from "../../../tests/_assert.ts";
 import { CmdSettings, CmdTasks } from "../src/cmd.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
+import { EVAL } from "../../../tests/_eval.ts";
 
 test("CmdSettings argv is the tool plus raw args", () => {
   const s = new CmdSettings("git").args("rev-parse", "HEAD");
@@ -21,21 +23,21 @@ test("CmdSettings rejects an empty tool name", () => {
 
 test("CmdTasks.exec runs a real process", async () => {
   const out = await CmdTasks.exec(
-    Deno.execPath(),
-    (s) => s.args("eval", "console.log('cmd-ok')").quiet(),
+    RuntimeTasks.execPath(),
+    (s) => s.args(EVAL, "console.log('cmd-ok')").quiet(),
   );
   assertEquals(out.code, 0);
   assertEquals(out.stdout.includes("cmd-ok"), true);
 });
 
 test("CmdTasks.exec works with a flag-only invocation", async () => {
-  // NOT a bare `deno` invocation — that would start the interactive REPL.
+  // NOT a bare invocation, which would start the runtime's interactive REPL.
   const out = await CmdTasks.exec(
-    Deno.execPath(),
+    RuntimeTasks.execPath(),
     (s) => s.args("--version").quiet(),
   );
   assertEquals(out.code, 0);
-  assertEquals(out.stdout.includes("deno"), true);
+  assertEquals(out.stdout.trim() !== "", true);
 });
 
 test("CmdTasks.exec surfaces ToolNotFoundError for missing tools", async () => {

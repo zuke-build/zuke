@@ -8,6 +8,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -21,8 +22,8 @@ import {
 import { bundleOf, integrityOf, OURS, statement } from "./_npm_verify.ts";
 
 const FIXTURE: unknown = JSON.parse(
-  Deno.readTextFileSync(
-    new URL("./fixtures/npm_attestation_sigstore-5.0.1.json", import.meta.url),
+  await FileTasks.readText(
+    "tests/fixtures/npm_attestation_sigstore-5.0.1.json",
   ),
 );
 // sigstore@5.0.1's real npm attestation (fetched from the registry), so the

@@ -8,6 +8,7 @@
  * output, and refusals a runner could bypass.
  */
 
+import { EnvTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -38,6 +39,7 @@ import {
   AzWebappDeploySettings,
 } from "../mod.ts";
 import { FakeAz, json } from "../../../tests/support/az/_fake.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AzSettings>(settings: S): {
@@ -251,10 +253,10 @@ test("H3: the spawned CLI receives the credential on standard input", async () =
       return "piped-secret";
     }
   }
-  const output = await new StdinEcho().toolPath(Deno.execPath())
+  const output = await new StdinEcho().toolPath(RuntimeTasks.execPath())
     .command(
-      "eval",
-      "console.log(new TextDecoder().decode(await new Response(Deno.stdin.readable).arrayBuffer()))",
+      EVAL,
+      "console.log(process.getBuiltinModule('node:fs').readFileSync(0, 'utf8'))",
     )
     .quiet().run();
   assertEquals(output.stdout.trim(), "piped-secret");
@@ -336,9 +338,9 @@ test("H5: debug registers the credentials the CLI reads from the environment", (
     "AZURE_DEVOPS_EXT_PAT",
     "ARM_CLIENT_SECRET",
   ];
-  const previous = names.map((name) => Deno.env.get(name));
-  names.forEach((name, i) => Deno.env.set(name, `debug-${i}-credential`));
-  Deno.env.set("AZURE_STORAGE_SAS_TOKEN", "");
+  const previous = names.map((name) => EnvTasks.get(name));
+  names.forEach((name, i) => EnvTasks.set(name, `debug-${i}-credential`));
+  EnvTasks.set("AZURE_STORAGE_SAS_TOKEN", "");
   try {
     const { settings, marked } = recording(new AzSettings());
     settings.debug();
@@ -352,8 +354,8 @@ test("H5: debug registers the credentials the CLI reads from the environment", (
   } finally {
     names.forEach((name, i) => {
       const value = previous[i];
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     });
   }
 });

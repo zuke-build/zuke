@@ -20,6 +20,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
@@ -30,26 +31,30 @@ import {
 } from "../build/plugin_version_check.ts";
 
 /** Parse one of the repo's JSON manifests. */
-function readManifest(path: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(Deno.readTextFileSync(path));
+async function readManifest(
+  path: string,
+): Promise<Record<string, unknown>> {
+  const parsed: unknown = JSON.parse(await FileTasks.readText(path));
   if (!isRecord(parsed)) throw new Error(`${path} is not a JSON object`);
   return parsed;
 }
 
 /** The Claude plugin's own manifest. */
-const PLUGIN = readManifest(PLUGIN_MANIFEST);
+const PLUGIN = await readManifest(PLUGIN_MANIFEST);
 
 /** The Codex-native copy of the plugin manifest. */
-const CODEX_PLUGIN = readManifest(CODEX_PLUGIN_MANIFEST);
+const CODEX_PLUGIN = await readManifest(CODEX_PLUGIN_MANIFEST);
 
 /** The Claude marketplace manifest that lists the plugin. */
-const MARKETPLACE = readManifest(MARKETPLACE_MANIFEST);
+const MARKETPLACE = await readManifest(MARKETPLACE_MANIFEST);
 
 /** The Codex-native marketplace catalog. */
-const CODEX_MARKETPLACE = readManifest(".agents/plugins/marketplace.json");
+const CODEX_MARKETPLACE = await readManifest(
+  ".agents/plugins/marketplace.json",
+);
 
 /** The Gemini CLI extension manifest at the repo root. */
-const GEMINI = readManifest(GEMINI_EXTENSION_MANIFEST);
+const GEMINI = await readManifest(GEMINI_EXTENSION_MANIFEST);
 
 /** Whether a parsed JSON value is a plain object, narrowing it for field reads. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -143,6 +148,9 @@ test("the Gemini extension is named for the repo and finds skills/ at its root",
   // Gemini auto-discovers `skills/` next to the manifest — the same tree the
   // other harnesses treat as the source of truth. If it moves, the extension
   // silently ships zero skills.
-  assertEquals(Deno.statSync("skills/zuke-setup/SKILL.md").isFile, true);
-  assertEquals(Deno.statSync("skills/zuke-write-build/SKILL.md").isFile, true);
+  assertEquals(FileTasks.statSync("skills/zuke-setup/SKILL.md").isFile, true);
+  assertEquals(
+    FileTasks.statSync("skills/zuke-write-build/SKILL.md").isFile,
+    true,
+  );
 });

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -1003,7 +1004,9 @@ test("a mutex marker that reads as access denied is waited on, not thrown", asyn
     override readText(path: string): Promise<string | null> {
       if (path === marker && this.locks.has(marker)) {
         this.locks.delete(marker); // the holder finishes releasing it
-        return Promise.reject(new Deno.errors.PermissionDenied("denied"));
+        return Promise.reject(
+          Object.assign(new Error("denied"), { code: "EACCES" }),
+        );
       }
       return super.readText(path);
     }
@@ -1595,8 +1598,8 @@ test("defaultStateHost surfaces non-NotFound filesystem errors", async () => {
     // An exclusive create in a missing parent is not "already exists".
     await assertRejects(() => host.createExclusive(`${dir}/missing/x.lock`));
     // Removing a non-empty directory is a real error, not a missing file.
-    await Deno.mkdir(`${dir}/full`);
-    await Deno.writeTextFile(`${dir}/full/a.txt`, "x");
+    await FileTasks.createDirectory(`${dir}/full`, { recursive: false });
+    await FileTasks.writeText(`${dir}/full/a.txt`, "x");
     await assertRejects(() => host.remove(`${dir}/full`));
     // Listing a regular file is not an absent directory.
     await assertRejects(() => host.listDir(`${dir}/full/a.txt`));

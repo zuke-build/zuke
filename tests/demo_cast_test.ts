@@ -12,6 +12,7 @@
  * the re-capture recipe).
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { ConsoleTasks } from "../packages/console/mod.ts";
@@ -32,10 +33,9 @@ import {
 const CONTROL_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 /** The cast's whole output stream as plain text, one string. */
-function castTranscript(): string {
-  const lines = Deno.readTextFileSync(
-    new URL("../assets/demo.cast", import.meta.url),
-  ).split("\n").filter((line) => line.trim() !== "");
+async function castTranscript(): Promise<string> {
+  const lines = (await FileTasks.readText("assets/demo.cast")).split("\n")
+    .filter((line) => line.trim() !== "");
   let text = "";
   for (const line of lines.slice(1)) {
     const parsed: unknown = JSON.parse(line);
@@ -47,7 +47,7 @@ function castTranscript(): string {
 }
 
 test("the demo cast matches the real interactive setup flow", async () => {
-  const transcript = castTranscript();
+  const transcript = await castTranscript();
 
   // Replay the scene the cast stages: name "Pipeline", no overwrite, star
   // with an authenticated gh — through the real main(), hermetically.
