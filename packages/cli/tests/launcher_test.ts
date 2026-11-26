@@ -9,9 +9,14 @@ import {
 } from "../../../tests/_assert.ts";
 import {
   DENO_INSTALL_DOCS,
+  denoSupportNotice,
   launcherBash,
   launcherPwsh,
 } from "../src/launcher.ts";
+import {
+  nodeLauncherBash,
+  nodeLauncherPowerShell,
+} from "../src/node_launcher.ts";
 import {
   DENO_PIN,
   type DenoPin,
@@ -221,5 +226,29 @@ test("a launcher runs the build file it is given, and refuses an unsafe name", (
       assertThrows(() => launcherBash({ ...variant, buildFile }), Error);
       assertThrows(() => launcherPwsh({ ...variant, buildFile }), Error);
     }
+  }
+});
+
+test("every Deno launcher says how long Deno support is confirmed, and a Node one does not", () => {
+  for (const bootstrapDeno of [true, false]) {
+    assertStringIncludes(
+      launcherBash({ bootstrapDeno }),
+      `echo "${denoSupportNotice("—")}" >&2`,
+    );
+    assertStringIncludes(
+      launcherPwsh({ bootstrapDeno }),
+      `Write-Warning "${denoSupportNotice("-")}"`,
+    );
+  }
+  // Neither shell may expand anything in it: no backtick, dollar or quote.
+  assertEquals(/[`$"]/.test(denoSupportNotice("-")), false);
+  assertStringIncludes(denoSupportNotice("-"), "October 2027");
+  for (
+    const node of [
+      nodeLauncherBash({ buildFile: "build.ts" }),
+      nodeLauncherPowerShell({ buildFile: "build.ts" }),
+    ]
+  ) {
+    assertEquals(node.includes("October 2027"), false);
   }
 });

@@ -23,7 +23,9 @@ import {
 import {
   type BuildRunner,
   defaultBuildProbe,
+  DENO_SUPPORT_NOTICE,
 } from "../../packages/cli/src/dispatch.ts";
+import { launcherBash } from "../../packages/cli/src/launcher.ts";
 import {
   denoCandidates,
   type DenoHost,
@@ -1070,4 +1072,51 @@ test({
       }, { prefix: "zuke-global-cli-" });
     });
   },
+});
+
+test("zuke tells a Deno build where Deno support stands once, whichever prints it", async () => {
+  // The real probe over a real project, with the spawn stubbed: what is
+  // asserted is the CLI's own stderr, before anything runs.
+  await withTemp(async (dir) => {
+    await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "S" }\n');
+    await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
+    await FileTasks.writeText(`${dir}/deno.lock`, "{}");
+    const says = async () => {
+      const lines: string[] = [];
+      await inDir(dir, async () => {
+        const { code, out, err } = await capture(() =>
+          main(
+            ["hello"],
+            defaultHost,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(0),
+            confinedTo(dir),
+          )
+        );
+        assertEquals(code, 0);
+        lines.push(...out, ...err);
+      });
+      return lines.filter((l) => l.includes(DENO_SUPPORT_NOTICE)).length;
+    };
+    // No launcher: the CLI runs Deno itself, so it says it.
+    assertEquals(await says(), 1);
+    // Windows reports no file mode, so a launcher is never run there.
+    if (RuntimeTasks.os() === "windows") return;
+    // A launcher from before the notice: the CLI says it for it.
+    await FileTasks.writeText(
+      `${dir}/zuke`,
+      "#!/bin/sh\nexec deno run -A zuke.ts\n",
+      (s) => s.mode(0o755),
+    );
+    assertEquals(await says(), 1);
+    // Today's launcher says it itself, so the CLI does not.
+    await FileTasks.writeText(
+      `${dir}/zuke`,
+      launcherBash({ bootstrapDeno: false }),
+      (s) => s.mode(0o755),
+    );
+    assertEquals(await says(), 0);
+  }, { prefix: "zuke-global-cli-" });
 });

@@ -16,6 +16,7 @@ import {
 import { defaultUpgradeHost } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
+import { DENO_SUPPORT_NOTICE } from "../src/dispatch.ts";
 import {
   FakeHost,
   FakePrompter,
@@ -923,19 +924,24 @@ test("main forwards a build command to zuke.ts at the nearest zuke.json", async 
 test("main runs a build file on Node with node when zuke.json names that runtime", async () => {
   const host = new FakeHost();
   let seen: [string, string[], string | undefined] | undefined;
-  const code = await main(
-    ["ci"],
-    host,
-    defaultPrompter,
-    undefined,
-    undefined,
-    (root, args, program) => {
-      seen = [root, args, program];
-      return Promise.resolve(0);
-    },
-    probeAt(["zuke.json"], undefined, '{"runtime":"node"}'),
-  );
+  let code = 0;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["ci"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (root, args, program) => {
+        seen = [root, args, program];
+        return Promise.resolve(0);
+      },
+      probeAt(["zuke.json"], undefined, '{"runtime":"node"}'),
+    );
+  });
   assertEquals(code, 0);
+  // A build on Node is told nothing about Deno's support.
+  assertEquals(err.includes(DENO_SUPPORT_NOTICE), false);
   assertEquals(seen, [
     RuntimeTasks.cwd().replaceAll("\\", "/"),
     ["zuke.ts", "ci"],
@@ -962,7 +968,10 @@ test("main forwards with --frozen once a deno.lock sits beside zuke.json", async
     assertEquals(code, 0);
   });
   assertEquals(seen, ["run", "-A", "--frozen", "zuke.ts", "--list", "--json"]);
-  assertEquals(err, []);
+  // The one line a Deno build gets, as from its launcher: where it stands.
+  assertEquals(err, [DENO_SUPPORT_NOTICE]);
+  assertStringIncludes(DENO_SUPPORT_NOTICE, "October 2027");
+  assertStringIncludes(DENO_SUPPORT_NOTICE, "zuke setup --runtime node");
 });
 
 test("main warns on stderr when forwarding without a lockfile", async () => {
@@ -978,8 +987,9 @@ test("main warns on stderr when forwarding without a lockfile", async () => {
       probeAt(["zuke.json"]),
     );
   });
-  assertEquals(err.length, 1);
-  assertEquals(err[0].includes("no deno.lock here yet"), true);
+  assertEquals(err.length, 2);
+  assertEquals(err[0], DENO_SUPPORT_NOTICE);
+  assertEquals(err[1].includes("no deno.lock here yet"), true);
   // …and never on stdout, which belongs to the build.
   assertEquals(host.logs, []);
 });
@@ -1493,7 +1503,10 @@ test("main names the build it forwards to when it is not in the working director
     assertEquals(code, 0);
   });
   assertEquals(root, parent.path);
-  assertEquals(err, [`zuke: running ${parent.path}/zuke.ts`]);
+  assertEquals(err, [
+    `zuke: running ${parent.path}/zuke.ts`,
+    DENO_SUPPORT_NOTICE,
+  ]);
   assertEquals(host.logs, []);
 });
 
@@ -1518,8 +1531,7 @@ test("main surfaces a runner failure as a clean exit 1 on stderr", async () => {
     });
     assertEquals(code, 1);
     assertEquals(host.logs, []);
-    assertEquals(err.length, 1);
-    assertEquals(err[0].includes("spawn failed: deno vanished"), true);
+    assertEquals(err, [DENO_SUPPORT_NOTICE, "spawn failed: deno vanished"]);
   }
 });
 

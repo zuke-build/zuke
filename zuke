@@ -180,6 +180,7 @@ export PATH="$(dirname "$deno_bin"):$PATH"
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
+echo "zuke: builds on Deno are supported until October 2027 — run zuke setup --runtime node to move this project to Node." >&2
 if [ -f deno.lock ]; then
   exec "$deno_bin" run -A --frozen build.ts "$@"
 else
