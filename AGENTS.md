@@ -388,6 +388,10 @@ file, stream and stdio layers), and fixture scripts that a test runs as a
 subprocess. Files still on `tests/node_pending.json` are being ported and follow
 the rule as they leave it.
 
+A test that needs Deno itself, because it runs `deno publish` or `deno run`, or
+checks Deno's permissions, says why with `denoOnly`, and the Node lane skips it.
+Mark the test, not its file: the rest of the file still runs on both runtimes.
+
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
    fakes and the local `tests/_assert.ts` helper (never a third-party assert
    library). For a tool wrapper, assert the **pure `buildArgs()` argv** — do not

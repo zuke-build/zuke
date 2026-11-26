@@ -17,7 +17,7 @@ import {
   spawnDeno,
 } from "../src/deno_path.ts";
 import { launcherBash, launcherPwsh } from "../src/launcher.ts";
-import { denoExecutable } from "@zuke/core";
+import { denoExecutable, EnvTasks, FileTasks, RuntimeTasks } from "@zuke/core";
 import { withEnv } from "../../../tests/_env.ts";
 
 /** A {@link DenoHost} whose three answers the test dictates. */
@@ -41,13 +41,17 @@ function envHost(
 /** A name no executable on any machine answers to. */
 const MISSING = "zuke-no-such-deno-8f3a1c";
 
-test("running under deno run, the running executable is the only candidate", () => {
-  // Which executable is Deno is `denoExecutable`'s answer, shared with the
-  // build CLI and the MCP registry rather than decided again here — so under
-  // `deno test` it is this process, with nothing to look up.
-  const candidates = denoCandidates(host({ standalone: () => false }));
-  assertEquals(candidates, [Deno.execPath()]);
-  assertEquals(candidates, [denoExecutable(false)]);
+test({
+  name: "running under deno run, the running executable is the only candidate",
+  denoOnly: "spawns the running deno",
+  fn: () => {
+    // Which executable is Deno is `denoExecutable`'s answer, shared with the
+    // build CLI and the MCP registry rather than decided again here — so under
+    // `deno test` it is this process, with nothing to look up.
+    const candidates = denoCandidates(host({ standalone: () => false }));
+    assertEquals(candidates, [RuntimeTasks.execPath()]);
+    assertEquals(candidates, [denoExecutable(false)]);
+  },
 });
 
 test("compiled, the first candidate is the shared answer, not a local one", () => {
@@ -121,20 +125,24 @@ test("a windows PATH is joined with semicolons", () => {
   );
 });
 
-test("spawnDeno skips a candidate that is not installed", async () => {
-  // Only the second candidate can have produced this output, so the skip is
-  // what the assertions prove.
-  const child = await spawnDeno(
-    ["eval", "console.log('ok')"],
-    { stdout: "piped", stderr: "null" },
-    [MISSING, Deno.execPath()],
-  );
-  const [{ code }, stdout] = await Promise.all([
-    child.status,
-    new Response(child.stdout).text(),
-  ]);
-  assertEquals(code, 0);
-  assertStringIncludes(stdout, "ok");
+test({
+  name: "spawnDeno skips a candidate that is not installed",
+  denoOnly: "spawns the running deno",
+  fn: async () => {
+    // Only the second candidate can have produced this output, so the skip is
+    // what the assertions prove.
+    const child = await spawnDeno(
+      ["eval", "console.log('ok')"],
+      { stdout: "piped", stderr: "null" },
+      [MISSING, RuntimeTasks.execPath()],
+    );
+    const [{ code }, stdout] = await Promise.all([
+      child.status,
+      new Response(child.stdout).text(),
+    ]);
+    assertEquals(code, 0);
+    assertStringIncludes(stdout, "ok");
+  },
 });
 
 test("spawnDeno reports every candidate it tried when none is installed", async () => {
@@ -155,12 +163,14 @@ test({
   // Windows refuses a non-executable file differently, and the point of the
   // branch — do not report "not found" for a candidate that is there — is the
   // same wherever it is proved.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
-    const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-deno-path-")
+    );
     try {
       const notExecutable = `${dir}/deno`;
-      await Deno.writeTextFile(notExecutable, "not a binary\n");
+      await FileTasks.writeText(notExecutable, "not a binary\n");
       const error = await assertRejects(() =>
         spawnDeno(["--version"], {}, [
           notExecutable,
@@ -168,15 +178,15 @@ test({
       );
       assertEquals(error instanceof DenoNotFoundError, false);
     } finally {
-      await Deno.remove(dir, { recursive: true });
+      await FileTasks.remove(dir, { recursive: true });
     }
   },
 });
 
 test("the default host answers from the running process", () => {
   assertEquals(defaultDenoHost.standalone(), false);
-  assertEquals(defaultDenoHost.windows(), Deno.build.os === "windows");
-  assertEquals(defaultDenoHost.env("PATH"), Deno.env.get("PATH"));
+  assertEquals(defaultDenoHost.windows(), RuntimeTasks.os() === "windows");
+  assertEquals(defaultDenoHost.env("PATH"), EnvTasks.get("PATH"));
 });
 
 test("compiled, a relative DENO_INSTALL is refused rather than resolved", () => {
@@ -205,26 +215,30 @@ test("an empty inherited PATH is not joined onto", () => {
 });
 
 test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
-  await Deno.remove(dir);
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-deno-path-")
+  );
+  await FileTasks.remove(dir);
   const error = await assertRejects(() =>
-    spawnDeno(["--version"], { cwd: dir }, [Deno.execPath()])
+    spawnDeno(["--version"], { cwd: dir }, [RuntimeTasks.execPath()])
   );
   assertEquals(error instanceof DenoNotFoundError, false);
-  assertEquals(error instanceof Deno.errors.NotFound, true);
+  assertEquals(FileTasks.isNotFound(error), true);
 });
 
 test("spawnDeno does not blame Deno for a cwd that is a file", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-deno-path-")
+  );
   try {
     const file = `${dir}/not-a-directory`;
-    await Deno.writeTextFile(file, "");
+    await FileTasks.writeText(file, "");
     const error = await assertRejects(() =>
-      spawnDeno(["--version"], { cwd: file }, [Deno.execPath()])
+      spawnDeno(["--version"], { cwd: file }, [RuntimeTasks.execPath()])
     );
     assertEquals(error instanceof DenoNotFoundError, false);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -259,40 +273,50 @@ test("the compiled order is the one the launchers use in shell", () => {
   ]);
 });
 
-test("every spawned Deno skips its update check, so its notice cannot land in our output", async () => {
-  await withEnv({ DENO_NO_UPDATE_CHECK: undefined }, async () => {
+test({
+  name:
+    "every spawned Deno skips its update check, so its notice cannot land in our output",
+  denoOnly: "spawns the running deno",
+  fn: async () => {
+    await withEnv({ DENO_NO_UPDATE_CHECK: undefined }, async () => {
+      const child = await spawnDeno(
+        ["eval", "console.log(Deno.env.get('DENO_NO_UPDATE_CHECK'))"],
+        { stdout: "piped", stderr: "null" },
+        [RuntimeTasks.execPath()],
+      );
+      const [{ code }, stdout] = await Promise.all([
+        child.status,
+        new Response(child.stdout).text(),
+      ]);
+      assertEquals(code, 0);
+      assertEquals(stdout.trim(), "1");
+    });
+    assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
+  },
+});
+
+test({
+  name:
+    "a caller's env reaches the spawned Deno, but cannot turn the update check back on",
+  denoOnly: "spawns the running deno",
+  fn: async () => {
     const child = await spawnDeno(
-      ["eval", "console.log(Deno.env.get('DENO_NO_UPDATE_CHECK'))"],
-      { stdout: "piped", stderr: "null" },
-      [Deno.execPath()],
+      [
+        "eval",
+        "console.log(Deno.env.get('EXTRA'), Deno.env.get('DENO_NO_UPDATE_CHECK'))",
+      ],
+      {
+        stdout: "piped",
+        stderr: "null",
+        env: { EXTRA: "yes", DENO_NO_UPDATE_CHECK: "0" },
+      },
+      [RuntimeTasks.execPath()],
     );
     const [{ code }, stdout] = await Promise.all([
       child.status,
       new Response(child.stdout).text(),
     ]);
     assertEquals(code, 0);
-    assertEquals(stdout.trim(), "1");
-  });
-  assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
-});
-
-test("a caller's env reaches the spawned Deno, but cannot turn the update check back on", async () => {
-  const child = await spawnDeno(
-    [
-      "eval",
-      "console.log(Deno.env.get('EXTRA'), Deno.env.get('DENO_NO_UPDATE_CHECK'))",
-    ],
-    {
-      stdout: "piped",
-      stderr: "null",
-      env: { EXTRA: "yes", DENO_NO_UPDATE_CHECK: "0" },
-    },
-    [Deno.execPath()],
-  );
-  const [{ code }, stdout] = await Promise.all([
-    child.status,
-    new Response(child.stdout).text(),
-  ]);
-  assertEquals(code, 0);
-  assertEquals(stdout.trim(), "yes 1");
+    assertEquals(stdout.trim(), "yes 1");
+  },
 });

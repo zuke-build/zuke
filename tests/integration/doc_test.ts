@@ -20,45 +20,53 @@ class Noop extends Build {
   noop = target().executes(() => {});
 }
 
-test("zuke doc runs deno doc for a local module in an isolated cwd", async () => {
-  await withTemp(async (dir) => {
-    const mod = `${dir}/lib.ts`;
-    await FileTasks.writeText(
-      mod,
-      '/** A documented greeting. */\nexport function greet(): string {\n  return "hi";\n}\n',
-    );
-    // The default runner spawns a real `deno doc` (offline for a self-contained
-    // local module) from a fresh empty temp dir; success proves the isolation
-    // path end-to-end. Output goes to inherited stdout, so assert the exit code.
-    const ok = await runCli(Noop, ["doc", mod]);
-    assertEquals(ok.code, 0);
+test({
+  name: "zuke doc runs deno doc for a local module in an isolated cwd",
+  denoOnly: "runs deno doc",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const mod = `${dir}/lib.ts`;
+      await FileTasks.writeText(
+        mod,
+        '/** A documented greeting. */\nexport function greet(): string {\n  return "hi";\n}\n',
+      );
+      // The default runner spawns a real `deno doc` (offline for a self-contained
+      // local module) from a fresh empty temp dir; success proves the isolation
+      // path end-to-end. Output goes to inherited stdout, so assert the exit code.
+      const ok = await runCli(Noop, ["doc", mod]);
+      assertEquals(ok.code, 0);
 
-    // A spec deno doc cannot resolve fails, and that failure is propagated.
-    const missing = await runCli(Noop, ["doc", `${dir}/does-not-exist.ts`]);
-    assertEquals(missing.code !== 0, true);
-  }, { prefix: "zuke-doc-it-" });
+      // A spec deno doc cannot resolve fails, and that failure is propagated.
+      const missing = await runCli(Noop, ["doc", `${dir}/does-not-exist.ts`]);
+      assertEquals(missing.code !== 0, true);
+    }, { prefix: "zuke-doc-it-" });
+  },
 });
 
-test("zuke doc ignores a deno.json planted above its isolated temp dir", async () => {
-  // The isolated cwd sits under the shared temp dir, whose ancestors any local
-  // user can seed. Deno would honour a config found there — here one that is
-  // not even JSON, which fails the run if Deno reads it. The runner's own
-  // workspace-root config stops the walk.
-  await withTemp(async (dir) => {
-    const shared = `${dir}/shared`;
-    await FileTasks.createDirectory(shared, { recursive: false });
-    await FileTasks.writeText(
-      `${shared}/deno.json`,
-      '{ "workspace": ["./*"], ',
-    );
-    const mod = `${dir}/lib.ts`;
-    await FileTasks.writeText(mod, "/** Kept. */\nexport const kept = 1;\n");
-    let code = -1;
-    await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
-      code = (await runCli(Noop, ["doc", mod])).code;
-    });
-    assertEquals(code, 0);
-  }, { prefix: "zuke-doc-it-" });
+test({
+  name: "zuke doc ignores a deno.json planted above its isolated temp dir",
+  denoOnly: "runs deno doc",
+  fn: async () => {
+    // The isolated cwd sits under the shared temp dir, whose ancestors any local
+    // user can seed. Deno would honour a config found there — here one that is
+    // not even JSON, which fails the run if Deno reads it. The runner's own
+    // workspace-root config stops the walk.
+    await withTemp(async (dir) => {
+      const shared = `${dir}/shared`;
+      await FileTasks.createDirectory(shared, { recursive: false });
+      await FileTasks.writeText(
+        `${shared}/deno.json`,
+        '{ "workspace": ["./*"], ',
+      );
+      const mod = `${dir}/lib.ts`;
+      await FileTasks.writeText(mod, "/** Kept. */\nexport const kept = 1;\n");
+      let code = -1;
+      await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
+        code = (await runCli(Noop, ["doc", mod])).code;
+      });
+      assertEquals(code, 0);
+    }, { prefix: "zuke-doc-it-" });
+  },
 });
 
 test("the build's doc resolves a bare name as a package, not a file", async () => {

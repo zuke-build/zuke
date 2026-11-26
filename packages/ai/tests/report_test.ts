@@ -20,7 +20,7 @@ import {
   toMarkdown,
 } from "../src/report.ts";
 import type { Assessment } from "../src/types.ts";
-import { repoRoot } from "@zuke/core";
+import { FileTasks, ProcessTasks, repoRoot, RuntimeTasks } from "@zuke/core";
 
 /** A small assessment with one located, fingerprinted finding. */
 const ASSESSMENT: Assessment = {
@@ -224,70 +224,73 @@ test("skipMarkdown neutralises the reason like any untrusted value", () => {
   assertEquals(skipConsoleLine("sec", "no key"), "[sec] skipped — no key");
 });
 
-test("writeStepSummary is a silent no-op without env access", async () => {
-  // The writer is best-effort: in a sandbox that denies env access it must
-  // return without throwing — and without writing — even when the variable
-  // actually points at a writable file.
-  const dir = await Deno.makeTempDir({ prefix: "zuke-report-" });
-  const summary = `${dir}/summary.md`;
-  const script = `${dir}/probe.ts`;
-  const moduleUrl = new URL("../src/report.ts", import.meta.url).href;
-  await Deno.writeTextFile(
-    script,
-    [
-      "// Copyright (c) 2026 the Zuke contributors",
-      "// SPDX-License-Identifier: MIT",
-      `import { writeStepSummary } from "${moduleUrl}";`,
-      'writeStepSummary("# never lands");',
-      'console.log("survived");',
-    ].join("\n"),
-  );
-  try {
-    const output = await new Deno.Command(Deno.execPath(), {
-      // No permissions at all: Deno.env.get throws inside the writer.
-      //
-      // The workspace config is passed because the probe script lives in a temp
-      // directory, and this module now delegates to `@zuke/core` rather than
-      // carrying its own copy of the writer — so its bare specifier needs the
-      // import map that a published consumer would get from the registry. The
-      // property under test is unchanged: no permissions, no throw, no write.
-      // The probe script sits in a temp directory, so it needs the workspace
-      // import map handed to it — this module delegates to `@zuke/core` rather
-      // than carrying its own copy of the writer, and a published consumer
-      // would get that resolution from the registry.
-      //
-      // Resolved through `repoRoot`, which walks up to the config file, rather
-      // than by counting `..` from this file: the count silently breaks if the
-      // test ever moves, and the failure would look like the behaviour under
-      // test regressing. Not a URL's `pathname` either — that is
-      // percent-encoded and puts a slash before a Windows drive letter, so a
-      // repository path with a space, or the Windows leg of the matrix, would
-      // not find the file.
-      args: [
-        "run",
-        "--quiet",
-        "--no-check",
-        "--config",
-        repoRoot("deno.json").path,
-        script,
-      ],
-      env: { GITHUB_STEP_SUMMARY: summary, NO_COLOR: "1" },
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
-    assertEquals(new TextDecoder().decode(output.stdout).trim(), "survived");
-    assertEquals(output.code, 0);
-    // The summary file was never created — the writer bailed before writing.
-    let exists = true;
+test({
+  name: "writeStepSummary is a silent no-op without env access",
+  denoOnly: "runs a script with no Deno permissions",
+  fn: async () => {
+    // The writer is best-effort: in a sandbox that denies env access it must
+    // return without throwing — and without writing — even when the variable
+    // actually points at a writable file.
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-report-")
+    );
+    const summary = `${dir}/summary.md`;
+    const script = `${dir}/probe.ts`;
+    const moduleUrl = new URL("../src/report.ts", import.meta.url).href;
+    await FileTasks.writeText(
+      script,
+      [
+        "// Copyright (c) 2026 the Zuke contributors",
+        "// SPDX-License-Identifier: MIT",
+        `import { writeStepSummary } from "${moduleUrl}";`,
+        'writeStepSummary("# never lands");',
+        'console.log("survived");',
+      ].join("\n"),
+    );
     try {
-      await Deno.stat(summary);
-    } catch {
-      exists = false;
+      const output = await ProcessTasks.run(RuntimeTasks.execPath(), (s) =>
+        // No permissions at all: reading the environment throws inside the writer.
+        //
+        // The workspace config is passed because the probe script lives in a temp
+        // directory, and this module now delegates to `@zuke/core` rather than
+        // carrying its own copy of the writer — so its bare specifier needs the
+        // import map that a published consumer would get from the registry. The
+        // property under test is unchanged: no permissions, no throw, no write.
+        // The probe script sits in a temp directory, so it needs the workspace
+        // import map handed to it — this module delegates to `@zuke/core` rather
+        // than carrying its own copy of the writer, and a published consumer
+        // would get that resolution from the registry.
+        //
+        // Resolved through `repoRoot`, which walks up to the config file, rather
+        // than by counting `..` from this file: the count silently breaks if the
+        // test ever moves, and the failure would look like the behaviour under
+        // test regressing. Not a URL's `pathname` either — that is
+        // percent-encoded and puts a slash before a Windows drive letter, so a
+        // repository path with a space, or the Windows leg of the matrix, would
+        // not find the file.
+        s.args(
+          "run",
+          "--quiet",
+          "--no-check",
+          "--config",
+          repoRoot("deno.json").path,
+          script,
+        ).env("GITHUB_STEP_SUMMARY", summary).env("NO_COLOR", "1")
+          .stdout("piped").stderr("piped"));
+      assertEquals(new TextDecoder().decode(output.stdout).trim(), "survived");
+      assertEquals(output.code, 0);
+      // The summary file was never created — the writer bailed before writing.
+      let exists = true;
+      try {
+        await FileTasks.stat(summary);
+      } catch {
+        exists = false;
+      }
+      assertEquals(exists, false);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
     }
-    assertEquals(exists, false);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  },
 });
 
 test("an earlier-round refutation is labelled as standing, not fresh", () => {

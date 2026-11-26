@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
@@ -167,16 +168,21 @@ test("ciHost and isCI default to the process environment", () => {
   assertEquals(typeof isCI(), "boolean");
 });
 
-test("denoExecutable names the running deno, unless this is a compiled build", () => {
-  // Under `deno run` — and so under `deno test` — the executable running this
-  // code is Deno itself, which is what a `deno doc`/`deno test` subprocess
-  // should be: the same version as its parent, with no ambient install needed.
-  assertEquals(denoExecutable(false), Deno.execPath());
-  assertEquals(denoExecutable(), Deno.execPath());
-  // A `deno compile` binary is not Deno. Spawning its own executable re-enters
-  // the build instead of running Deno, so the compiled case resolves the bare
-  // name and lets the OS find a real Deno on PATH.
-  assertEquals(denoExecutable(true), "deno");
+test({
+  name:
+    "denoExecutable names the running deno, unless this is a compiled build",
+  denoOnly: "names the running deno",
+  fn: () => {
+    // Under `deno run` — and so under `deno test` — the executable running this
+    // code is Deno itself, which is what a `deno doc`/`deno test` subprocess
+    // should be: the same version as its parent, with no ambient install needed.
+    assertEquals(denoExecutable(false), RuntimeTasks.execPath());
+    assertEquals(denoExecutable(), RuntimeTasks.execPath());
+    // A `deno compile` binary is not Deno. Spawning its own executable re-enters
+    // the build instead of running Deno, so the compiled case resolves the bare
+    // name and lets the OS find a real Deno on PATH.
+    assertEquals(denoExecutable(true), "deno");
+  },
 });
 
 test("hostOs gives Node's platform names the names Zuke has always used", () => {
@@ -192,13 +198,13 @@ test("hostOs gives Node's platform names the names Zuke has always used", () => 
   assertEquals(hostOs("openbsd"), "linux");
   assertEquals(operatingSystem(hostOs("openbsd")), "linux");
   // The running host: the same answer the runtime gives.
-  assertEquals(hostOs(), Deno.build.os);
+  assertEquals(hostOs(), RuntimeTasks.os());
 });
 
 test("hostArch maps the two CPUs Zuke installs for, and names any other", () => {
   assertEquals(hostArch("x64"), "x86_64");
   assertEquals(hostArch("arm64"), "aarch64");
-  assertEquals(hostArch(), Deno.build.arch);
+  assertEquals(hostArch(), RuntimeTasks.arch());
   assertThrows(() => hostArch("ia32"), Error, 'architecture "ia32"');
 });
 
@@ -206,9 +212,9 @@ test("archName maps the two CPUs Zuke recognises, and passes any other through",
   assertEquals(archName("x64"), "x86_64");
   assertEquals(archName("arm64"), "aarch64");
   assertEquals(archName("ppc64"), "ppc64");
-  assertEquals(archName(), Deno.build.arch);
+  assertEquals(archName(), RuntimeTasks.arch());
 });
 
 test("platformLabel names the running host as the banner always has", () => {
-  assertEquals(platformLabel(), `${Deno.build.os}-${Deno.build.arch}`);
+  assertEquals(platformLabel(), `${RuntimeTasks.os()}-${RuntimeTasks.arch()}`);
 });

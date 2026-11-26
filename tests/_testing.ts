@@ -11,7 +11,8 @@
  * with `ignore`, Deno's two sanitizers and its permissions, and `t.step` for
  * a body made of named stages. Vitest has no sanitizers and no nested steps,
  * so under Node the sanitizers are dropped and a step runs inline, failing
- * the test with its own error; a test that sets Deno permissions is skipped.
+ * the test with its own error; a test that sets Deno permissions, or says it
+ * needs Deno with `denoOnly`, is skipped.
  *
  * Vitest is loaded with a specifier Deno cannot see, and only under Node:
  * Deno type-checks a literal dynamic import, and resolving Vitest would send
@@ -44,6 +45,11 @@ export interface TestDefinition {
    * test that sets them is about Deno and is skipped under Node.
    */
   permissions?: Deno.PermissionOptions;
+  /**
+   * Why the test needs Deno itself, such as running `deno publish`. Skipped
+   * under Node; under Deno it runs as any other test.
+   */
+  denoOnly?: string;
 }
 
 /** The part of Vitest's `test` this module calls. */
@@ -105,7 +111,8 @@ export function test(
     await body(inline);
   };
   const denoOnly = "permissions" in definition &&
-    definition.permissions !== undefined;
+      definition.permissions !== undefined ||
+    "denoOnly" in definition && definition.denoOnly !== undefined;
   if (denoOnly || ("ignore" in definition && definition.ignore === true)) {
     vitestTest.skip(definition.name, run);
   } else {

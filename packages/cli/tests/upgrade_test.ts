@@ -25,7 +25,7 @@ import {
 import type { BinaryPin } from "../src/binary_pin.ts";
 import { withTemp } from "../../../tests/_temp.ts";
 import { withEnv } from "../../../tests/_env.ts";
-import { absolutePath } from "@zuke/core";
+import { absolutePath, FileTasks, RuntimeTasks } from "@zuke/core";
 
 /** The main module Deno reports for an installed CLI. */
 const FROM_JSR = "jsr:@zuke/cli";
@@ -543,21 +543,29 @@ test("zuke --help lists upgrade and its options", async () => {
   assertStringIncludes(help, "--dry-run");
 });
 
-test("the default upgrade host reports its main module and runs deno in isolation", async () => {
-  assertEquals(defaultUpgradeHost.mainModule(), Deno.mainModule);
-  assertEquals(defaultUpgradeHost.standalone(), Deno.build.standalone);
-  assertEquals(defaultUpgradeHost.execPath(), Deno.execPath());
-  assertEquals(
-    await defaultUpgradeHost.realPath(Deno.execPath()),
-    await Deno.realPath(Deno.execPath()),
-  );
-  assertEquals(
-    defaultUpgradeHost.windows(),
-    Deno.build.os === "windows",
-  );
-  // `deno --version` stands in for the install: the same isolated runner,
-  // with no network and nothing installed.
-  assertEquals(await defaultUpgradeHost.install(["--version"]), 0);
+test({
+  name:
+    "the default upgrade host reports its main module and runs deno in isolation",
+  denoOnly: "runs deno --version as its isolated install",
+  fn: async () => {
+    assertEquals(defaultUpgradeHost.mainModule(), RuntimeTasks.mainModule());
+    assertEquals(
+      defaultUpgradeHost.standalone(),
+      RuntimeTasks.facts().standalone,
+    );
+    assertEquals(defaultUpgradeHost.execPath(), RuntimeTasks.execPath());
+    assertEquals(
+      await defaultUpgradeHost.realPath(RuntimeTasks.execPath()),
+      await FileTasks.realPath(RuntimeTasks.execPath()),
+    );
+    assertEquals(
+      defaultUpgradeHost.windows(),
+      RuntimeTasks.os() === "windows",
+    );
+    // `deno --version` stands in for the install: the same isolated runner,
+    // with no network and nothing installed.
+    assertEquals(await defaultUpgradeHost.install(["--version"]), 0);
+  },
 });
 
 test("the default upgrade host finds the install root the way deno install does", async () => {

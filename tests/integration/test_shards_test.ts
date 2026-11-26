@@ -65,54 +65,70 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-test("the test row sums every shard's counts", async () => {
-  const r = await runCli(shardedBuild([[PASSING], [PASSING]]), ["test"]);
-  assertEquals(r.code, 0, r.err);
-  assertStringIncludes(
-    row(r.out, "test"),
-    "// Tests: 6 · Passed: 4 · Failed: 0 · Skipped: 2",
-  );
-  const first = r.out.indexOf("── test shard 1/2 ──");
-  const second = r.out.indexOf("── test shard 2/2 ──");
-  assertEquals(first >= 0 && second > first, true, r.out);
+test({
+  name: "the test row sums every shard's counts",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(shardedBuild([[PASSING], [PASSING]]), ["test"]);
+    assertEquals(r.code, 0, r.err);
+    assertStringIncludes(
+      row(r.out, "test"),
+      "// Tests: 6 · Passed: 4 · Failed: 0 · Skipped: 2",
+    );
+    const first = r.out.indexOf("── test shard 1/2 ──");
+    const second = r.out.indexOf("── test shard 2/2 ──");
+    assertEquals(first >= 0 && second > first, true, r.out);
+  },
 });
 
-test("a failing shard fails the target, and the row still counts both", async () => {
-  const r = await runCli(shardedBuild([[FAILING], [PASSING]]), ["test"]);
-  assertEquals(r.code, 1);
-  assertStringIncludes(
-    row(r.out, "test"),
-    "// Tests: 5 · Passed: 3 · Failed: 1 · Skipped: 1",
-  );
-  assertStringIncludes(
-    `${r.out}\n${r.err}`,
-    "1 of 2 test shard(s) failed — 1 failing test(s)",
-  );
+test({
+  name: "a failing shard fails the target, and the row still counts both",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(shardedBuild([[FAILING], [PASSING]]), ["test"]);
+    assertEquals(r.code, 1);
+    assertStringIncludes(
+      row(r.out, "test"),
+      "// Tests: 5 · Passed: 3 · Failed: 1 · Skipped: 1",
+    );
+    assertStringIncludes(
+      `${r.out}\n${r.err}`,
+      "1 of 2 test shard(s) failed — 1 failing test(s)",
+    );
+  },
 });
 
-test("a shard whose deno died before testing is run again, and passes", async () => {
-  const r = await runCli(
-    shardedBuild([[PASSING]], (paths, run) => run === 0 ? [MISSING] : paths),
-    ["test"],
-  );
-  assertEquals(r.code, 0, r.err);
-  // Only the run that tested anything is counted.
-  assertStringIncludes(
-    row(r.out, "test"),
-    "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1",
-  );
-  assertStringIncludes(r.out, "no_such_suite.ts");
-  assertStringIncludes(
-    r.out,
-    "── test shard 1/1: deno exited before running any test; ran it again ──",
-  );
+test({
+  name: "a shard whose deno died before testing is run again, and passes",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(
+      shardedBuild([[PASSING]], (paths, run) => run === 0 ? [MISSING] : paths),
+      ["test"],
+    );
+    assertEquals(r.code, 0, r.err);
+    // Only the run that tested anything is counted.
+    assertStringIncludes(
+      row(r.out, "test"),
+      "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1",
+    );
+    assertStringIncludes(r.out, "no_such_suite.ts");
+    assertStringIncludes(
+      r.out,
+      "── test shard 1/1: deno exited before running any test; ran it again ──",
+    );
+  },
 });
 
-test("a shard that dies before testing twice fails the target", async () => {
-  const r = await runCli(shardedBuild([[MISSING]]), ["test"]);
-  assertEquals(r.code, 1);
-  assertStringIncludes(
-    `${r.out}\n${r.err}`,
-    "Shard(s) 1 exited before printing a result line",
-  );
+test({
+  name: "a shard that dies before testing twice fails the target",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(shardedBuild([[MISSING]]), ["test"]);
+    assertEquals(r.code, 1);
+    assertStringIncludes(
+      `${r.out}\n${r.err}`,
+      "Shard(s) 1 exited before printing a result line",
+    );
+  },
 });

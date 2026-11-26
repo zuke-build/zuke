@@ -85,49 +85,58 @@ test("deno check: the closing line or the diagnostics yield Errors, silence and 
 
 // The real deno drives the wrapper end to end: it is always present under the
 // test runner, so these stay hermetic.
-test("DenoTasks.lint, fmt and check report onto the ambient summary for real", async () => {
-  const dir = await FileTasks.makeTempDirectory();
-  try {
-    await FileTasks.writeText(`${dir}/ok.ts`, "export const n: number = 1;\n");
-    await FileTasks.writeText(
-      `${dir}/bad.ts`,
-      "export const s: number = 'x'\n",
-    );
-    const lint = new TargetSummary();
-    await withAmbientSummary(
-      lint,
-      () => DenoTasks.lint((s) => s.paths(`${dir}/ok.ts`).quiet()),
-    );
-    assertEquals(lint.entries(), [{ key: "Files", value: "1" }, {
-      key: "Problems",
-      value: "0",
-    }]);
+test({
+  name:
+    "DenoTasks.lint, fmt and check report onto the ambient summary for real",
+  denoOnly: "runs deno lint, fmt and check",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory();
+    try {
+      await FileTasks.writeText(
+        `${dir}/ok.ts`,
+        "export const n: number = 1;\n",
+      );
+      await FileTasks.writeText(
+        `${dir}/bad.ts`,
+        "export const s: number = 'x'\n",
+      );
+      const lint = new TargetSummary();
+      await withAmbientSummary(
+        lint,
+        () => DenoTasks.lint((s) => s.paths(`${dir}/ok.ts`).quiet()),
+      );
+      assertEquals(lint.entries(), [{ key: "Files", value: "1" }, {
+        key: "Problems",
+        value: "0",
+      }]);
 
-    const fmt = new TargetSummary();
-    await assertRejects(
-      () =>
-        withAmbientSummary(
-          fmt,
-          () => DenoTasks.fmt((s) => s.check().paths(`${dir}/bad.ts`).quiet()),
-        ),
-      CommandError,
-    );
-    assertEquals(fmt.entries(), [{ key: "Files", value: "1" }, {
-      key: "Unformatted",
-      value: "1",
-    }]);
+      const fmt = new TargetSummary();
+      await assertRejects(
+        () =>
+          withAmbientSummary(
+            fmt,
+            () =>
+              DenoTasks.fmt((s) => s.check().paths(`${dir}/bad.ts`).quiet()),
+          ),
+        CommandError,
+      );
+      assertEquals(fmt.entries(), [{ key: "Files", value: "1" }, {
+        key: "Unformatted",
+        value: "1",
+      }]);
 
-    const check = new TargetSummary();
-    await assertRejects(
-      () =>
-        withAmbientSummary(
-          check,
-          () => DenoTasks.check((s) => s.paths(`${dir}/bad.ts`).quiet()),
-        ),
-      CommandError,
-    );
-    assertEquals(check.entries(), [{ key: "Errors", value: "1" }]);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+      const check = new TargetSummary();
+      await assertRejects(
+        () =>
+          withAmbientSummary(
+            check,
+            () => DenoTasks.check((s) => s.paths(`${dir}/bad.ts`).quiet()),
+          ),
+        CommandError,
+      );
+      assertEquals(check.entries(), [{ key: "Errors", value: "1" }]);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });

@@ -3,7 +3,12 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
 import { installCli } from "../../build/publish.ts";
 import { runCli } from "./_harness.ts";
@@ -46,37 +51,54 @@ class FrozenBuild extends Build {
     });
 }
 
-test("a build runs `deno run --frozen` end-to-end through the CLI", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-frozen-" });
-  scriptPath = `${dir}/ok.ts`;
-  try {
-    await Deno.writeTextFile(scriptPath, 'console.log("ok");\n');
-    const { code, out, err } = await runCli(FrozenBuild, ["frozenRun"]);
-    assertEquals(code, 0, `--frozen must be a flag real deno accepts: ${err}`);
-    assertEquals(out.includes("frozen-run=0"), true, out);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+test({
+  name: "a build runs `deno run --frozen` end-to-end through the CLI",
+  denoOnly: "runs deno run --frozen",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-frozen-")
+    );
+    scriptPath = `${dir}/ok.ts`;
+    try {
+      await FileTasks.writeText(scriptPath, 'console.log("ok");\n');
+      const { code, out, err } = await runCli(FrozenBuild, ["frozenRun"]);
+      assertEquals(
+        code,
+        0,
+        `--frozen must be a flag real deno accepts: ${err}`,
+      );
+      assertEquals(out.includes("frozen-run=0"), true, out);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("a provisioned CLI launcher resolves through the workspace lock", async () => {
-  // `deno install --global` ignores the workspace lock entirely (it resolves
-  // into a throwaway lockfile under its own install root), so a launcher that
-  // shells out to `deno run --frozen` from the repository root is what actually
-  // pins the tool's npm tree. Assert the generated launcher does that.
-  const { code, err } = await runCli(FrozenBuild, ["provision"]);
-  assertEquals(code, 0, err);
-  try {
-    const script = await Deno.readTextFile(launcher);
-    assertEquals(script.includes("--frozen"), true, script);
-    assertEquals(script.includes("npm:cspell@9"), true, script);
-    assertEquals(script.includes("--allow-read"), true, script);
-    if (Deno.build.os !== "windows") {
-      assertEquals(script.startsWith("#!/bin/sh"), true, script);
-      // Executable, or a tool path cannot spawn it.
-      assertEquals(((await Deno.stat(launcher)).mode ?? 0o755) & 0o100, 0o100);
+test({
+  name: "a provisioned CLI launcher resolves through the workspace lock",
+  denoOnly: "resolves a launcher through deno's workspace lock",
+  fn: async () => {
+    // `deno install --global` ignores the workspace lock entirely (it resolves
+    // into a throwaway lockfile under its own install root), so a launcher that
+    // shells out to `deno run --frozen` from the repository root is what actually
+    // pins the tool's npm tree. Assert the generated launcher does that.
+    const { code, err } = await runCli(FrozenBuild, ["provision"]);
+    assertEquals(code, 0, err);
+    try {
+      const script = await FileTasks.readText(launcher);
+      assertEquals(script.includes("--frozen"), true, script);
+      assertEquals(script.includes("npm:cspell@9"), true, script);
+      assertEquals(script.includes("--allow-read"), true, script);
+      if (RuntimeTasks.os() !== "windows") {
+        assertEquals(script.startsWith("#!/bin/sh"), true, script);
+        // Executable, or a tool path cannot spawn it.
+        assertEquals(
+          ((await FileTasks.stat(launcher)).mode ?? 0o755) & 0o100,
+          0o100,
+        );
+      }
+    } finally {
+      await FileTasks.remove(launcher);
     }
-  } finally {
-    await Deno.remove(launcher);
-  }
+  },
 });

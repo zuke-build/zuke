@@ -101,46 +101,58 @@ test("renderGraphDoc handles a build with no targets", () => {
   assertEquals(page.includes("```mermaid"), false);
 });
 
-test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", async () => {
-  const dir = await FileTasks.makeTempDirectory((s) =>
-    s.prefix("zuke-graph-doc-")
-  );
-  const path = `${dir}/graph.md`;
-  try {
-    const targets = discoverTargets(new Demo());
+test({
+  name: "writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift",
+  denoOnly: "formats through deno fmt",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-graph-doc-")
+    );
+    const path = `${dir}/graph.md`;
+    try {
+      const targets = discoverTargets(new Demo());
 
-    // Missing file: check reports it, write creates it.
-    assertEquals(await checkGraphDoc(targets, path), [`${path} (missing)`]);
-    assertEquals(await writeGraphDoc(targets, path), true);
-    assertEquals(await checkGraphDoc(targets, path), []);
+      // Missing file: check reports it, write creates it.
+      assertEquals(await checkGraphDoc(targets, path), [`${path} (missing)`]);
+      assertEquals(await writeGraphDoc(targets, path), true);
+      assertEquals(await checkGraphDoc(targets, path), []);
 
-    // Unchanged build: writing again is a no-op.
-    assertEquals(await writeGraphDoc(targets, path), false);
+      // Unchanged build: writing again is a no-op.
+      assertEquals(await writeGraphDoc(targets, path), false);
 
-    // Hand-edited page: check reports it stale, write repairs it.
-    await FileTasks.writeText(path, "tampered");
-    assertEquals(await checkGraphDoc(targets, path), [`${path} (stale)`]);
-    assertEquals(await writeGraphDoc(targets, path), true);
-    assertEquals(await checkGraphDoc(targets, path), []);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+      // Hand-edited page: check reports it stale, write repairs it.
+      await FileTasks.writeText(path, "tampered");
+      assertEquals(await checkGraphDoc(targets, path), [`${path} (stale)`]);
+      assertEquals(await writeGraphDoc(targets, path), true);
+      assertEquals(await checkGraphDoc(targets, path), []);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("the canonical page is formatter-clean", async () => {
-  // `docs/` is inside the formatter's scope, so a page the formatter would
-  // rewrite puts `format` and `graphDocCheck` in contradiction: each one's fix
-  // breaks the other, which is exactly how this surfaced. Formatting is
-  // idempotent, so the canonical page is a fixed point of it — assert that,
-  // rather than that some particular layout was produced, which would only
-  // restate the formatter's rules in a second place.
-  const page = await canonicalGraphDoc(discoverTargets(new Demo()));
-  assertEquals(await formatText(page, "md"), page);
+test({
+  name: "the canonical page is formatter-clean",
+  denoOnly: "formats through deno fmt",
+  fn: async () => {
+    // `docs/` is inside the formatter's scope, so a page the formatter would
+    // rewrite puts `format` and `graphDocCheck` in contradiction: each one's fix
+    // breaks the other, which is exactly how this surfaced. Formatting is
+    // idempotent, so the canonical page is a fixed point of it — assert that,
+    // rather than that some particular layout was produced, which would only
+    // restate the formatter's rules in a second place.
+    const page = await canonicalGraphDoc(discoverTargets(new Demo()));
+    assertEquals(await formatText(page, "md"), page);
+  },
 });
 
-test("an empty build still renders a formatter-clean page", async () => {
-  // The no-targets branch takes a different path through the renderer, and it
-  // is the one a fresh project hits first.
-  const page = await canonicalGraphDoc(new Map());
-  assertEquals(await formatText(page, "md"), page);
+test({
+  name: "an empty build still renders a formatter-clean page",
+  denoOnly: "formats through deno fmt",
+  fn: async () => {
+    // The no-targets branch takes a different path through the renderer, and it
+    // is the one a fresh project hits first.
+    const page = await canonicalGraphDoc(new Map());
+    assertEquals(await formatText(page, "md"), page);
+  },
 });
