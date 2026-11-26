@@ -429,13 +429,25 @@ class ZukeBuild extends Build {
     .description("Run the test suite on Node with Vitest (ported files)")
     .executes(async () => {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
-      // Without Deno's directory on PATH, so a test that quietly needs Deno
-      // fails here rather than passing because the build itself runs on it.
-      const deno = absolutePath(RuntimeTasks.execPath()).parent().path;
-      const separator = RuntimeTasks.os() === "windows" ? ";" : ":";
-      const path = (EnvTasks.get("PATH") ?? "").split(separator)
-        .filter((dir) => dir !== deno).join(separator);
-      await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
+      // A `deno` that only fails goes first on PATH, so a test that quietly
+      // needs Deno fails here rather than passing because the build runs on it.
+      const windows = RuntimeTasks.os() === "windows";
+      const stub = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-no-deno-")
+      );
+      try {
+        await FileTasks.writeText(
+          `${stub}/${windows ? "deno.cmd" : "deno"}`,
+          windows ? "@exit /b 127\r\n" : "#!/bin/sh\nexit 127\n",
+          (s) => s.mode(0o755),
+        );
+        const path = `${stub}${windows ? ";" : ":"}${
+          EnvTasks.get("PATH") ?? ""
+        }`;
+        await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
+      } finally {
+        await FileTasks.remove(stub, { recursive: true });
+      }
     });
 
   // The subprocess e2e suite (tests/e2e/), kept OUT of `test`/`ci` so the fast
