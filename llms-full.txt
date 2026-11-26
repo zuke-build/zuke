@@ -16904,8 +16904,18 @@ class DprintFmtSettings extends DprintSettings
 
   override protected subcommand(): string
     The dprint subcommand this settings class runs: `fmt`.
+  stdin(name: string, text: string): this
+    Format `text` instead of files, as the file `name` would be formatted
+    (`--stdin`): `name` is a file name, a path, or just an extension such as
+    `ts`, and picks the plugin and the config's rules. The result is the
+    command's stdout, and nothing is written.
+  override protected buildArgs(): string[]
+    Assemble the argv, with `--stdin <name>` when formatting given text.
+  override protected stdinInput(): string | undefined
+    The text {@link stdin} formats, written to the tool's standard input.
   override protected onOutput(output: CommandOutput): void
     Report `Formatted`, the files the run changed, onto the build summary.
+    Formatting given text changes no file, and its stdout is the result.
 
 abstract class DprintSettings extends ToolSettings
   Shared options for a `dprint` subcommand (`fmt` or `check`).

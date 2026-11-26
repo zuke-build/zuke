@@ -84,3 +84,14 @@ test("dprint: each subcommand reports its own figure onto the running target", a
     { key: "Formatted", value: "2" },
   ]);
 });
+
+test("dprint fmt: formatting given text reports nothing, since its stdout is the text", async () => {
+  const summary = new TargetSummary();
+  await withAmbientSummary(summary, () => {
+    // Formatted text that happens to read like dprint's own report.
+    new FmtProbe().stdin("md", "Formatted 2 files.\n")
+      .probe(out(0, "Formatted 2 files.\n"));
+    return Promise.resolve();
+  });
+  assertEquals(summary.entries(), []);
+});

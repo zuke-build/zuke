@@ -95,13 +95,42 @@ export abstract class DprintSettings extends ToolSettings {
 
 /** Settings for `dprint fmt` (format files in place). */
 export class DprintFmtSettings extends DprintSettings {
+  #stdin?: { name: string; text: string };
+
   /** The dprint subcommand this settings class runs: `fmt`. */
   protected override subcommand(): string {
     return "fmt";
   }
 
-  /** Report `Formatted`, the files the run changed, onto the build summary. */
+  /**
+   * Format `text` instead of files, as the file `name` would be formatted
+   * (`--stdin`): `name` is a file name, a path, or just an extension such as
+   * `ts`, and picks the plugin and the config's rules. The result is the
+   * command's stdout, and nothing is written.
+   */
+  stdin(name: string, text: string): this {
+    this.#stdin = { name, text };
+    return this;
+  }
+
+  /** Assemble the argv, with `--stdin <name>` when formatting given text. */
+  protected override buildArgs(): string[] {
+    const argv = super.buildArgs();
+    if (this.#stdin !== undefined) argv.push("--stdin", this.#stdin.name);
+    return argv;
+  }
+
+  /** The text {@link stdin} formats, written to the tool's standard input. */
+  protected override stdinInput(): string | undefined {
+    return this.#stdin?.text;
+  }
+
+  /**
+   * Report `Formatted`, the files the run changed, onto the build summary.
+   * Formatting given text changes no file, and its stdout is the result.
+   */
   protected override onOutput(output: CommandOutput): void {
+    if (this.#stdin !== undefined) return;
     const pairs = parseDprintFmtSummary(output);
     if (pairs !== undefined) reportSummary(pairs);
   }
