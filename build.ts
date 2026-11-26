@@ -31,7 +31,6 @@ import {
   parameter,
   repoRoot,
   run,
-  RuntimeTasks,
   target,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
@@ -431,19 +430,18 @@ class ZukeBuild extends Build {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
       // A `deno` that only fails goes first on PATH, so a test that quietly
       // needs Deno fails here rather than passing because the build runs on it.
-      const windows = RuntimeTasks.os() === "windows";
+      // shortcut: POSIX only, since a shell-free spawn on Windows looks for
+      // deno.exe; give it a failing executable if this lane moves to Windows.
       const stub = await FileTasks.makeTempDirectory((s) =>
         s.prefix("zuke-no-deno-")
       );
       try {
         await FileTasks.writeText(
-          `${stub}/${windows ? "deno.cmd" : "deno"}`,
-          windows ? "@exit /b 127\r\n" : "#!/bin/sh\nexit 127\n",
+          `${stub}/deno`,
+          "#!/bin/sh\nexit 127\n",
           (s) => s.mode(0o755),
         );
-        const path = `${stub}${windows ? ";" : ":"}${
-          EnvTasks.get("PATH") ?? ""
-        }`;
+        const path = `${stub}:${EnvTasks.get("PATH") ?? ""}`;
         await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
       } finally {
         await FileTasks.remove(stub, { recursive: true });
