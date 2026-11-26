@@ -28,6 +28,11 @@
  * - A batch file named without a directory is found on `PATH` and written
  *   by its full path. Left bare, `cmd.exe` would look in the working
  *   directory first, where a checkout can plant one.
+ * - A bare name with no extension, such as `npm`, is first looked up on the
+ *   child's `PATH` through its `PATHEXT`, as Deno looks it up, since Node's
+ *   own search tries only `.com` and `.exe`. When the first match is a batch
+ *   file (`npm.cmd`), it is run as one, by the rules above; a program found
+ *   first is left to Node.
  *
  * What cannot be made safe is refused: a line break or a NUL in an argument,
  * a script path holding a quote or ending in a backslash, and a system
