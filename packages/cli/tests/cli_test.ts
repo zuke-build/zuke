@@ -30,7 +30,7 @@ import { capture } from "../../../tests/_console.ts";
 import { ENC } from "../../../tests/_escaping.ts";
 import { defaultHost } from "../src/setup.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
-import { absolutePath } from "@zuke/core";
+import { absolutePath, FileTasks, RuntimeTasks } from "@zuke/core";
 import { stripAnsi } from "@zuke/core/render";
 
 const LOGO_TOP = ZUKE_LOGO.split("\n")[0];
@@ -456,54 +456,69 @@ test("main doc without a package prints usage and never spawns", async () => {
   assertEquals(host.logs.some((l) => l.includes("name a package")), true);
 });
 
-test("main doc runs a real `deno doc` via the default runner (end-to-end)", async () => {
-  const host = new FakeHost();
-  await withTemp(async (dir) => {
-    const fixture = `${dir}/lib.ts`;
-    await Deno.writeTextFile(
-      fixture,
-      '/** A documented greeting. */\nexport const hello = "hi";\n',
-    );
-    // No injected runner → the real defaultDocRunner spawns `deno doc` in its
-    // own throwaway directory against the fixture's absolute path.
-    const code = await main(["doc", fixture], host);
-    assertEquals(code, 0);
-  });
+test({
+  name: "main doc runs a real `deno doc` via the default runner (end-to-end)",
+  denoOnly: "runs a real deno doc",
+  fn: async () => {
+    const host = new FakeHost();
+    await withTemp(async (dir) => {
+      const fixture = `${dir}/lib.ts`;
+      await FileTasks.writeText(
+        fixture,
+        '/** A documented greeting. */\nexport const hello = "hi";\n',
+      );
+      // No injected runner → the real defaultDocRunner spawns `deno doc` in its
+      // own throwaway directory against the fixture's absolute path.
+      const code = await main(["doc", fixture], host);
+      assertEquals(code, 0);
+    });
+  },
 });
 
-test("main doc relays the real runner's output through the sink, escaped on a runner", async () => {
-  // `deno doc` repeats a `--filter` it cannot find on stderr. Inherited, that
-  // line reached an Actions runner raw; relayed through the sink, the legacy
-  // marker in it is neutralised. Off a runner the same line is left as the
-  // child wrote it.
-  await withTemp(async (dir) => {
-    const fixture = `${dir}/doc_fixture.ts`;
-    await Deno.writeTextFile(
-      fixture,
-      '/** A documented greeting. */\nexport const hello = "hi";\n',
-    );
-    const filter = "##[add-mask]forged";
-    const onRunner = await capture(async () => {
-      let exit = 0;
-      await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
-        exit = await main(["doc", fixture, "--filter", filter], new FakeHost());
+test({
+  name:
+    "main doc relays the real runner's output through the sink, escaped on a runner",
+  denoOnly: "runs a real deno doc",
+  fn: async () => {
+    // `deno doc` repeats a `--filter` it cannot find on stderr. Inherited, that
+    // line reached an Actions runner raw; relayed through the sink, the legacy
+    // marker in it is neutralised. Off a runner the same line is left as the
+    // child wrote it.
+    await withTemp(async (dir) => {
+      const fixture = `${dir}/doc_fixture.ts`;
+      await FileTasks.writeText(
+        fixture,
+        '/** A documented greeting. */\nexport const hello = "hi";\n',
+      );
+      const filter = "##[add-mask]forged";
+      const onRunner = await capture(async () => {
+        let exit = 0;
+        await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+          exit = await main(
+            ["doc", fixture, "--filter", filter],
+            new FakeHost(),
+          );
+        });
+        return exit;
       });
-      return exit;
-    });
-    assertEquals(onRunner.code === 0, false);
-    const wire = onRunner.err.join("\n");
-    assertEquals(wire.includes("##["), false);
-    assertEquals(wire.includes("%23%23[add-mask]forged"), true);
+      assertEquals(onRunner.code === 0, false);
+      const wire = onRunner.err.join("\n");
+      assertEquals(wire.includes("##["), false);
+      assertEquals(wire.includes("%23%23[add-mask]forged"), true);
 
-    const local = await capture(async () => {
-      let exit = 0;
-      await withEnv({ GITHUB_ACTIONS: undefined }, async () => {
-        exit = await main(["doc", fixture, "--filter", filter], new FakeHost());
+      const local = await capture(async () => {
+        let exit = 0;
+        await withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+          exit = await main(
+            ["doc", fixture, "--filter", filter],
+            new FakeHost(),
+          );
+        });
+        return exit;
       });
-      return exit;
+      assertEquals(local.err.join("\n").includes(filter), true);
     });
-    assertEquals(local.err.join("\n").includes(filter), true);
-  });
+  },
 });
 
 test("main doc propagates a non-zero exit from the real runner", async () => {
@@ -514,42 +529,49 @@ test("main doc propagates a non-zero exit from the real runner", async () => {
   assertEquals(code !== 0, true);
 });
 
-test("main doc's real runner ignores a deno.json planted above its temp dir", async () => {
-  // The isolated directory sits under the shared temp dir, whose ancestors
-  // any local user can seed. A planted import map there — even one claiming
-  // every subdirectory as a workspace member — must not steer what is
-  // documented. With TMPDIR pointed at a parent holding such a config, the
-  // remapped module's symbol must not appear.
-  await withTemp(async (dir) => {
-    const shared = `${dir}/shared`;
-    await Deno.mkdir(shared);
-    await Deno.writeTextFile(
-      `${dir}/evil.ts`,
-      "/** Planted. */\nexport const PLANTED_REMAP = 1;\n",
-    );
-    await Deno.writeTextFile(
-      `${shared}/deno.json`,
-      JSON.stringify({
-        workspace: ["./*"],
-        imports: { planted: "../evil.ts" },
-      }),
-    );
-    const fixture = `${dir}/lib.ts`;
-    await Deno.writeTextFile(
-      fixture,
-      '/** Kept. */\nexport const kept = 1;\nexport * from "planted";\n',
-    );
-    const run = await capture(async () => {
-      let exit = 0;
-      await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
-        exit = await main(["doc", fixture], new FakeHost());
+test({
+  name: "main doc's real runner ignores a deno.json planted above its temp dir",
+  denoOnly: "runs a real deno doc",
+  fn: async () => {
+    // The isolated directory sits under the shared temp dir, whose ancestors
+    // any local user can seed. A planted import map there — even one claiming
+    // every subdirectory as a workspace member — must not steer what is
+    // documented. With TMPDIR pointed at a parent holding such a config, the
+    // remapped module's symbol must not appear.
+    await withTemp(async (dir) => {
+      const shared = `${dir}/shared`;
+      await FileTasks.createDirectory(shared, { recursive: false });
+      await FileTasks.writeText(
+        `${dir}/evil.ts`,
+        "/** Planted. */\nexport const PLANTED_REMAP = 1;\n",
+      );
+      await FileTasks.writeText(
+        `${shared}/deno.json`,
+        JSON.stringify({
+          workspace: ["./*"],
+          imports: { planted: "../evil.ts" },
+        }),
+      );
+      const fixture = `${dir}/lib.ts`;
+      await FileTasks.writeText(
+        fixture,
+        '/** Kept. */\nexport const kept = 1;\nexport * from "planted";\n',
+      );
+      const run = await capture(async () => {
+        let exit = 0;
+        await withEnv(
+          { TMPDIR: shared, TMP: shared, TEMP: shared },
+          async () => {
+            exit = await main(["doc", fixture], new FakeHost());
+          },
+        );
+        return exit;
       });
-      return exit;
+      const all = [...run.out, ...run.err].join("\n");
+      assertStringIncludes(all, "kept");
+      assertEquals(all.includes("PLANTED_REMAP"), false, all);
     });
-    const all = [...run.out, ...run.err].join("\n");
-    assertStringIncludes(all, "kept");
-    assertEquals(all.includes("PLANTED_REMAP"), false, all);
-  });
+  },
 });
 
 test("main setup honours --dir", async () => {
@@ -794,7 +816,7 @@ test("defaultPrompter shows the default in the question, neutralised on a runner
 
 /** The path of `name` at the real cwd, where `main` starts its walk. */
 function atCwd(name: string): string {
-  return `${Deno.cwd().replaceAll("\\", "/")}/${name}`;
+  return `${RuntimeTasks.cwd().replaceAll("\\", "/")}/${name}`;
 }
 
 /**
@@ -823,7 +845,8 @@ function probeAt(
     // Only the root is ever owned here; an ancestor config file is absent.
     ownership: (path) =>
       Promise.resolve(
-        path === Deno.cwd().replaceAll("\\", "/") && owned.owner !== null
+        path === RuntimeTasks.cwd().replaceAll("\\", "/") &&
+          owned.owner !== null
           ? { uid: owned.owner, mode: 0o755 }
           : null,
       ),
@@ -883,7 +906,7 @@ test("main forwards a build command to zuke.ts at the nearest zuke.json", async 
   );
   assertEquals(code, 0);
   assertEquals(seen, [
-    Deno.cwd().replaceAll("\\", "/"),
+    RuntimeTasks.cwd().replaceAll("\\", "/"),
     ["run", "-A", "zuke.ts", "ci", "--parallel"],
   ]);
   // Nothing of the CLI's own output gets in the way of the build's.
@@ -907,7 +930,7 @@ test("main runs a build file on Node with node when zuke.json names that runtime
   );
   assertEquals(code, 0);
   assertEquals(seen, [
-    Deno.cwd().replaceAll("\\", "/"),
+    RuntimeTasks.cwd().replaceAll("\\", "/"),
     ["zuke.ts", "ci"],
     "node",
   ]);
@@ -954,25 +977,31 @@ test("main warns on stderr when forwarding without a lockfile", async () => {
   assertEquals(host.logs, []);
 });
 
-test("main says nothing about a lockfile for a hosted build, as the launchers do", async () => {
-  const host = new FakeHost();
-  let seen: string[] = [];
-  const err = await capturingErr(async () => {
-    await main(
-      ["build"],
-      host,
-      defaultPrompter,
-      undefined,
-      undefined,
-      (_root, args) => {
-        seen = args;
-        return Promise.resolve(0);
-      },
-      hostedProbe("1.2.3"),
-    );
-  });
-  assertEquals(err, []);
-  assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.3", "build"]);
+test({
+  name:
+    "main says nothing about a lockfile for a hosted build, as the launchers do",
+  denoOnly:
+    "forwards a hosted build to Deno, as a Deno-installed zuke does; on Node it refuses one",
+  fn: async () => {
+    const host = new FakeHost();
+    let seen: string[] = [];
+    const err = await capturingErr(async () => {
+      await main(
+        ["build"],
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        (_root, args) => {
+          seen = args;
+          return Promise.resolve(0);
+        },
+        hostedProbe("1.2.3"),
+      );
+    });
+    assertEquals(err, []);
+    assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.3", "build"]);
+  },
 });
 
 /** A compiled binary's engine at 1.3.0, serving any pin up to it. */
@@ -1049,16 +1078,22 @@ test("main runs a hosted build on the binary's own engine, for a command, --help
   );
 });
 
-test("main refuses a pin the binary's engine cannot serve, rather than run Deno", async () => {
-  const { code, runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
-  assertEquals(code, 1);
-  assertEquals(runs, []);
-  assertEquals(err.length, 1);
-  assertStringIncludes(
-    err[0] ?? "",
-    "built-in @zuke/engine 1.3.0 cannot run zuke.json's 2.0.0. Install a " +
-      "zuke release that carries it",
-  );
+test({
+  name:
+    "main refuses a pin the binary's engine cannot serve, rather than run Deno",
+  denoOnly:
+    "a zuke on Node refuses a hosted build before it consults an engine, which only the Deno-compiled binary carries",
+  fn: async () => {
+    const { code, runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
+    assertEquals(code, 1);
+    assertEquals(runs, []);
+    assertEquals(err.length, 1);
+    assertStringIncludes(
+      err[0] ?? "",
+      "built-in @zuke/engine 1.3.0 cannot run zuke.json's 2.0.0. Install a " +
+        "zuke release that carries it",
+    );
+  },
 });
 
 test("main propagates the build's exit code and forwards flags verbatim", async () => {
@@ -1419,7 +1454,7 @@ test("main outside a project reports the unknown command and the missing zuke.js
 test("main names the build it forwards to when it is not in the working directory", async () => {
   // A zuke.json at the parent of the cwd: discovery chose it, so stderr says
   // so. (Every other routing test puts it at the cwd, where nothing is said.)
-  const parent = absolutePath(Deno.cwd()).parent();
+  const parent = absolutePath(RuntimeTasks.cwd()).parent();
   const present = new Set([
     parent("zuke.json").path,
     parent("zuke.ts").path,
@@ -1618,48 +1653,58 @@ test("--version reads the project's core from deno.lock, running nothing", async
   assertEquals(host.logs[2], "1.42.0");
 });
 
-test("--version and --help name a hosted build by its zuke.json and engine", async () => {
-  const hosted = hostedProbe("1.2.0");
-  const label = `${atCwd("zuke.json")}, on @zuke/engine 1.2.0`;
-  for (const args of [["--version"], ["--help"]]) {
+test({
+  name: "--version and --help name a hosted build by its zuke.json and engine",
+  denoOnly:
+    "forwards a hosted build to Deno, as a Deno-installed zuke does; on Node it refuses one",
+  fn: async () => {
+    const hosted = hostedProbe("1.2.0");
+    const label = `${atCwd("zuke.json")}, on @zuke/engine 1.2.0`;
+    for (const args of [["--version"], ["--help"]]) {
+      const host = new FakeHost();
+      const forwarded: string[][] = [];
+      const code = await main(
+        args,
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        (_root, denoArgs) => {
+          forwarded.push(denoArgs);
+          return Promise.resolve(0);
+        },
+        hosted,
+      );
+      assertEquals(code, 0);
+      const logs = host.logs.join("\n");
+      assertStringIncludes(logs, `This project's build (${label})`);
+      // The CLI's own half mentions zuke.ts for setup; the build's never does.
+      assertEquals(logs.includes(`${atCwd("zuke.ts")}`), false);
+      // The build answers through the engine it pins, not a zuke.ts.
+      assertEquals(forwarded, [[
+        "run",
+        "-A",
+        "jsr:@zuke/engine@1.2.0",
+        ...args,
+      ]]);
+    }
+    // A rich panel names the engine as its own row.
     const host = new FakeHost();
-    const forwarded: string[][] = [];
-    const code = await main(
-      args,
+    host.terminal = true;
+    await main(
+      ["--version"],
       host,
       defaultPrompter,
       undefined,
       undefined,
-      (_root, denoArgs) => {
-        forwarded.push(denoArgs);
-        return Promise.resolve(0);
-      },
+      () => Promise.resolve(0),
       hosted,
     );
-    assertEquals(code, 0);
-    const logs = host.logs.join("\n");
-    assertStringIncludes(logs, `This project's build (${label})`);
-    // The CLI's own half mentions zuke.ts for setup; the build's never does.
-    assertEquals(logs.includes(`${atCwd("zuke.ts")}`), false);
-    // The build answers through the engine it pins, not a zuke.ts.
-    assertEquals(forwarded, [["run", "-A", "jsr:@zuke/engine@1.2.0", ...args]]);
-  }
-  // A rich panel names the engine as its own row.
-  const host = new FakeHost();
-  host.terminal = true;
-  await main(
-    ["--version"],
-    host,
-    defaultPrompter,
-    undefined,
-    undefined,
-    () => Promise.resolve(0),
-    hosted,
-  );
-  assertEquals(
-    host.logs.some((line) => /engine\s+1\.2\.0/.test(stripAnsi(line))),
-    true,
-  );
+    assertEquals(
+      host.logs.some((line) => /engine\s+1\.2\.0/.test(stripAnsi(line))),
+      true,
+    );
+  },
 });
 
 test("--version still asks the build when the lock names no core", async () => {
@@ -1776,7 +1821,14 @@ test("--version on a terminal is one panel: cli, install, core, project, deno, p
     assertEquals(host.logs.length, 1);
     const panel = stripAnsi(host.logs[0]);
     for (
-      const label of ["cli", "install", "core", "project", "deno", "platform"]
+      const label of [
+        "cli",
+        "install",
+        "core",
+        "project",
+        RuntimeTasks.facts().name,
+        "platform",
+      ]
     ) {
       assertStringIncludes(panel, `◆ ${label}`);
     }
@@ -2172,8 +2224,8 @@ test("binaryMain is main with every default and the binary's engine", async () =
   // Outside any project, with plain output, so the answer is one line and
   // nothing is spawned.
   await withTemp(async (dir) => {
-    const previous = Deno.cwd();
-    Deno.chdir(dir);
+    const previous = RuntimeTasks.cwd();
+    RuntimeTasks.chdir(dir);
     try {
       await withEnv({ ZUKE_PLAIN: "1" }, async () => {
         const { code, out } = await capture(() =>
@@ -2183,7 +2235,7 @@ test("binaryMain is main with every default and the binary's engine", async () =
         assertEquals(out, [VERSION]);
       });
     } finally {
-      Deno.chdir(previous);
+      RuntimeTasks.chdir(previous);
     }
   });
 });

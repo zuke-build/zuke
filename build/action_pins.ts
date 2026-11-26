@@ -25,7 +25,10 @@
  * @module
  */
 
+// Synchronous, since the pins are read while the build's fields initialise.
+import { readdirSync, readFileSync } from "node:fs";
 import type { CiActionRef } from "@zuke/core";
+import { isNotFound } from "../packages/core/src/internal.ts";
 import { ACTION_PIN, ACTION_SLUG } from "./action_release.ts";
 import { usesPins } from "./action_uses.ts";
 
@@ -125,9 +128,9 @@ function pinsIn(text: string, source: string): Map<string, FoundPin> {
 /** A file's text, or `""` when it does not exist. */
 function readFileOrEmpty(path: string): string {
   try {
-    return Deno.readTextFileSync(path);
+    return readFileSync(path, "utf8");
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return "";
+    if (isNotFound(error)) return "";
     throw error;
   }
 }
@@ -137,17 +140,17 @@ function readWorkflows(dir: string): Map<string, string> {
   const files = new Map<string, string>();
   let entries: string[];
   try {
-    entries = [...Deno.readDirSync(dir)]
-      .filter((e) => e.isFile && /\.ya?ml$/.test(e.name))
+    entries = readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && /\.ya?ml$/.test(e.name))
       .map((e) => e.name)
       .sort();
   } catch (error) {
     // No workflow directory yet: every pin comes from the seed.
-    if (error instanceof Deno.errors.NotFound) return files;
+    if (isNotFound(error)) return files;
     throw error;
   }
   for (const name of entries) {
-    files.set(`${dir}/${name}`, Deno.readTextFileSync(`${dir}/${name}`));
+    files.set(`${dir}/${name}`, readFileSync(`${dir}/${name}`, "utf8"));
   }
   return files;
 }

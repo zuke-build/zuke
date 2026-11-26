@@ -1,10 +1,24 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, ProcessTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { defaultHost, runSetup } from "../packages/cli/src/setup.ts";
 import { withTemp } from "./_temp.ts";
+
+/** Run `/bin/bash` with `args` in an environment holding only `env`. */
+async function bash(
+  args: string[],
+  env: Record<string, string>,
+): Promise<{ code: number; err: string }> {
+  const { code, stderr } = await ProcessTasks.run("/bin/bash", (s) => {
+    s.args(...args).clearEnv().stdout("piped").stderr("piped");
+    for (const [name, value] of Object.entries(env)) s.env(name, value);
+    return s;
+  });
+  return { code, err: new TextDecoder().decode(stderr) };
+}
 
 /**
  * Guards against the launchers' Deno bootstrap regressing back to an
@@ -24,7 +38,7 @@ const PS_LAUNCHER = "zuke.ps1";
 const SHA256_RE = /^[0-9a-f]{64}$/;
 
 test("the bash launcher no longer pipes an unverified install script", async () => {
-  const script = await Deno.readTextFile(BASH_LAUNCHER);
+  const script = await FileTasks.readText(BASH_LAUNCHER);
   assertEquals(
     script.includes("deno.land/install.sh"),
     false,
@@ -33,7 +47,7 @@ test("the bash launcher no longer pipes an unverified install script", async () 
 });
 
 test("the PowerShell launcher no longer pipes an unverified install script", async () => {
-  const script = await Deno.readTextFile(PS_LAUNCHER);
+  const script = await FileTasks.readText(PS_LAUNCHER);
   assertEquals(
     script.includes("deno.land/install.ps1"),
     false,
@@ -42,7 +56,7 @@ test("the PowerShell launcher no longer pipes an unverified install script", asy
 });
 
 test("the bash launcher pins well-formed per-platform checksums", async () => {
-  const script = await Deno.readTextFile(BASH_LAUNCHER);
+  const script = await FileTasks.readText(BASH_LAUNCHER);
   const hashes = [...script.matchAll(/echo "([0-9a-f]+)" ;;/g)].map((m) =>
     m[1]
   );
@@ -58,7 +72,7 @@ test("the bash launcher pins well-formed per-platform checksums", async () => {
 });
 
 test("the PowerShell launcher pins well-formed per-platform checksums", async () => {
-  const script = await Deno.readTextFile(PS_LAUNCHER);
+  const script = await FileTasks.readText(PS_LAUNCHER);
   const hashes = [...script.matchAll(/=\s*"([0-9a-f]{64})"/g)].map((m) => m[1]);
   // Two platforms: windows x86_64/aarch64.
   assertEquals(hashes.length, 2, "expected 2 pinned checksums in zuke.ps1");
@@ -76,23 +90,17 @@ test("the bash launcher rejects DENO_VERSION=latest instead of fetching vlatest"
   // every retry. There is nothing to pin a checksum to, so it must fail fast
   // with an explanation. Runs the real script — but exits before any network
   // call, so the test stays hermetic.
-  if (Deno.build.os === "windows") return; // bash script; see the ps1 test below
+  if (RuntimeTasks.os() === "windows") return; // bash script; see the ps1 test below
   await withTemp(async (home) => {
-    const command = new Deno.Command("/bin/bash", {
-      args: ["./zuke", "--help"],
-      clearEnv: true,
-      env: {
-        // No Deno on this PATH, and an empty DENO_INSTALL, so the script takes
-        // the bootstrap branch.
-        PATH: "/usr/bin:/bin",
-        HOME: home,
-        DENO_INSTALL: `${home}/deno`,
-        DENO_VERSION: "latest",
-        DENO_SHA256: "deadbeef",
-      },
+    const { code, err } = await bash(["./zuke", "--help"], {
+      // No Deno on this PATH, and an empty DENO_INSTALL, so the script takes
+      // the bootstrap branch.
+      PATH: "/usr/bin:/bin",
+      HOME: home,
+      DENO_INSTALL: `${home}/deno`,
+      DENO_VERSION: "latest",
+      DENO_SHA256: "deadbeef",
     });
-    const { code, stderr } = await command.output();
-    const err = new TextDecoder().decode(stderr);
     assertEquals(code, 1, `expected a fail-fast exit; stderr: ${err}`);
     assertEquals(
       err.includes("DENO_VERSION=latest is not supported"),
@@ -110,7 +118,7 @@ test("the bash launcher rejects DENO_VERSION=latest instead of fetching vlatest"
 test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
   // pwsh is not guaranteed on every runner, so assert on the committed source:
   // the guard must sit in zuke.ps1 too, or Windows keeps fetching "vlatest".
-  const script = await Deno.readTextFile(PS_LAUNCHER);
+  const script = await FileTasks.readText(PS_LAUNCHER);
   assertEquals(
     script.includes(`if ($denoVersion -eq "latest")`),
     true,
@@ -130,7 +138,7 @@ test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
 async function bareDenoOnPath(): Promise<boolean> {
   for (const path of ["/usr/bin/deno", "/bin/deno"]) {
     try {
-      await Deno.lstat(path);
+      await FileTasks.lstat(path);
       return true;
     } catch {
       // expected: nothing there
@@ -143,19 +151,17 @@ test("a scaffolded plain launcher fails closed when Deno is missing", async () =
   // `zuke setup --no-bootstrap-deno` stamps a launcher that must not download
   // anything. Scaffold for real and run the generated script with no Deno on
   // PATH: it must explain itself and exit non-zero.
-  if (Deno.build.os === "windows") return; // the generated bash launcher
+  if (RuntimeTasks.os() === "windows") return; // the generated bash launcher
   if (await bareDenoOnPath()) return;
   await withTemp(async (dir) => {
     await runSetup(
       { dir, force: false, name: "Scaffolded", bootstrapDeno: false },
       { ...defaultHost, log: () => {} },
     );
-    const { code, stderr } = await new Deno.Command("/bin/bash", {
-      args: [`${dir}/zuke`, "--help"],
-      clearEnv: true,
-      env: { PATH: "/usr/bin:/bin", HOME: dir },
-    }).output();
-    const err = new TextDecoder().decode(stderr);
+    const { code, err } = await bash([`${dir}/zuke`, "--help"], {
+      PATH: "/usr/bin:/bin",
+      HOME: dir,
+    });
     assertEquals(code, 1, `expected a fail-fast exit; stderr: ${err}`);
     assertEquals(
       err.includes("Deno not found on PATH"),
@@ -175,25 +181,20 @@ test("a scaffolded bootstrap launcher verifies before it downloads", async () =>
   // Deno on PATH and DENO_VERSION=latest: it must take the bootstrap branch
   // and refuse a version it cannot pin *before* any network call — the same
   // hermetic path the repository's own launcher is held to above.
-  if (Deno.build.os === "windows") return; // the generated bash launcher
+  if (RuntimeTasks.os() === "windows") return; // the generated bash launcher
   if (await bareDenoOnPath()) return;
   await withTemp(async (dir) => {
     await runSetup({ dir, force: false, name: "Scaffolded" }, {
       ...defaultHost,
       log: () => {},
     });
-    const { code, stderr } = await new Deno.Command("/bin/bash", {
-      args: [`${dir}/zuke`, "--help"],
-      clearEnv: true,
-      env: {
-        PATH: "/usr/bin:/bin",
-        HOME: dir,
-        DENO_INSTALL: `${dir}/deno`,
-        DENO_VERSION: "latest",
-        DENO_SHA256: "deadbeef",
-      },
-    }).output();
-    const err = new TextDecoder().decode(stderr);
+    const { code, err } = await bash([`${dir}/zuke`, "--help"], {
+      PATH: "/usr/bin:/bin",
+      HOME: dir,
+      DENO_INSTALL: `${dir}/deno`,
+      DENO_VERSION: "latest",
+      DENO_SHA256: "deadbeef",
+    });
     assertEquals(code, 1, `expected a fail-fast exit; stderr: ${err}`);
     assertEquals(
       err.includes("installing it now"),
@@ -210,8 +211,8 @@ test("a scaffolded bootstrap launcher verifies before it downloads", async () =>
 });
 
 test("both launchers pin the same default Deno version", async () => {
-  const bash = await Deno.readTextFile(BASH_LAUNCHER);
-  const ps = await Deno.readTextFile(PS_LAUNCHER);
+  const bash = await FileTasks.readText(BASH_LAUNCHER);
+  const ps = await FileTasks.readText(PS_LAUNCHER);
   const bashMatch = bash.match(/DEFAULT_DENO_VERSION="v([0-9.]+)"/);
   const psMatch = ps.match(/\$DefaultDenoVersion = "([0-9.]+)"/);
   if (bashMatch === null) {

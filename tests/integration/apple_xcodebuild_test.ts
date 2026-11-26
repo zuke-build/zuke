@@ -21,7 +21,15 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  EnvTasks,
+  FileTasks,
+  type NetServer,
+  NetTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import {
   ProvisioningProfileTasks,
   TestFlightTasks,
@@ -30,6 +38,7 @@ import {
 import { apiKey } from "../support/apple/_asc.ts";
 import { base64, profileBytes } from "../support/apple/_profile.ts";
 import { runCli } from "./_harness.ts";
+import { RUN_SCRIPT } from "../_eval.ts";
 
 /**
  * The fake `xcodebuild`: prints its argv, plus the export method of the plist
@@ -37,34 +46,37 @@ import { runCli } from "./_harness.ts";
  * its action equals `FAKE_FAIL_ON`.
  */
 const FAKE = `
-const args = Deno.args;
+const args = process.argv.slice(2);
 let method = "";
 const plist = args.indexOf("-exportOptionsPlist");
 if (plist >= 0) {
-  const text = await Deno.readTextFile(args[plist + 1]);
+  const text = process.getBuiltinModule("node:fs")
+    .readFileSync(args[plist + 1], "utf8");
   method = /<key>method<\\/key>\\s*<string>([^<]*)<\\/string>/.exec(text)?.[1] ?? "?";
 }
 console.log(JSON.stringify({ args, method }));
-if (args.includes(Deno.env.get("FAKE_FAIL_ON") ?? "")) Deno.exit(65);
+if (args.includes(process.env.FAKE_FAIL_ON ?? "")) process.exit(65);
 `;
 
 /** Run `fn` in a temp dir holding a fake `xcodebuild`, removed afterwards. */
 async function withFakeXcodebuild(
   fn: (dir: string, xcodebuild: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-xcodebuild-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-xcodebuild-")
+  );
   try {
-    await Deno.writeTextFile(`${dir}/fake.ts`, FAKE);
+    await FileTasks.writeText(`${dir}/fake.ts`, FAKE);
     const shim = `${dir}/xcodebuild`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       shim,
-      `#!/bin/sh\nexec "${Deno.execPath()}" run --no-config --no-lock -A ` +
+      `#!/bin/sh\nexec "${RuntimeTasks.execPath()}" ${RUN_SCRIPT.join(" ")} ` +
         `"${dir}/fake.ts" "$@"\n`,
     );
-    await Deno.chmod(shim, 0o755);
+    await FileTasks.chmod(shim, 0o755);
     await fn(dir, shim);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -105,7 +117,7 @@ function iosRelease(
 
 test({
   name: "xcodebuild: a build archives, writes export options, then exports",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: () =>
     withFakeXcodebuild(async (dir, xcodebuild) => {
       const printed: Array<{ args: string[]; method: string }> = [];
@@ -150,7 +162,7 @@ test({
 
 test({
   name: "xcodebuild: a failed archive fails the run before exporting",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: () =>
     withFakeXcodebuild(async (dir, xcodebuild) => {
       const printed: Array<{ args: string[]; method: string }> = [];
@@ -164,9 +176,8 @@ test({
 });
 
 /** A local App Store Connect: one app whose build is processed. */
-function serveAppStoreConnect(calls: string[]): Deno.HttpServer<Deno.NetAddr> {
-  return Deno.serve(
-    { hostname: "127.0.0.1", port: 0, onListen() {} },
+function serveAppStoreConnect(calls: string[]): Promise<NetServer> {
+  return NetTasks.serve(
     async (request) => {
       const url = new URL(request.url);
       const auth = request.headers.get("Authorization") ?? "";
@@ -191,7 +202,7 @@ function serveAppStoreConnect(calls: string[]): Deno.HttpServer<Deno.NetAddr> {
 
 test({
   name: "TestFlight: profile, archive, upload and distribute in one build",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: () =>
     withFakeXcodebuild(async (dir, xcodebuild) => {
       const home = `${dir}/home`;
@@ -202,9 +213,9 @@ test({
       const uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
       const pem = (await apiKey()).pem;
       const calls: string[] = [];
-      const server = serveAppStoreConnect(calls);
-      const previousHome = Deno.env.get("HOME");
-      Deno.env.set("HOME", home);
+      const server = await serveAppStoreConnect(calls);
+      const previousHome = EnvTasks.get("HOME");
+      EnvTasks.set("HOME", home);
       let installedDuringArchive: boolean[] = [];
       try {
         class Release extends Build {
@@ -238,7 +249,7 @@ test({
           });
           testflight = target().dependsOn(this.upload).executes(async () => {
             await TestFlightTasks.distribute((s) =>
-              s.apiUrl(`http://127.0.0.1:${server.addr.port}`)
+              s.apiUrl(`http://127.0.0.1:${server.port}`)
                 .issuerId("issuer").keyId("KEY").privateKey(pem)
                 .bundleId("com.example.app").buildNumber(42)
                 .usesNonExemptEncryption(false).group("QA")
@@ -248,9 +259,9 @@ test({
         const { code, err } = await runCli(Release, ["testflight"]);
         assertEquals(code, 0, err);
       } finally {
-        if (previousHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", previousHome);
-        await server.shutdown();
+        if (previousHome === undefined) EnvTasks.delete("HOME");
+        else EnvTasks.set("HOME", previousHome);
+        await server.close();
       }
       // Installed in both of Xcode's directories while signing, gone after.
       assertEquals(installedDuringArchive, [true, true]);
@@ -260,7 +271,7 @@ test({
         ),
         [false, false],
       );
-      const plist = await Deno.readTextFile(`${dir}/ExportOptions.plist`);
+      const plist = await FileTasks.readText(`${dir}/ExportOptions.plist`);
       assertEquals(
         plist.includes(
           `<key>com.example.app</key>\n\t\t<string>${uuid}</string>`,
@@ -280,7 +291,7 @@ test({
 /** Whether `path` exists. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.stat(path);
+    await FileTasks.stat(path);
     return true;
   } catch {
     return false;
