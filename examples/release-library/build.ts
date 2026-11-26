@@ -10,10 +10,10 @@
  *   zuke tag --release-version 1.1.0 # stop after tagging
  *   zuke release --release-version 1.1.0 --dry-run
  */
-import { Build, FileTasks, parameter, run, target } from "jsr:@zuke/core@^1";
-import { DenoTasks } from "jsr:@zuke/deno@^1";
-import { GhTasks } from "jsr:@zuke/gh@^1";
-import { GitTasks } from "jsr:@zuke/git@^1";
+import { Build, FileTasks, parameter, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
+import { GhTasks } from "@zuke/gh";
+import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
   // A typed build input: `--release-version 1.1.0` on the command line, or

@@ -10,10 +10,10 @@
  *   zuke tag --release-version 1.1.0 # stop after the tag
  *   zuke --list
  */
-import { Build, parameter, run, target } from "jsr:@zuke/core@^1";
-import { $ } from "jsr:@zuke/core@^1/shell";
-import { DenoTasks } from "jsr:@zuke/deno@^1";
-import { GitTasks } from "jsr:@zuke/git@^1";
+import { Build, parameter, run, target } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
+import { DenoTasks } from "@zuke/deno";
+import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
   // Not `version`: that renders as `--version`, which Zuke reserves for

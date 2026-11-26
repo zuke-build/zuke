@@ -13,8 +13,8 @@
  *   zuke generate-ci --check # fail if a committed file drifted
  *   zuke test                # the same targets, locally
  */
-import { Build, cicd, run, target } from "jsr:@zuke/core@^1";
-import { DenoTasks } from "jsr:@zuke/deno@^1";
+import { Build, cicd, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class Pipeline extends Build {
   // GitHub Actions: one job per target, wired with `needs:` edges that mirror

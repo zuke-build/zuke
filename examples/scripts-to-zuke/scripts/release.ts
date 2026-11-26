@@ -14,7 +14,7 @@
  * and `.text()` / `.lines()` / `.code()` give you typed output instead of
  * `$(...)` and `$?`.
  */
-import { $ } from "jsr:@zuke/core@^1/shell";
+import { $ } from "@zuke/core/shell";
 
 const [version, flag] = Deno.args;
 if (version === undefined) {

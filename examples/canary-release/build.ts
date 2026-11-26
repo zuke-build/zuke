@@ -10,8 +10,8 @@
  *   zuke ship --broken # the probe fails; rolled back
  *   zuke --list        # every target the rollout makes
  */
-import { Build, parameter, run, target } from "jsr:@zuke/core@^1";
-import { canary, httpProbe } from "jsr:@zuke/canary@^1";
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
 import { localRouter } from "./local_router.ts";
 
 /** The release build. Exported so the repository's tests can drive it. */

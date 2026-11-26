@@ -9,8 +9,8 @@
  *   zuke test   # one target and what it depends on
  *   zuke --list # every target, with descriptions
  */
-import { Build, run, target } from "jsr:@zuke/core@^1";
-import { DenoTasks } from "jsr:@zuke/deno@^1";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class Library extends Build {
   format = target()
