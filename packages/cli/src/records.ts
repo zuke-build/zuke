@@ -23,11 +23,18 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
  * whether the value it gets is valid.
  */
 export function forgivingField(text: string, field: string): unknown {
-  let config: unknown;
+  return parsedRecord(text)?.[field];
+}
+
+/** `text` parsed, when it is a JSON object; `undefined` otherwise. */
+export function parsedRecord(
+  text: string,
+): Record<string, unknown> | undefined {
+  let parsed: unknown;
   try {
-    config = JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     return undefined;
   }
-  return isRecord(config) ? config[field] : undefined;
+  return isRecord(parsed) ? parsed : undefined;
 }

@@ -21,7 +21,7 @@ import {
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { FileTasks, RuntimeTasks } from "@zuke/core";
-import { isRecord } from "./records.ts";
+import { forgivingField, isRecord, parsedRecord } from "./records.ts";
 import {
   assertBuildFileName,
   BUILD_FILE,
@@ -460,6 +460,9 @@ interface ScaffoldFile {
   converted?: boolean;
 }
 
+/** The line every launcher setup writes opens its description with. */
+const ZUKE_LAUNCHER = /^# Zuke (?:bootstrap )?launcher\b/m;
+
 /** The default launcher base name. */
 export const DEFAULT_LAUNCHER = "zuke";
 
@@ -519,6 +522,16 @@ export async function existingBuildFile(
     return buildFileNamed(await host.readText(config));
   }
   return await host.exists(joinPath(dir, BUILD_FILE)) ? BUILD_FILE : undefined;
+}
+
+/**
+ * Whether the project in `dir` is one another SDK hosts: its `zuke.json`
+ * names an `sdk`. A `zuke.json` that is a link is not read.
+ */
+async function hostedBySdk(dir: string, host: SetupHost): Promise<boolean> {
+  const config = joinPath(dir, "zuke.json");
+  return await host.exists(config) && !(await host.isSymlink(config)) &&
+    forgivingField(await host.readText(config), "sdk") !== undefined;
 }
 
 /**
@@ -623,6 +636,13 @@ export async function runSetup(
         "--sdk python builds run on the zuke binary.",
     );
   }
+  if (sdk === undefined && await hostedBySdk(options.dir, host)) {
+    throw new Error(
+      "zuke setup: this project's build is hosted by another SDK (zuke.json " +
+        'names an "sdk"), so it has no TypeScript build to scaffold. Re-run ' +
+        "with --sdk python.",
+    );
+  }
   const was = sdk === undefined
     ? await existingRuntime(options.dir, host)
     : undefined;
@@ -701,6 +721,8 @@ export async function runSetup(
     ...(sdk === undefined
       ? [{ name: node ? "package.json" : "deno.json", launcher: false }]
       : []),
+    // A conversion reads deno.json's imports, so it is held to the same rule.
+    ...(converting ? [{ name: "deno.json", launcher: false }] : []),
     { name: ".gitignore", launcher: false },
     ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
   ];
@@ -737,7 +759,11 @@ export async function runSetup(
   for (const item of scaffold) {
     const path = joinPath(options.dir, item.name);
     const existed = await host.exists(path);
-    if (existed && !options.force && item.converted !== true) {
+    // A conversion rewrites zuke.json, and a launcher only when what is there
+    // is one of Zuke's: a file of the project's own at that name is kept.
+    const rewrite = existed && item.converted === true &&
+      (item.launcher !== true || ZUKE_LAUNCHER.test(await host.readText(path)));
+    if (existed && !options.force && !rewrite) {
       host.log(`  skip     ${item.name}  (already exists)`);
       files.push({ path: item.name, status: "skipped" });
       continue;
@@ -938,13 +964,8 @@ async function convertedConfig(
         "Replace it with a regular file, then re-run setup.",
     );
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await host.readText(path));
-  } catch {
-    parsed = undefined;
-  }
-  if (!isRecord(parsed)) {
+  const parsed = parsedRecord(await host.readText(path));
+  if (parsed === undefined) {
     throw new Error(
       `zuke setup: ${path} is not a JSON object, so it cannot be converted ` +
         'to Node. Fix it, or add "runtime": "node" to it by hand.',
@@ -971,13 +992,7 @@ async function convertedDependencies(
   const dependencies = new Map([STARTER_NPM_DEPENDENCY]);
   const denoJson = joinPath(dir, "deno.json");
   if (await host.exists(denoJson)) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await host.readText(denoJson));
-    } catch {
-      parsed = undefined;
-    }
-    const imports = isRecord(parsed) ? parsed.imports : undefined;
+    const imports = parsedRecord(await host.readText(denoJson))?.imports;
     const others: string[] = [];
     for (const specifier of isRecord(imports) ? Object.keys(imports) : []) {
       const zuke = ZUKE_PACKAGE.exec(specifier);
@@ -1022,15 +1037,10 @@ async function setupPackageJson(
   const root: Record<string, unknown> = {};
   let original = "";
   if (exists) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await host.readText(path));
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = parsedRecord(await host.readText(path));
     // Not JSON, or JSON that is not an object: either way not a manifest setup
     // can merge into, so it is left exactly as it is.
-    if (!isRecord(parsed)) {
+    if (parsed === undefined) {
       host.log(`  skip     ${name}  (not a JSON object, edit by hand)`);
       steps.push(
         `${path} is not a JSON object. Add "type": "module" and the ` +

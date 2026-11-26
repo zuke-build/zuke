@@ -1451,8 +1451,9 @@ function denoProject(build = 'import { Build } from "@zuke/core";\n') {
         "@std/yaml": "jsr:@std/yaml@^1",
       },
     }),
-    zuke: "old deno launcher",
-    "zuke.ps1": "old deno launcher",
+    zuke: "#!/usr/bin/env bash\n#\n# Zuke bootstrap launcher — for Deno.\n",
+    "zuke.ps1":
+      "#!/usr/bin/env pwsh\n#\n# Zuke launcher (PowerShell) - Deno.\n",
   });
 }
 
@@ -1582,4 +1583,54 @@ test("runSetup --runtime node converting reads past a deno.json it cannot parse,
   assertEquals(result.notes.length, 1);
   assertStringIncludes(result.notes[0], "Remove it once nothing else uses it");
   assertEquals(host.files.get("deno.json"), "{ // jsonc\n}");
+});
+
+test("runSetup --runtime node converting keeps a file of the project's own at the launcher's name", async () => {
+  const host = denoProject();
+  host.files.set("zuke", "#!/bin/sh\necho mine\n");
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(host.files.get("zuke"), "#!/bin/sh\necho mine\n");
+  assertEquals(result.files.find((f) => f.path === "zuke")?.status, "skipped");
+  assertEquals(
+    result.files.find((f) => f.path === "zuke.ps1")?.status,
+    "overwritten",
+  );
+});
+
+test("runSetup --runtime node converting refuses a deno.json that is a link, before writing", async () => {
+  const host = denoProject();
+  host.symlinks.add("deno.json");
+  const before = new Map(host.files);
+  await assertRejects(
+    () =>
+      runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host),
+    Error,
+    "symbolic",
+  );
+  assertEquals(host.files, before);
+  assertEquals(host.reads.includes("deno.json"), false);
+});
+
+test("runSetup refuses a TypeScript scaffold in a project another SDK hosts", async () => {
+  const python = {
+    "zuke.json": JSON.stringify({
+      name: "B",
+      sdk: { command: ["uv", "run", "build.py"] },
+    }),
+    "build.py": "# a build\n",
+    zuke: "binary launcher",
+  };
+  for (const runtime of ["node", "deno", undefined] as const) {
+    const host = new FakeHost(python);
+    await assertRejects(
+      () => runSetup({ dir: ".", force: false, name: "A", runtime }, host),
+      Error,
+      "--sdk python",
+    );
+    assertEquals(host.files.get("zuke"), "binary launcher");
+    assertEquals(host.files.has("package.json"), false);
+  }
 });
