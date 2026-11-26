@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.1](https://github.com/zuke-build/zuke/compare/core-v1.86.0...core-v1.86.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **core:** find a .cmd tool on PATH on Node on Windows ([#1203](https://github.com/zuke-build/zuke/issues/1203)) ([95b8d9a](https://github.com/zuke-build/zuke/commit/95b8d9a010f2bd5cd4f2e5b47c3dac933c395509))
+
 ## [1.86.0](https://github.com/zuke-build/zuke/compare/core-v1.85.0...core-v1.86.0) (2026-11-26)
 
 
