@@ -11,6 +11,7 @@
  * code coming back.
  */
 
+import { EnvTasks, FileTasks, NetTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
@@ -87,65 +88,78 @@ await run(Scratch);
 
 /** Run `fn` with the process cwd set to `dir`, restoring it afterwards. */
 async function inDir(dir: string, fn: () => Promise<void>): Promise<void> {
-  const prev = Deno.cwd();
-  Deno.chdir(dir);
+  const prev = RuntimeTasks.cwd();
+  RuntimeTasks.chdir(dir);
   try {
     await fn();
   } finally {
-    Deno.chdir(prev);
+    RuntimeTasks.chdir(prev);
   }
 }
 
-test("zuke <target> from a subdirectory runs the build at the project root", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${CONFIG_FILE}`,
-      '{ "name": "Scratch" }\n',
-    );
-    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
-    await Deno.mkdir(`${dir}/src/deep`, { recursive: true });
-    // The CLI's own stdout is captured so it can be asserted empty; the build
-    // itself runs through the real runner with inherited stdio.
-    const host = recordingHost();
-    await inDir(`${dir}/src/deep`, async () => {
-      const code = await main(["hello"], host);
-      assertEquals(code, 0);
-    });
-    // The target executed, from the root (not the subdirectory it was invoked
-    // in), so its relative write landed beside zuke.ts.
-    const cwd = await Deno.readTextFile(`${dir}/ran.txt`);
-    assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
-    assertEquals(host.logs, []);
-  }, { prefix: "zuke-global-cli-" });
+test({
+  name: "zuke <target> from a subdirectory runs the build at the project root",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Scratch" }\n',
+      );
+      await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
+      await FileTasks.createDirectory(`${dir}/src/deep`);
+      // The CLI's own stdout is captured so it can be asserted empty; the build
+      // itself runs through the real runner with inherited stdio.
+      const host = recordingHost();
+      await inDir(`${dir}/src/deep`, async () => {
+        const code = await main(["hello"], host);
+        assertEquals(code, 0);
+      });
+      // The target executed, from the root (not the subdirectory it was invoked
+      // in), so its relative write landed beside zuke.ts.
+      const cwd = await FileTasks.readText(`${dir}/ran.txt`);
+      assertEquals(
+        await FileTasks.realPath(cwd),
+        await FileTasks.realPath(dir),
+      );
+      assertEquals(host.logs, []);
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
 test({
   name: "zuke <target> runs the project's own ./zuke launcher when it has one",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/${CONFIG_FILE}`,
         '{ "name": "Scratch" }\n',
       );
-      await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+      await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
       // A launcher that does something `deno run` alone would not — record
       // its argv — then runs the build as a real one does.
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/zuke`,
         `#!/bin/sh\nprintf '%s\\n' "$@" > launched.txt\n` +
-          `exec "${Deno.execPath()}" run -A zuke.ts "$@"\n`,
-        { mode: 0o755 },
+          `exec "${RuntimeTasks.execPath()}" run -A zuke.ts "$@"\n`,
+        (s) => s.mode(0o755),
       );
-      await Deno.mkdir(`${dir}/src`);
+      await FileTasks.createDirectory(`${dir}/src`, { recursive: false });
       const host = recordingHost();
       await inDir(`${dir}/src`, async () => {
         assertEquals(await main(["hello"], host), 0);
       });
-      assertEquals(await Deno.readTextFile(`${dir}/launched.txt`), "hello\n");
-      const cwd = await Deno.readTextFile(`${dir}/ran.txt`);
-      assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
+      assertEquals(await FileTasks.readText(`${dir}/launched.txt`), "hello\n");
+      const cwd = await FileTasks.readText(`${dir}/ran.txt`);
+      assertEquals(
+        await FileTasks.realPath(cwd),
+        await FileTasks.realPath(dir),
+      );
       assertEquals(host.logs, []);
     }, { prefix: "zuke-global-cli-" });
   },
@@ -154,56 +168,66 @@ test({
 test({
   name:
     "zuke <target> builds this repo when ./zuke is a symlink to a shared launcher",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       // Two repos: the consumer, whose `zuke` links to the shared one's. Each
       // has its own build; the shared launcher, like the real ones, finds the
       // project from the path it was called by.
       for (const repo of ["app", "infra"]) {
-        await Deno.mkdir(`${dir}/${repo}`);
-        await Deno.writeTextFile(
+        await FileTasks.createDirectory(`${dir}/${repo}`, { recursive: false });
+        await FileTasks.writeText(
           `${dir}/${repo}/${CONFIG_FILE}`,
           '{ "name": "Scratch" }\n',
         );
-        await Deno.writeTextFile(`${dir}/${repo}/zuke.ts`, scratchBuild());
+        await FileTasks.writeText(`${dir}/${repo}/zuke.ts`, scratchBuild());
       }
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/infra/zuke`,
         `#!/bin/sh\ncd "$(dirname "$0")" || exit 1\n` +
-          `exec "${Deno.execPath()}" run -A zuke.ts "$@"\n`,
-        { mode: 0o755 },
+          `exec "${RuntimeTasks.execPath()}" run -A zuke.ts "$@"\n`,
+        (s) => s.mode(0o755),
       );
-      await Deno.symlink("../infra/zuke", `${dir}/app/zuke`);
+      await FileTasks.symlink("../infra/zuke", `${dir}/app/zuke`);
       await inDir(`${dir}/app`, async () => {
         assertEquals(await main(["hello"], recordingHost()), 0);
       });
       // The consumer's build ran; the shared repo's did not.
-      const cwd = await Deno.readTextFile(`${dir}/app/ran.txt`);
-      assertEquals(await Deno.realPath(cwd), await Deno.realPath(`${dir}/app`));
+      const cwd = await FileTasks.readText(`${dir}/app/ran.txt`);
+      assertEquals(
+        await FileTasks.realPath(cwd),
+        await FileTasks.realPath(`${dir}/app`),
+      );
       assertEquals(await exists(`${dir}/infra/ran.txt`), false);
     }, { prefix: "zuke-global-cli-" });
   },
 });
 
-test("zuke <target> propagates a failing target's exit code", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${CONFIG_FILE}`,
-      '{ "name": "Scratch" }\n',
-    );
-    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
-    await inDir(dir, async () => {
-      assertEquals(await main(["broken"], recordingHost()), 1);
-      // The build's own CLI answers for a typo — the global CLI never treats
-      // it as one of its unknown commands once a zuke.json is in reach.
-      // cspell:ignore helo
-      const host = recordingHost();
-      assertEquals(await main(["helo"], host), 1);
-      assertEquals(host.logs, []);
-    });
-  }, { prefix: "zuke-global-cli-" });
+test({
+  name: "zuke <target> propagates a failing target's exit code",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Scratch" }\n',
+      );
+      await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
+      await inDir(dir, async () => {
+        assertEquals(await main(["broken"], recordingHost()), 1);
+        // The build's own CLI answers for a typo — the global CLI never treats
+        // it as one of its unknown commands once a zuke.json is in reach.
+        // cspell:ignore helo
+        const host = recordingHost();
+        assertEquals(await main(["helo"], host), 1);
+        assertEquals(host.logs, []);
+      });
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
 /**
@@ -280,70 +304,81 @@ test("zuke <argv> cannot forge a workflow command on an Actions runner", async (
   }, { prefix: "zuke-global-cli-" });
 });
 
-test("a forwarded build resolves a real Deno when the CLI is a compiled binary", async () => {
-  // The compiled case, which nothing in-process can otherwise reach: under
-  // `deno test` the running executable *is* Deno, so `Deno.execPath()` happens
-  // to be the right answer and the bug is invisible. A host that says it is
-  // standalone puts the real question to the resolution — the running
-  // executable is then not an answer at all, and the build runs only if a real
-  // Deno was found instead. The rest of the path is real: the walk up to
-  // zuke.json, the spawn from the root, the target executing, the exit code
-  // coming back.
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${CONFIG_FILE}`,
-      '{ "name": "Scratch" }\n',
-    );
-    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
-    const compiled: DenoHost = {
-      standalone: () => true,
-      env: (name) => Deno.env.get(name),
-      windows: () => Deno.build.os === "windows",
-    };
-    const runner: BuildRunner = async (root, denoArgs) => {
-      const child = await spawnDeno(
-        denoArgs,
-        { cwd: root, stdin: "null", stdout: "null", stderr: "inherit" },
-        denoCandidates(compiled),
+test({
+  name:
+    "a forwarded build resolves a real Deno when the CLI is a compiled binary",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
+  fn: async () => {
+    // The compiled case, which nothing in-process can otherwise reach: under
+    // `deno test` the running executable *is* Deno, so `Deno.execPath()` happens
+    // to be the right answer and the bug is invisible. A host that says it is
+    // standalone puts the real question to the resolution — the running
+    // executable is then not an answer at all, and the build runs only if a real
+    // Deno was found instead. The rest of the path is real: the walk up to
+    // zuke.json, the spawn from the root, the target executing, the exit code
+    // coming back.
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Scratch" }\n',
       );
-      return (await child.status).code;
-    };
-    await inDir(dir, async () => {
-      const code = await main(
-        ["report"],
-        recordingHost(),
-        undefined,
-        undefined,
-        undefined,
-        runner,
+      await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
+      const compiled: DenoHost = {
+        standalone: () => true,
+        env: (name) => EnvTasks.get(name),
+        windows: () => RuntimeTasks.os() === "windows",
+      };
+      const runner: BuildRunner = async (root, denoArgs) => {
+        const child = await spawnDeno(
+          denoArgs,
+          { cwd: root, stdin: "null", stdout: "null", stderr: "inherit" },
+          denoCandidates(compiled),
+        );
+        return (await child.status).code;
+      };
+      await inDir(dir, async () => {
+        const code = await main(
+          ["report"],
+          recordingHost(),
+          undefined,
+          undefined,
+          undefined,
+          runner,
+        );
+        assertEquals(code, 0);
+      });
+      const spawned: { execPath: string; standalone: boolean } = JSON.parse(
+        await FileTasks.readText(`${dir}/spawned.json`),
       );
-      assertEquals(code, 0);
-    });
-    const spawned: { execPath: string; standalone: boolean } = JSON.parse(
-      await Deno.readTextFile(`${dir}/spawned.json`),
-    );
-    // A real Deno ran the build, not the binary the host named — which is the
-    // whole of #586: spawning that name re-enters the CLI instead. The PATH
-    // the child gets is not asserted here: the candidate that answers is the
-    // bare name, which carries no directory to prepend, so the child inherits
-    // this process's PATH and the assertion would be about the machine rather
-    // than the code. The overlay has its own coverage — `pathWithDeno`'s unit
-    // tests, and `defaultBuildRunner puts the running Deno first on the
-    // child's PATH` in the package's dispatch tests.
-    assertEquals(spawned.standalone, false);
-    assertEquals(spawned.execPath.startsWith(dir), false);
-  }, { prefix: "zuke-global-cli-" });
+      // A real Deno ran the build, not the binary the host named — which is the
+      // whole of #586: spawning that name re-enters the CLI instead. The PATH
+      // the child gets is not asserted here: the candidate that answers is the
+      // bare name, which carries no directory to prepend, so the child inherits
+      // this process's PATH and the assertion would be about the machine rather
+      // than the code. The overlay has its own coverage — `pathWithDeno`'s unit
+      // tests, and `defaultBuildRunner puts the running Deno first on the
+      // child's PATH` in the package's dispatch tests.
+      assertEquals(spawned.standalone, false);
+      assertEquals(spawned.execPath.startsWith(dir), false);
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
-test("zuke upgrade is the CLI's own; a build target named upgrade stays reachable past --", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${CONFIG_FILE}`,
-      '{ "name": "Shadowed" }\n',
-    );
-    await Deno.writeTextFile(
-      `${dir}/zuke.ts`,
-      `import { Build, run, target } from "${CORE}";
+test({
+  name:
+    "zuke upgrade is the CLI's own; a build target named upgrade stays reachable past --",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Shadowed" }\n',
+      );
+      await FileTasks.writeText(
+        `${dir}/zuke.ts`,
+        `import { Build, run, target } from "${CORE}";
 
 class Shadowed extends Build {
   upgrade = target()
@@ -355,89 +390,90 @@ class Shadowed extends Build {
 
 await run(Shadowed);
 `,
-    );
-    const installs: string[][] = [];
-    const upgradeHost: UpgradeHost = {
-      standalone: () => false,
-      mainModule: () => "jsr:@zuke/cli",
-      execPath: () => Deno.execPath(),
-      realPath: (path) => Deno.realPath(path),
-      binDir: () => `${dir}/bin`,
-      exists: () => Promise.resolve(true),
-      windows: () => false,
-      meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
-      binaryPin: () => Promise.reject(new Error("not reached")),
-      install: async (denoArgs) => {
-        installs.push(denoArgs);
-        // Stand in for Deno: the install writes the lock beside the shim.
-        await writeInstallLock(`${dir}/bin`, "999.0.0");
-        return 0;
-      },
-      denoVersion: () => "2.9.3",
-      readText: (path) => Deno.readTextFile(path),
-    };
-    await inDir(dir, async () => {
-      // The CLI answers `upgrade` itself, inside a project, without running
-      // the build: the real runner and probe are in place, and the target's
-      // marker file is never written. The real probe rather than
-      // `confinedTo`: the walk starts from the resolved cwd, which on macOS
-      // is `/private/var/…` under a `/var/…` temp dir.
-      const host = recordingHost();
-      const code = await main(
-        ["upgrade"],
-        host,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        defaultBuildProbe,
-        upgradeHost,
       );
-      assertEquals(code, 0);
-      assertEquals(installs.length, 1);
-      assertEquals(installs[0].at(-1), "jsr:@zuke/cli");
-      assertEquals(await exists(`${dir}/upgraded.txt`), false);
+      const installs: string[][] = [];
+      const upgradeHost: UpgradeHost = {
+        standalone: () => false,
+        mainModule: () => "jsr:@zuke/cli",
+        execPath: () => RuntimeTasks.execPath(),
+        realPath: (path) => FileTasks.realPath(path),
+        binDir: () => `${dir}/bin`,
+        exists: () => Promise.resolve(true),
+        windows: () => false,
+        meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
+        binaryPin: () => Promise.reject(new Error("not reached")),
+        install: async (denoArgs) => {
+          installs.push(denoArgs);
+          // Stand in for Deno: the install writes the lock beside the shim.
+          await writeInstallLock(`${dir}/bin`, "999.0.0");
+          return 0;
+        },
+        denoVersion: () => "2.9.3",
+        readText: (path) => FileTasks.readText(path),
+      };
+      await inDir(dir, async () => {
+        // The CLI answers `upgrade` itself, inside a project, without running
+        // the build: the real runner and probe are in place, and the target's
+        // marker file is never written. The real probe rather than
+        // `confinedTo`: the walk starts from the resolved cwd, which on macOS
+        // is `/private/var/…` under a `/var/…` temp dir.
+        const host = recordingHost();
+        const code = await main(
+          ["upgrade"],
+          host,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          defaultBuildProbe,
+          upgradeHost,
+        );
+        assertEquals(code, 0);
+        assertEquals(installs.length, 1);
+        assertEquals(installs[0].at(-1), "jsr:@zuke/cli");
+        assertEquals(await exists(`${dir}/upgraded.txt`), false);
 
-      // `--` hands the word to the build, through the real runner.
-      const forwarded = await main(
-        ["--", "upgrade"],
-        recordingHost(),
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        defaultBuildProbe,
-        upgradeHost,
-      );
-      assertEquals(forwarded, 0);
-      assertEquals(await Deno.readTextFile(`${dir}/upgraded.txt`), "build");
-      assertEquals(installs.length, 1);
-    });
-  }, { prefix: "zuke-global-cli-" });
+        // `--` hands the word to the build, through the real runner.
+        const forwarded = await main(
+          ["--", "upgrade"],
+          recordingHost(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          defaultBuildProbe,
+          upgradeHost,
+        );
+        assertEquals(forwarded, 0);
+        assertEquals(await FileTasks.readText(`${dir}/upgraded.txt`), "build");
+        assertEquals(installs.length, 1);
+      });
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
 test({
   name: "a Homebrew zuke names itself in --version and sends upgrade to brew",
   // Homebrew's link on PATH is a symbolic link, which Windows only lets an
   // elevated or developer-mode process create; Homebrew does not run there.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       // The layout Homebrew installs: the binary in the Cellar, linked into
       // the prefix's bin, which is what PATH (and so the OS) reports.
       const cellar = `${dir}/Cellar/zuke/1.14.0/bin`;
-      await Deno.mkdir(cellar, { recursive: true });
-      await Deno.mkdir(`${dir}/bin`);
-      await Deno.writeTextFile(`${cellar}/zuke`, "");
-      await Deno.symlink(`${cellar}/zuke`, `${dir}/bin/zuke`);
-      const resolved = await Deno.realPath(`${cellar}/zuke`);
+      await FileTasks.createDirectory(cellar);
+      await FileTasks.createDirectory(`${dir}/bin`, { recursive: false });
+      await FileTasks.writeText(`${cellar}/zuke`, "");
+      await FileTasks.symlink(`${cellar}/zuke`, `${dir}/bin/zuke`);
+      const resolved = await FileTasks.realPath(`${cellar}/zuke`);
       const installs: string[][] = [];
       const brewed: UpgradeHost = {
         // A binary compiled from JSR still reports the JSR specifier.
         standalone: () => true,
         mainModule: () => "jsr:@zuke/cli@1.14.0",
         execPath: () => `${dir}/bin/zuke`,
-        realPath: (path) => Deno.realPath(path),
+        realPath: (path) => FileTasks.realPath(path),
         binDir: () => `${dir}/deno-bin`,
         exists: () => Promise.resolve(true),
         windows: () => false,
@@ -448,7 +484,7 @@ test({
           return Promise.resolve(0);
         },
         denoVersion: () => "2.9.3",
-        readText: (path) => Deno.readTextFile(path),
+        readText: (path) => FileTasks.readText(path),
       };
       await inDir(dir, async () => {
         const upgrade = recordingHost();
@@ -503,8 +539,8 @@ test({
 
 /** Write the lock `deno install -g` leaves beside the shim, resolving `version`. */
 async function writeInstallLock(bin: string, version: string): Promise<void> {
-  await Deno.mkdir(`${bin}/.zuke`, { recursive: true });
-  await Deno.writeTextFile(
+  await FileTasks.createDirectory(`${bin}/.zuke`);
+  await FileTasks.writeText(
     `${bin}/.zuke/deno.lock`,
     JSON.stringify({
       version: "5",
@@ -516,7 +552,7 @@ async function writeInstallLock(bin: string, version: string): Promise<void> {
 /** Whether `path` exists. */
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.stat(path);
+    await FileTasks.stat(path);
     return true;
   } catch {
     return false;
@@ -525,13 +561,13 @@ async function exists(path: string): Promise<boolean> {
 
 test("zuke --version in a real project reads its core from deno.lock and runs nothing", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Old" }\n');
+    await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "Old" }\n');
     // A build that marks any run of it: --version must not reach it.
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/zuke.ts`,
       'await Deno.writeTextFile("ran.txt", "ran");\n',
     );
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/deno.lock`,
       JSON.stringify({
         version: "5",
@@ -550,32 +586,32 @@ test("zuke --version in a real project reads its core from deno.lock and runs no
 test({
   name: "a forwarded launcher runs with Deno's update check off",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "S" }\n');
-      await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
-      await Deno.writeTextFile(
+      await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "S" }\n');
+      await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
+      await FileTasks.writeText(
         `${dir}/zuke`,
         '#!/bin/sh\nprintf "%s" "$DENO_NO_UPDATE_CHECK" > env.txt\n',
-        { mode: 0o755 },
+        (s) => s.mode(0o755),
       );
       await inDir(dir, async () => {
         assertEquals(await main(["hello"], recordingHost()), 0);
       });
-      assertEquals(await Deno.readTextFile(`${dir}/env.txt`), "1");
+      assertEquals(await FileTasks.readText(`${dir}/env.txt`), "1");
     }, { prefix: "zuke-global-cli-" });
   },
 });
 
 test("zuke --version reads the lockfile a real project's deno.json names", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Moved" }\n');
-    await Deno.writeTextFile(
+    await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "Moved" }\n');
+    await FileTasks.writeText(
       `${dir}/zuke.ts`,
       'await Deno.writeTextFile("ran.txt", "ran");\n',
     );
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/deno.json`,
       JSON.stringify({ lock: "locks/zuke.lock" }),
     );
@@ -585,9 +621,9 @@ test("zuke --version reads the lockfile a real project's deno.json names", async
         specifiers: { "jsr:@zuke/core@^1": version },
       });
     // A leftover default lock the build no longer resolves through.
-    await Deno.writeTextFile(`${dir}/deno.lock`, lock("1.1.0"));
-    await Deno.mkdir(`${dir}/locks`);
-    await Deno.writeTextFile(`${dir}/locks/zuke.lock`, lock("1.42.0"));
+    await FileTasks.writeText(`${dir}/deno.lock`, lock("1.1.0"));
+    await FileTasks.createDirectory(`${dir}/locks`, { recursive: false });
+    await FileTasks.writeText(`${dir}/locks/zuke.lock`, lock("1.42.0"));
     const host = recordingHost();
     await inDir(dir, async () => {
       assertEquals(await main(["--version"], host), 0);
@@ -600,11 +636,11 @@ test("zuke --version reads the lockfile a real project's deno.json names", async
 
 test("zuke --help on a terminal opens with the logo and paints the build's heading", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/${CONFIG_FILE}`,
       '{ "name": "Scratch" }\n',
     );
-    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+    await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
     const host = { ...recordingHost(), isTerminal: () => true };
     await withEnv(
       {
@@ -637,8 +673,8 @@ test("zuke upgrade reports an install that resolved another release as a failure
     const upgradeHost: UpgradeHost = {
       standalone: () => false,
       mainModule: () => "jsr:@zuke/cli",
-      execPath: () => Deno.execPath(),
-      realPath: (path) => Deno.realPath(path),
+      execPath: () => RuntimeTasks.execPath(),
+      realPath: (path) => FileTasks.realPath(path),
       binDir: () => `${dir}/bin`,
       exists: () => Promise.resolve(true),
       windows: () => false,
@@ -650,7 +686,7 @@ test("zuke upgrade reports an install that resolved another release as a failure
         return 0;
       },
       denoVersion: () => "2.9.3",
-      readText: (path) => Deno.readTextFile(path),
+      readText: (path) => FileTasks.readText(path),
     };
     const host = recordingHost();
     await inDir(dir, async () => {
@@ -687,106 +723,92 @@ test("zuke upgrade reports an install that resolved another release as a failure
 async function withModuleServer(
   fn: (url: string) => Promise<void>,
 ): Promise<void> {
-  const server = Deno.serve(
-    { port: 0, hostname: "localhost", onListen: () => {} },
-    () =>
-      new Response("export const answer = 42;\n", {
-        headers: { "content-type": "application/typescript" },
-      }),
+  const server = await NetTasks.serve(() =>
+    new Response("export const answer = 42;\n", {
+      headers: { "content-type": "application/typescript" },
+    })
   );
   try {
-    await fn(`http://localhost:${server.addr.port}/mod.ts`);
+    await fn(`http://127.0.0.1:${server.port}/mod.ts`);
   } finally {
-    await server.shutdown();
+    await server.close();
   }
 }
 
-test("zuke <target> runs the build file zuke.json names", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${CONFIG_FILE}`,
-      '{ "name": "Scratch", "build": "build.ts" }\n',
-    );
-    await Deno.writeTextFile(`${dir}/build.ts`, scratchBuild());
-    // A zuke.ts beside it is not the build, and must not run.
-    await Deno.writeTextFile(`${dir}/zuke.ts`, "Deno.exit(7);\n");
-    await Deno.mkdir(`${dir}/src`);
-    const host = recordingHost();
-    await inDir(`${dir}/src`, async () => {
-      assertEquals(await main(["hello"], host), 0);
-      // cache resolves the named file's graph, not zuke.ts's.
-      assertEquals(await main(["cache", "--dry-run"], host), 0);
-    });
-    const cwd = await Deno.readTextFile(`${dir}/ran.txt`);
-    assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
-    assertEquals(host.logs, [
-      "Would cache the build's dependencies: deno install --entrypoint build.ts",
-    ]);
-  }, { prefix: "zuke-global-cli-" });
+test({
+  name: "zuke <target> runs the build file zuke.json names",
+  denoOnly:
+    "runs the build with a real deno, as the zuke command does for a zuke.ts build",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Scratch", "build": "build.ts" }\n',
+      );
+      await FileTasks.writeText(`${dir}/build.ts`, scratchBuild());
+      // A zuke.ts beside it is not the build, and must not run.
+      await FileTasks.writeText(`${dir}/zuke.ts`, "Deno.exit(7);\n");
+      await FileTasks.createDirectory(`${dir}/src`, { recursive: false });
+      const host = recordingHost();
+      await inDir(`${dir}/src`, async () => {
+        assertEquals(await main(["hello"], host), 0);
+        // cache resolves the named file's graph, not zuke.ts's.
+        assertEquals(await main(["cache", "--dry-run"], host), 0);
+      });
+      const cwd = await FileTasks.readText(`${dir}/ran.txt`);
+      assertEquals(
+        await FileTasks.realPath(cwd),
+        await FileTasks.realPath(dir),
+      );
+      assertEquals(host.logs, [
+        "Would cache the build's dependencies: deno install --entrypoint build.ts",
+      ]);
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
-test("zuke relock and cache drive a real deno install in the project root", async () => {
-  await withModuleServer(async (url) => {
-    await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Lock" }\n');
-      // Deno writes a lock only for a project with a config, as every Zuke
-      // project has.
-      await Deno.writeTextFile(`${dir}/deno.json`, "{}\n");
-      await Deno.writeTextFile(
-        `${dir}/zuke.ts`,
-        `import { answer } from "${url}";\nconsole.log(answer);\n`,
-      );
-      // A stale lock from an old core, as a project stuck on it has.
-      await Deno.writeTextFile(
-        `${dir}/deno.lock`,
-        JSON.stringify({
-          version: "5",
-          specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
-        }),
-      );
-      // The real host, with an import grant for this test's own server:
-      // Deno allows remote imports only from its default hosts (jsr.io and
-      // the like), which a project's real dependencies come from.
-      const projectHost: ProjectHost = {
-        ...defaultProjectHost,
-        deno: (args, cwd) =>
-          defaultProjectHost.deno(
-            [...args, `--allow-import=${new URL(url).host}`],
-            cwd,
-          ),
-      };
-      await withEnv({ DENO_DIR: `${dir}/.deno-dir` }, async () => {
-        const host = recordingHost();
-        await inDir(dir, async () => {
-          const code = await main(
-            ["relock"],
-            host,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            defaultBuildProbe,
-            undefined,
-            projectHost,
-          );
-          assertEquals(code, 0, host.logs.join("\n"));
-        });
-        const lock = await Deno.readTextFile(`${dir}/deno.lock`);
-        assertEquals(lock.includes("@zuke/core"), false, lock);
-        assertEquals(lock.includes(url), true, lock);
-        assertEquals(
-          host.logs.some((l) => l.includes("@zuke/core 1.66.0 → none")),
-          true,
-          host.logs.join("\n"),
+test({
+  name: "zuke relock and cache drive a real deno install in the project root",
+  denoOnly: "runs deno install, the program zuke relock drives",
+  fn: async () => {
+    await withModuleServer(async (url) => {
+      await withTemp(async (dir) => {
+        await FileTasks.writeText(
+          `${dir}/${CONFIG_FILE}`,
+          '{ "name": "Lock" }\n',
         );
-
-        // cache keeps the lock it finds.
-        const cached = recordingHost();
-        await inDir(dir, async () => {
-          assertEquals(
-            await main(
-              ["cache"],
-              cached,
+        // Deno writes a lock only for a project with a config, as every Zuke
+        // project has.
+        await FileTasks.writeText(`${dir}/deno.json`, "{}\n");
+        await FileTasks.writeText(
+          `${dir}/zuke.ts`,
+          `import { answer } from "${url}";\nconsole.log(answer);\n`,
+        );
+        // A stale lock from an old core, as a project stuck on it has.
+        await FileTasks.writeText(
+          `${dir}/deno.lock`,
+          JSON.stringify({
+            version: "5",
+            specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+          }),
+        );
+        // The real host, with an import grant for this test's own server:
+        // Deno allows remote imports only from its default hosts (jsr.io and
+        // the like), which a project's real dependencies come from.
+        const projectHost: ProjectHost = {
+          ...defaultProjectHost,
+          deno: (args, cwd) =>
+            defaultProjectHost.deno(
+              [...args, `--allow-import=${new URL(url).host}`],
+              cwd,
+            ),
+        };
+        await withEnv({ DENO_DIR: `${dir}/.deno-dir` }, async () => {
+          const host = recordingHost();
+          await inDir(dir, async () => {
+            const code = await main(
+              ["relock"],
+              host,
               undefined,
               undefined,
               undefined,
@@ -794,26 +816,56 @@ test("zuke relock and cache drive a real deno install in the project root", asyn
               defaultBuildProbe,
               undefined,
               projectHost,
-            ),
-            0,
+            );
+            assertEquals(code, 0, host.logs.join("\n"));
+          });
+          const lock = await FileTasks.readText(`${dir}/deno.lock`);
+          assertEquals(lock.includes("@zuke/core"), false, lock);
+          assertEquals(lock.includes(url), true, lock);
+          assertEquals(
+            host.logs.some((l) => l.includes("@zuke/core 1.66.0 → none")),
+            true,
+            host.logs.join("\n"),
           );
+
+          // cache keeps the lock it finds.
+          const cached = recordingHost();
+          await inDir(dir, async () => {
+            assertEquals(
+              await main(
+                ["cache"],
+                cached,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                defaultBuildProbe,
+                undefined,
+                projectHost,
+              ),
+              0,
+            );
+          });
+          assertEquals(await FileTasks.readText(`${dir}/deno.lock`), lock);
         });
-        assertEquals(await Deno.readTextFile(`${dir}/deno.lock`), lock);
-      });
-    }, { prefix: "zuke-global-cli-" });
-  });
+      }, { prefix: "zuke-global-cli-" });
+    });
+  },
 });
 
 test("zuke add maps short names and runs deno add in the project root", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Deps" }\n');
-    await Deno.writeTextFile(`${dir}/zuke.ts`, "\n");
+    await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "Deps" }\n');
+    await FileTasks.writeText(`${dir}/zuke.ts`, "\n");
     const runs: { args: string[]; cwd: string }[] = [];
     const projectHost = {
       entry: (path: string) => defaultProjectHost.entry(path),
-      readText: (path: string) => Deno.readTextFile(path),
-      writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
-      remove: (path: string) => Deno.remove(path),
+      readText: (path: string) => FileTasks.readText(path),
+      writeText: (path: string, text: string) =>
+        FileTasks.writeText(path, text),
+      remove: async (path: string) => {
+        await FileTasks.remove(path);
+      },
       deno: (args: string[], cwd: string) => {
         runs.push({ args, cwd });
         return Promise.resolve(0);
@@ -821,7 +873,7 @@ test("zuke add maps short names and runs deno add in the project root", async ()
       npm: () => Promise.reject(new Error("a Deno project runs no npm")),
       denoVersion: () => "2.9.3",
     };
-    await Deno.mkdir(`${dir}/sub`);
+    await FileTasks.createDirectory(`${dir}/sub`, { recursive: false });
     await inDir(`${dir}/sub`, async () => {
       const code = await main(
         ["add", "docker", "@std/yaml"],
@@ -839,26 +891,29 @@ test("zuke add maps short names and runs deno add in the project root", async ()
     assertEquals(runs.length, 1);
     assertEquals(runs[0].args, ["add", "jsr:@zuke/docker", "jsr:@std/yaml"]);
     assertEquals(
-      await Deno.realPath(runs[0].cwd),
-      await Deno.realPath(dir),
+      await FileTasks.realPath(runs[0].cwd),
+      await FileTasks.realPath(dir),
     );
   }, { prefix: "zuke-global-cli-" });
 });
 
 test("zuke add in a Node project runs npm install in its root, never deno", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/${CONFIG_FILE}`,
       '{ "name": "Deps", "build": "build.ts", "runtime": "node" }\n',
     );
-    await Deno.writeTextFile(`${dir}/build.ts`, "\n");
-    await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
+    await FileTasks.writeText(`${dir}/build.ts`, "\n");
+    await FileTasks.writeText(`${dir}/package.json`, "{}\n");
     const runs: { tool: string; args: string[]; cwd: string }[] = [];
     const projectHost = {
       entry: (path: string) => defaultProjectHost.entry(path),
-      readText: (path: string) => Deno.readTextFile(path),
-      writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
-      remove: (path: string) => Deno.remove(path),
+      readText: (path: string) => FileTasks.readText(path),
+      writeText: (path: string, text: string) =>
+        FileTasks.writeText(path, text),
+      remove: async (path: string) => {
+        await FileTasks.remove(path);
+      },
       deno: (args: string[], cwd: string) => {
         runs.push({ tool: "deno", args, cwd });
         return Promise.resolve(0);
@@ -869,7 +924,7 @@ test("zuke add in a Node project runs npm install in its root, never deno", asyn
       },
       denoVersion: () => "2.9.3",
     };
-    await Deno.mkdir(`${dir}/sub`);
+    await FileTasks.createDirectory(`${dir}/sub`, { recursive: false });
     await inDir(`${dir}/sub`, async () => {
       const code = await main(
         ["add", "docker"],
@@ -891,8 +946,8 @@ test("zuke add in a Node project runs npm install in its root, never deno", asyn
       "@zuke/docker@npm:@zuke-build/docker@^1",
     ]]);
     assertEquals(
-      await Deno.realPath(runs[0].cwd),
-      await Deno.realPath(dir),
+      await FileTasks.realPath(runs[0].cwd),
+      await FileTasks.realPath(dir),
     );
   }, { prefix: "zuke-global-cli-" });
 });
@@ -900,27 +955,27 @@ test("zuke add in a Node project runs npm install in its root, never deno", asyn
 test({
   name: "zuke relock keeps a Node project's symlinked package-lock.json a link",
   // Creating a symlink needs privileges Windows runners do not grant.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/${CONFIG_FILE}`,
         '{ "name": "L", "build": "build.ts", "runtime": "node" }\n',
       );
-      await Deno.writeTextFile(`${dir}/build.ts`, "\n");
-      await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
-      await Deno.writeTextFile(
+      await FileTasks.writeText(`${dir}/build.ts`, "\n");
+      await FileTasks.writeText(`${dir}/package.json`, "{}\n");
+      await FileTasks.writeText(
         `${dir}/shared.lock`,
         '{ "lockfileVersion": 3 }\n',
       );
-      await Deno.symlink("shared.lock", `${dir}/package-lock.json`);
+      await FileTasks.symlink("shared.lock", `${dir}/package-lock.json`);
       let exit = 0;
       const projectHost = {
         ...defaultProjectHost,
         // npm writes its lock through the path, as the real one does.
         npm: async (_args: string[], cwd: string) => {
           if (exit === 0) {
-            await Deno.writeTextFile(`${cwd}/package-lock.json`, "fresh\n");
+            await FileTasks.writeText(`${cwd}/package-lock.json`, "fresh\n");
           }
           return exit;
         },
@@ -943,42 +998,43 @@ test({
         return code;
       };
       assertEquals(await relock(), 0);
-      const link = await Deno.lstat(`${dir}/package-lock.json`);
+      const link = await FileTasks.lstat(`${dir}/package-lock.json`);
       assertEquals(link.isSymlink, true);
-      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+      assertEquals(await FileTasks.readText(`${dir}/shared.lock`), "fresh\n");
       // A failed npm puts the old text back through the same link.
       exit = 1;
       assertEquals(await relock(), 1);
       assertEquals(
-        (await Deno.lstat(`${dir}/package-lock.json`)).isSymlink,
+        (await FileTasks.lstat(`${dir}/package-lock.json`)).isSymlink,
         true,
       );
-      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+      assertEquals(await FileTasks.readText(`${dir}/shared.lock`), "fresh\n");
     }, { prefix: "zuke-global-cli-" });
   },
 });
 
 test({
   name: "zuke relock writes through a symlinked lock, keeping the link",
+  denoOnly: "runs deno install, the program zuke relock drives",
   // Creating a symlink needs privileges Windows runners do not grant.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withModuleServer(async (url) => {
       await withTemp(async (dir) => {
-        await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "L" }\n');
-        await Deno.writeTextFile(`${dir}/deno.json`, "{}\n");
-        await Deno.writeTextFile(
+        await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "L" }\n');
+        await FileTasks.writeText(`${dir}/deno.json`, "{}\n");
+        await FileTasks.writeText(
           `${dir}/zuke.ts`,
           `import { answer } from "${url}";\nconsole.log(answer);\n`,
         );
-        await Deno.writeTextFile(
+        await FileTasks.writeText(
           `${dir}/shared.lock`,
           JSON.stringify({
             version: "5",
             specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
           }),
         );
-        await Deno.symlink(`${dir}/shared.lock`, `${dir}/deno.lock`);
+        await FileTasks.symlink(`${dir}/shared.lock`, `${dir}/deno.lock`);
         const projectHost: ProjectHost = {
           ...defaultProjectHost,
           deno: (args, cwd) =>
@@ -1004,8 +1060,11 @@ test({
             assertEquals(code, 0, host.logs.join("\n"));
           });
         });
-        assertEquals((await Deno.lstat(`${dir}/deno.lock`)).isSymlink, true);
-        const shared = await Deno.readTextFile(`${dir}/shared.lock`);
+        assertEquals(
+          (await FileTasks.lstat(`${dir}/deno.lock`)).isSymlink,
+          true,
+        );
+        const shared = await FileTasks.readText(`${dir}/shared.lock`);
         assertEquals(shared.includes(url), true, shared);
         assertEquals(await exists(`${dir}/deno.lock.relock-backup`), false);
       }, { prefix: "zuke-global-cli-" });

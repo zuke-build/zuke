@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -755,12 +756,12 @@ test("runSetup writes to disk via the default host", async () => {
   await withTemp(async (dir) => {
     const result = await runSetup({ dir, force: false, name: "Acme" });
     assertEquals(result.files.length, 6);
-    const buildTs = await Deno.readTextFile(`${dir}/build.ts`);
+    const buildTs = await FileTasks.readText(`${dir}/build.ts`);
     assertEquals(buildTs.includes("class Acme extends Build"), true);
-    const config = await Deno.readTextFile(`${dir}/zuke.json`);
+    const config = await FileTasks.readText(`${dir}/zuke.json`);
     assertEquals(config.includes('"name": "Acme"'), true);
-    if (Deno.build.os !== "windows") {
-      const info = await Deno.lstat(`${dir}/zuke`);
+    if (RuntimeTasks.os() !== "windows") {
+      const info = await FileTasks.lstat(`${dir}/zuke`);
       assertEquals((info.mode ?? 0) & 0o100, 0o100);
     }
     // Second pass: everything now exists and is left untouched.
@@ -770,13 +771,13 @@ test("runSetup writes to disk via the default host", async () => {
 });
 
 test("defaultHost.exists rethrows non-NotFound errors", async () => {
-  if (Deno.build.os === "windows") return; // ENOTDIR is POSIX-specific.
-  const file = await Deno.makeTempFile();
+  if (RuntimeTasks.os() === "windows") return; // ENOTDIR is POSIX-specific.
+  const file = await FileTasks.makeTempFile();
   try {
     // Treating a file as a directory yields NotADirectory, not NotFound.
     await assertRejects(() => defaultHost.exists(`${file}/child`));
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
@@ -784,10 +785,10 @@ test("defaultHost.isDirectory distinguishes dirs, files, and missing paths", asy
   await withTemp(async (dir) => {
     assertEquals(await defaultHost.isDirectory(dir), true);
     const file = `${dir}/f.txt`;
-    await Deno.writeTextFile(file, "x");
+    await FileTasks.writeText(file, "x");
     assertEquals(await defaultHost.isDirectory(file), false);
     assertEquals(await defaultHost.isDirectory(`${dir}/missing`), false);
-    if (Deno.build.os !== "windows") {
+    if (RuntimeTasks.os() !== "windows") {
       // A non-NotFound error (NotADirectory) must propagate, not be swallowed.
       await assertRejects(() => defaultHost.isDirectory(`${file}/child`));
     }
@@ -936,12 +937,12 @@ test("setup refuses a symlink at any scaffold name, writing nothing", async () =
 });
 
 test("setup refuses a real symlink rather than writing through it", async () => {
-  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  if (RuntimeTasks.os() === "windows") return; // a symlink needs privileges.
   await withTemp(async (dir) => {
     await withTemp(async (outside) => {
       const victim = `${outside}/victim.txt`;
-      await Deno.writeTextFile(victim, "original");
-      await Deno.symlink(victim, `${dir}/.gitignore`);
+      await FileTasks.writeText(victim, "original");
+      await FileTasks.symlink(victim, `${dir}/.gitignore`);
 
       await assertRejects(
         () => runSetup({ dir, force: false, name: "Acme" }),
@@ -950,37 +951,37 @@ test("setup refuses a real symlink rather than writing through it", async () => 
       );
       // The file the link named is byte-identical, and the scaffold did not
       // half-write itself before noticing.
-      assertEquals(await Deno.readTextFile(victim), "original");
+      assertEquals(await FileTasks.readText(victim), "original");
       assertEquals(await defaultHost.exists(`${dir}/zuke.ts`), false);
     }, { prefix: "zuke-setup-outside-" });
   });
 });
 
 test("defaultHost.isSymlink reads the link, not its target", async () => {
-  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  if (RuntimeTasks.os() === "windows") return; // a symlink needs privileges.
   await withTemp(async (dir) => {
     const file = `${dir}/f.txt`;
-    await Deno.writeTextFile(file, "x");
+    await FileTasks.writeText(file, "x");
     const link = `${dir}/link`;
-    await Deno.symlink(file, link);
+    await FileTasks.symlink(file, link);
     assertEquals(await defaultHost.isSymlink(link), true);
     assertEquals(await defaultHost.isSymlink(file), false);
     assertEquals(await defaultHost.isSymlink(`${dir}/missing`), false);
     // A link to a directory is a link, not a directory — which is what makes
     // the collision pass see it at all.
     const dirLink = `${dir}/dirlink`;
-    await Deno.symlink(dir, dirLink);
+    await FileTasks.symlink(dir, dirLink);
     assertEquals(await defaultHost.isSymlink(dirLink), true);
     assertEquals(await defaultHost.isDirectory(dirLink), false);
     // A dangling link still counts: writing through it would create the target.
     const dangling = `${dir}/dangling`;
-    await Deno.symlink(`${dir}/nope`, dangling);
+    await FileTasks.symlink(`${dir}/nope`, dangling);
     assertEquals(await defaultHost.isSymlink(dangling), true);
   });
 });
 
 test("a link planted after the check is replaced, not written through", async () => {
-  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  if (RuntimeTasks.os() === "windows") return; // a symlink needs privileges.
   // The pre-write check reports what is there when it runs, so a link planted
   // between the check and the write would escape it. Writing beside the
   // destination and renaming into place removes that race outright: renaming
@@ -989,16 +990,16 @@ test("a link planted after the check is replaced, not written through", async ()
   await withTemp(async (dir) => {
     await withTemp(async (outside) => {
       const victim = `${outside}/victim.txt`;
-      await Deno.writeTextFile(victim, "ORIGINAL");
+      await FileTasks.writeText(victim, "ORIGINAL");
       const target = `${dir}/deno.json`;
-      await Deno.symlink(victim, target);
+      await FileTasks.symlink(victim, target);
 
       await defaultHost.writeText(target, "SCAFFOLDED");
 
       // The file the link named is untouched, and the link is gone.
-      assertEquals(await Deno.readTextFile(victim), "ORIGINAL");
-      assertEquals(await Deno.readTextFile(target), "SCAFFOLDED");
-      assertEquals((await Deno.lstat(target)).isSymlink, false);
+      assertEquals(await FileTasks.readText(victim), "ORIGINAL");
+      assertEquals(await FileTasks.readText(target), "SCAFFOLDED");
+      assertEquals((await FileTasks.lstat(target)).isSymlink, false);
     }, { prefix: "zuke-setup-victim-" });
   });
 });
@@ -1007,21 +1008,25 @@ test("writeText leaves no temporary file behind, on success or failure", async (
   await withTemp(async (dir) => {
     await defaultHost.writeText(`${dir}/zuke.json`, "{}");
     const after: string[] = [];
-    for await (const entry of Deno.readDir(dir)) after.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      after.push(entry.name);
+    }
     assertEquals(after, ["zuke.json"]);
 
     // A destination that is a directory with something in it fails the
     // rename; the temporary file must not survive it.
-    await Deno.mkdir(`${dir}/occupied`);
-    await Deno.writeTextFile(`${dir}/occupied/keep`, "");
+    await FileTasks.createDirectory(`${dir}/occupied`, { recursive: false });
+    await FileTasks.writeText(`${dir}/occupied/keep`, "");
     await assertRejects(() => defaultHost.writeText(`${dir}/occupied`, "{}"));
     const still: string[] = [];
-    for await (const entry of Deno.readDir(dir)) still.push(entry.name);
+    for (const entry of await FileTasks.readDirectory(dir)) {
+      still.push(entry.name);
+    }
     assertEquals(still.sort(), ["occupied", "zuke.json"]);
 
     // A parent that is not there yet is created, as `--dir` needs.
     await defaultHost.writeText(`${dir}/missing/zuke.json`, "{}");
-    assertEquals(await Deno.readTextFile(`${dir}/missing/zuke.json`), "{}");
+    assertEquals(await FileTasks.readText(`${dir}/missing/zuke.json`), "{}");
   });
 });
 
@@ -1223,7 +1228,7 @@ test("a new project never takes over an unrelated build.ts, even with --force", 
     assertEquals(Object.fromEntries(host.files), { "build.ts": unrelated });
   }
   // A build.ts that is a Zuke build is the project's own: kept, and named.
-  const mine = 'import { Build } from "@zuke/core";\n';
+  const mine = 'import { Build, FileTasks, RuntimeTasks } from "@zuke/core";\n';
   const host = new FakeHost({ "build.ts": mine });
   assertEquals(await unrelatedBuildFile(".", "build.ts", host), false);
   await runSetup({ dir: ".", force: false, name: "Acme" }, host);
