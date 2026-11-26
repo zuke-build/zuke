@@ -31,6 +31,7 @@ import {
   parameter,
   repoRoot,
   run,
+  RuntimeTasks,
   target,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
@@ -430,8 +431,13 @@ class ZukeBuild extends Build {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
       // A `deno` that only fails goes first on PATH, so a test that quietly
       // needs Deno fails here rather than passing because the build runs on it.
-      // shortcut: POSIX only, since a shell-free spawn on Windows looks for
-      // deno.exe; give it a failing executable if this lane moves to Windows.
+      // A shell-free spawn on Windows looks for deno.exe, which this stub is
+      // not, so the lane would pass there with the very dependency it hunts.
+      if (RuntimeTasks.os() === "windows") {
+        throw new Error(
+          "nodeTest hides Deno behind a POSIX stub; run it on Linux or macOS.",
+        );
+      }
       const stub = await FileTasks.makeTempDirectory((s) =>
         s.prefix("zuke-no-deno-")
       );
