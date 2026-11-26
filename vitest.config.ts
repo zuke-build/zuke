@@ -20,6 +20,9 @@ export default defineConfig({
   test: {
     include: ["packages/*/tests/**/*_test.ts", "tests/**/*_test.ts"],
     exclude: ["**/node_modules/**"],
+    // tests/_testing.ts reads `test` from the globals rather than importing
+    // Vitest, which Deno would otherwise resolve.
+    globals: true,
     // The gate's coverage (#993): all the suite loads but the tests, at 95% of
     // lines and branches overall, and a 50% line floor per file of the
     // packages, so a neglected one cannot hide in the average. The floor
