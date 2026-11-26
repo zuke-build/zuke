@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/dprint-v1.1.0...dprint-v1.2.0) (2026-11-26)
+
+
+### Features
+
+* **dprint:** format given text through --stdin ([#1190](https://github.com/zuke-build/zuke/issues/1190)) ([62b3769](https://github.com/zuke-build/zuke/commit/62b3769c327334978a6efcfe03ac888382a84537))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/dprint-v1.0.1...dprint-v1.1.0) (2026-09-02)
 
 

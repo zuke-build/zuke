@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.86.0](https://github.com/zuke-build/zuke/compare/core-v1.85.0...core-v1.86.0) (2026-11-26)
+
+
+### Features
+
+* **core:** an append setting for file and stream writes, and more tests on Node ([#1174](https://github.com/zuke-build/zuke/issues/1174)) ([fe70fc2](https://github.com/zuke-build/zuke/commit/fe70fc264339636b61197814914d7ede125667c5))
+* **core:** temp directories under a chosen parent, and links in directory listings ([#1159](https://github.com/zuke-build/zuke/issues/1159)) ([7659251](https://github.com/zuke-build/zuke/commit/7659251034bd72f5548243f4c29541ae781cb5e2))
+
+
+### Bug Fixes
+
+* **core:** give handlers a parseable URL on Deno as on Node ([#1168](https://github.com/zuke-build/zuke/issues/1168)) ([488c154](https://github.com/zuke-build/zuke/commit/488c154773e0839dc0dd8a8601a713b3bde68dcc))
+
 ## [1.85.0](https://github.com/zuke-build/zuke/compare/core-v1.84.0...core-v1.85.0) (2026-11-25)
 
 
