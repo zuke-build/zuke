@@ -1258,7 +1258,17 @@ function chunked(bytes: Uint8Array, size: number): ReadableStream<Uint8Array> {
   for (let i = 0; i < bytes.length; i += size) {
     chunks.push(bytes.slice(i, i + size));
   }
-  return ReadableStream.from(chunks);
+  return streamOf(chunks);
+}
+
+/** A stream of `chunks`, in order, then its end. */
+function streamOf(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
 }
 
 /** Collect an async iterable. */
@@ -1377,7 +1387,7 @@ test("untarStream ignores empty chunks between and inside members", async () => 
     chunks.push(archive.slice(i, i + 300), new Uint8Array(0));
   }
   assertEquals(
-    await collect(untarStream(ReadableStream.from(chunks), true)),
+    await collect(untarStream(streamOf(chunks), true)),
     untar(archive),
   );
 });
