@@ -53,7 +53,7 @@ export interface WorkflowTargets {
   ci: TargetBuilder;
   /** The declared-core-floor check, which needs the network. */
   coreFloorCheck: TargetBuilder;
-  /** The Deno lane: the suite and its coverage gate, through each launcher. */
+  /** The Deno lane: the suite, and on Linux its coverage gate, through each launcher. */
   coverage: TargetBuilder;
   /** release-please: maintains the release PR and cuts releases. */
   release: TargetBuilder;
@@ -345,9 +345,11 @@ export function githubWorkflows(
           }),
         },
         {
-          // The Deno lane (#993): `deno check`, the whole suite and Deno's own
-          // coverage gate, on all three operating systems, through the
-          // launchers users run.
+          // The Deno lane (#993): `deno check` and the whole suite on Deno, on
+          // all three operating systems, through the launchers users run. Linux
+          // adds Deno's coverage gate, whose per-file floor holds build/: the
+          // suite skips some files' tests on macOS and Windows, so a floor there
+          // would measure the platform, not the tests.
           target: targets.coverage,
           id: "test",
           name: "Tests (${{ matrix.os }})",
@@ -363,16 +365,22 @@ export function githubWorkflows(
           // derived command.
           steps: [
             {
-              name: "Run tests with the bash launcher",
-              if: "runner.os != 'Windows'",
+              name: "Run tests and the coverage gate with the bash launcher",
+              if: "runner.os == 'Linux'",
               run: "./zuke coverage",
+              env: { DENO_VERSION: "v2.8.3" },
+            },
+            {
+              name: "Run tests with the bash launcher",
+              if: "runner.os == 'macOS'",
+              run: "./zuke test",
               env: { DENO_VERSION: "v2.8.3" },
             },
             {
               name: "Run tests with the PowerShell launcher",
               if: "runner.os == 'Windows'",
               shell: "pwsh",
-              run: "./zuke.ps1 coverage",
+              run: "./zuke.ps1 test",
             },
           ],
         },

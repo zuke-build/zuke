@@ -93,12 +93,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: "false"
-      - name: Run tests with the bash launcher
-        if: "runner.os != 'Windows'"
+      - name: Run tests and the coverage gate with the bash launcher
+        if: "runner.os == 'Linux'"
         run: ./zuke coverage
+        env:
+          DENO_VERSION: v2.8.3
+      - name: Run tests with the bash launcher
+        if: "runner.os == 'macOS'"
+        run: ./zuke test
         env:
           DENO_VERSION: v2.8.3
       - name: Run tests with the PowerShell launcher
         if: "runner.os == 'Windows'"
         shell: pwsh
-        run: ./zuke.ps1 coverage
+        run: ./zuke.ps1 test

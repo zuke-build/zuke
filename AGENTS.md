@@ -480,10 +480,10 @@ job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
 can drift from it. CI runs that gate on Node (#993), on all three OSes, after
 `npm ci` installs the workspace: `node build.ts ci`. Its Deno steps fetch the
 pinned Deno themselves (`build/deno_tool.ts`), and the `Tests` jobs are the Deno
-lane: `./zuke coverage`, which is `deno check`, the whole suite on Deno and
-Deno's coverage gate, on the same three OSes. `build.ts`'s `ci` target depends
-on: `format` (`dprint check`), `lint` (`deno lint`), `oxlint`, `tsc`, `spell`
-(cspell), `nodeTest` (the suite on Vitest with the 95% coverage gate),
+lane: `deno check` and the whole suite on Deno on the same three OSes, with
+Deno's coverage gate on Linux (`./zuke coverage`). `build.ts`'s `ci` target
+depends on: `format` (`dprint check`), `lint` (`deno lint`), `oxlint`, `tsc`,
+`spell` (cspell), `nodeTest` (the suite on Vitest with the 95% coverage gate),
 `coverageUpload` (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`,
 `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
 `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`,
