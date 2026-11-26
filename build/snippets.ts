@@ -24,6 +24,7 @@
 
 import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
+import { provisionedDeno } from "./deno_tool.ts";
 
 /** The marker line that opts the following ```ts fence into type-checking. */
 export const CHECK_MARKER = "<!-- check -->";
@@ -121,8 +122,9 @@ export const denoCheck: SnippetChecker = async (...paths) => {
   // otherwise leak the random temp-dir name into failure output as a relative
   // path (a form {@link reduceTempPath} can't match); the `file://` error
   // locations deno still prints are reduced there.
+  const deno = await provisionedDeno();
   const out = await DenoTasks.check((s) =>
-    s.paths(...paths).args("--quiet").quiet().noThrow()
+    s.toolPath(deno).paths(...paths).args("--quiet").quiet().noThrow()
   );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 };

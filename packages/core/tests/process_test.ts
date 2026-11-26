@@ -3,6 +3,7 @@
 
 import { EnvTasks, FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 import { ARGS, EVAL } from "../../../tests/_eval.ts";
 import {
   assertEquals,
@@ -297,6 +298,30 @@ test("Node: a command that does not exist is a child that never started", async 
   const error = await assertRejects(() => child.status);
   assertEquals(isNotFound(error), true);
   assertThrows(() => child.kill());
+});
+
+test({
+  name:
+    "Node: a bare name that is a .cmd on the child's PATH runs, its argument one",
+  // The real boundary: Windows, cmd.exe and a batch file found by PATHEXT.
+  ignore: RuntimeTasks.os() !== "windows",
+  fn: () =>
+    withTemp(async (dir) => {
+      await FileTasks.writeText(
+        `${dir}\\probe.cmd`,
+        "@echo off\r\necho %1\r\n",
+      );
+      const child = spawnOnNode("probe", {
+        args: ["a&echo injected"],
+        env: { PATH: dir },
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const [out] = await Promise.all([text(child.stdout), text(child.stderr)]);
+      // One quoted argument, echoed as it was: the `&` started nothing.
+      assertEquals(out.trim(), '"a&echo injected"');
+      assertEquals((await child.status).code, 0);
+    }),
 });
 
 test("Node: a directory that does not exist is a child that never started", async () => {

@@ -53,8 +53,9 @@ deno task ci   # run the full gate to confirm a clean baseline
 **Run `deno task ci` before opening a pull request — it must be green.** `deno
 task ci` is `deno run -A --frozen build.ts ci`, the same gate CI's `ci` job runs
 (see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so a green
-`deno task ci` locally means a green CI run. If you change a public API,
-regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
+`deno task ci` locally means a green CI run. CI runs it on Node, as `npm ci`
+then `node build.ts ci`, and runs the suite on Deno too. If you change a public
+API, regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
 `apiDocsCheck`, which fails on stale generated docs.
 
 ## Coding standards (non-negotiable)

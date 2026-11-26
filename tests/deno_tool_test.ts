@@ -13,7 +13,7 @@
 import { test } from "./_testing.ts";
 import { type AbsolutePath, absolutePath } from "@zuke/core";
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { sharedInstall } from "../build/deno_tool.ts";
+import { runningOrPinned, sharedInstall } from "../build/deno_tool.ts";
 import { collectDocLintReports, collectPackageDocs } from "../build/docs.ts";
 import { collectApiJson } from "../build/api_reference.ts";
 import { publishPackage } from "../build/publish.ts";
@@ -57,4 +57,14 @@ test("every Deno step runs the Deno it is handed, not one from PATH", async () =
   for (const step of steps) {
     await assertRejects(step, Error, "provisioned-deno");
   }
+});
+
+test("the running Deno is used on Deno, and the pin on Node or in a binary", async () => {
+  const pinned = () => Promise.resolve("/tools/deno");
+  const facts = { version: "2.8.3", typescript: undefined };
+  const on = (name: "deno" | "node", standalone: boolean) =>
+    runningOrPinned({ ...facts, name, standalone }, "/run/deno", pinned);
+  assertEquals(await on("deno", false), "/run/deno");
+  assertEquals(await on("node", false), "/tools/deno");
+  assertEquals(await on("deno", true), "/tools/deno");
 });

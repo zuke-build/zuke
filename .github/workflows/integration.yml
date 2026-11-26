@@ -33,16 +33,3 @@ jobs:
           node-version: 26.13.1
       - name: Run the subprocess e2e suite
         run: deno run -A --frozen build.ts integration
-  node:
-    name: Tests on Node
-    runs-on: ubuntu-latest
-    steps:
-      - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@f141aa93020940f65349f87a96bab93b44cab160 # v1.0.12
-        with:
-          egress-policy: audit
-          persist-credentials: "false"
-          deno-version: v2.8.3
-          node-version: 26.13.1
-      - name: Run the ported tests on Node
-        run: deno run -A --frozen build.ts nodeTest

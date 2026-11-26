@@ -14,9 +14,10 @@
  * the test with its own error; a test that sets Deno permissions, or says it
  * needs Deno with `denoOnly`, is skipped.
  *
- * Vitest is loaded with a specifier Deno cannot see, and only under Node:
- * Deno type-checks a literal dynamic import, and resolving Vitest would send
- * every `deno test` to npm.
+ * Under Node, Vitest's `test` is read from the globals `vitest.config.ts`
+ * turns on, not imported: Deno type-checks a literal import and resolving
+ * Vitest would send every `deno test` to npm, and a computed import is
+ * resolved against the root on Windows rather than as a package.
  */
 
 /** The context a test body is given: one way to run a named stage. */
@@ -61,13 +62,25 @@ interface VitestTest {
 /** Whether the suite is running on Deno. */
 const ON_DENO = typeof Deno !== "undefined";
 
-/** Vitest's package name, kept out of Deno's sight (see the module doc). */
-const VITEST = ["vi", "test"].join("");
+/** Whether `value` is Vitest's `test`, as far as this module calls it. */
+function isVitestTest(value: unknown): value is VitestTest {
+  return typeof value === "function" &&
+    typeof Reflect.get(value, "skip") === "function";
+}
+
+/** Vitest's global `test`, which `globals: true` in vitest.config.ts puts there. */
+function vitestGlobal(): VitestTest {
+  const candidate: unknown = Reflect.get(globalThis, "test");
+  if (!isVitestTest(candidate)) {
+    throw new Error(
+      "Under Node the suite runs on Vitest with globals on (vitest.config.ts).",
+    );
+  }
+  return candidate;
+}
 
 /** Vitest's `test` under Node; unused under Deno. */
-const vitestTest: VitestTest | undefined = ON_DENO
-  ? undefined
-  : (await import(VITEST)).test;
+const vitestTest: VitestTest | undefined = ON_DENO ? undefined : vitestGlobal();
 
 /**
  * Vitest's per-test time limit. Deno sets none, and the suite's subprocess
