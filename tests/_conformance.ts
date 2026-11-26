@@ -16,10 +16,15 @@
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import { isRecord } from "../packages/engine/src/protocol.ts";
+import { fileURLToPath } from "node:url";
 import {
   defaultStateHost,
   FileSystemStateStore,
+  FileTasks,
+  ProcessTasks,
+  RuntimeTasks,
 } from "../packages/core/mod.ts";
+import { RUN } from "./_eval.ts";
 import { localVersion } from "../build/packages.ts";
 import { withStateDir } from "./integration/_harness.ts";
 
@@ -30,7 +35,11 @@ export const FAKE_WORKER =
   new URL("./support/engine/_fake_worker.ts", import.meta.url).href;
 
 /** The command that starts {@link FAKE_WORKER}, as `zuke.json` names it. */
-export const WORKER_COMMAND = [Deno.execPath(), "run", "-A", FAKE_WORKER];
+export const WORKER_COMMAND = [
+  RuntimeTasks.execPath(),
+  ...RUN,
+  fileURLToPath(FAKE_WORKER),
+];
 
 /** One run of a case: the first, or a later one under `then`. */
 interface Run {
@@ -177,31 +186,37 @@ export async function conformanceSuite(
   const engineVersion = await localVersion("engine");
   // In name order, so the suite runs the same way on every filesystem.
   const names: string[] = [];
-  for await (const entry of Deno.readDir(CASES)) {
+  for (const entry of await FileTasks.readDirectory(fileURLToPath(CASES))) {
     if (entry.name.endsWith(".json")) names.push(entry.name);
   }
   for (const name of names.sort()) {
+    const text = await FileTasks.readText(fileURLToPath(new URL(name, CASES)));
     const raw: unknown = JSON.parse(
-      (await Deno.readTextFile(new URL(name, CASES)))
+      text
         .replaceAll("$ZUKE_DENO_VERSION", denoVersion)
         // The path as JSON holds it, so a Windows backslash stays escaped.
-        .replaceAll("$DENO", JSON.stringify(Deno.execPath()).slice(1, -1)),
+        .replaceAll(
+          "$DENO",
+          JSON.stringify(RuntimeTasks.execPath()).slice(1, -1),
+        ),
     );
     const death = engineDeathOf(raw, name);
     const spec = death === undefined ? caseOf(raw, name) : undefined;
     test({
       name: `${prefix}: ${name}`,
+      // A case that runs `$DENO` as a tool, through DenoTasks, needs Deno.
+      denoOnly: text.includes("$DENO") ? "runs deno as a tool" : undefined,
       ignore,
       fn: async () => {
         const run = await runner();
         // Each case runs from its own empty directory: the incremental cache
         // lives under the working directory's `.zuke/`, so a repeat of the
         // cache-key case in the repository would be a cache hit, not a run.
-        const dir = await Deno.makeTempDir();
-        const previous = Deno.cwd();
-        Deno.chdir(dir);
+        const dir = await FileTasks.makeTempDirectory();
+        const previous = RuntimeTasks.cwd();
+        RuntimeTasks.chdir(dir);
         try {
-          await Deno.writeTextFile(
+          await FileTasks.writeText(
             "zuke.json",
             JSON.stringify({
               sdk: { command: WORKER_COMMAND },
@@ -211,9 +226,9 @@ export async function conformanceSuite(
           if (death !== undefined) await replayEngineDeath(death, run);
           if (spec !== undefined) await replay(spec, run);
         } finally {
-          Deno.chdir(previous);
+          RuntimeTasks.chdir(previous);
           try {
-            await Deno.remove(dir, { recursive: true });
+            await FileTasks.remove(dir, { recursive: true });
           } catch {
             // A Windows lock on a file a process just closed is not a failure.
           }
@@ -259,7 +274,7 @@ async function replayRun(
   const { parameters } = isRecord(sent) ? sent : {};
   assertEquals(configure === undefined ? {} : { parameters }, run.configure);
   for (const file of run.files) {
-    assertEquals((await Deno.stat(file)).isFile, true, file);
+    assertEquals((await FileTasks.stat(file)).isFile, true, file);
   }
 }
 
@@ -284,11 +299,14 @@ async function readUntil(
 
 /** The OS's listing of process `pid`, empty once it is gone. */
 async function processListing(pid: string): Promise<string> {
-  const listing = Deno.build.os === "windows"
+  const listing = RuntimeTasks.os() === "windows"
     ? ["tasklist", "/NH", "/FO", "CSV", "/FI", `PID eq ${pid}`]
     : ["ps", "-p", pid, "-o", "pid=,stat=,args="];
   const [program, ...args] = listing;
-  const out = await new Deno.Command(program ?? "ps", { args }).output();
+  const out = await ProcessTasks.run(
+    program ?? "ps",
+    (s) => s.args(...args).stdout("piped"),
+  );
   const text = new TextDecoder().decode(out.stdout).trim();
   // tasklist answers a miss with an INFO line, never with the pid.
   return text.includes(`"${pid}"`) || text.startsWith(pid) ? text : "";
@@ -306,21 +324,24 @@ async function replayEngineDeath(
   runner: ConformanceRunner,
 ): Promise<void> {
   await withStateDir(async () => {
-    const exitFile = `${Deno.cwd()}/worker-exit`;
-    const startedFile = `${Deno.cwd()}/worker-started`;
+    const exitFile = `${RuntimeTasks.cwd()}/worker-exit`;
+    const startedFile = `${RuntimeTasks.cwd()}/worker-started`;
     const [program, ...args] = runner.engine;
-    const engine = new Deno.Command(program ?? Deno.execPath(), {
-      args: [...args, ...spec.argv],
-      env: {
-        ...runner.engineEnv,
-        ZUKE_FAKE_PLAN: JSON.stringify(spec.manifest),
-        ZUKE_FAKE_EXIT_FILE: exitFile,
-        ZUKE_FAKE_STARTED_FILE: startedFile,
+    const env: Record<string, string> = {
+      ...runner.engineEnv,
+      ZUKE_FAKE_PLAN: JSON.stringify(spec.manifest),
+      ZUKE_FAKE_EXIT_FILE: exitFile,
+      ZUKE_FAKE_STARTED_FILE: startedFile,
+    };
+    const engine = ProcessTasks.spawn(
+      program ?? RuntimeTasks.execPath(),
+      (s) => {
+        s.args(...args, ...spec.argv).stdin("null").stdout("null")
+          .stderr("piped");
+        for (const [name, value] of Object.entries(env)) s.env(name, value);
+        return s;
       },
-      stdin: "null",
-      stdout: "null",
-      stderr: "piped",
-    }).spawn();
+    );
     const log = engine.stderr.pipeThrough(new TextDecoderStream()).getReader();
     const marker = `worker: call: ${spec.after}`;
     const { seen, text } = await readUntil(log, marker);
@@ -340,7 +361,7 @@ async function replayEngineDeath(
     // connection end and exits on its own, and the exit file says so; on
     // Windows a child ends with the process that spawned it, so the worker is
     // taken down before it can run its own exit.
-    const pid = (await Deno.readTextFile(startedFile).catch(() => "")).trim();
+    const pid = (await FileTasks.readText(startedFile).catch(() => "")).trim();
     assertEquals(pid === "", false, "the worker never recorded its start");
     const deadline = Date.now() + spec.workerExitsWithinMs;
     let listed = await processListing(pid);
@@ -349,7 +370,7 @@ async function replayEngineDeath(
       listed = await processListing(pid);
     }
     if (listed !== "") {
-      const stage = await Deno.readTextFile(exitFile).catch(() => "(no file)");
+      const stage = await FileTasks.readText(exitFile).catch(() => "(no file)");
       throw new Error(
         `the worker was still there ${spec.workerExitsWithinMs}ms after the ` +
           `engine's death; its last stage: ${stage}; listed as: ${listed}`,

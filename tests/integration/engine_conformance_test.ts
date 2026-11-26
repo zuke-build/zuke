@@ -9,13 +9,15 @@
  * cases through the `zuke` binary.
  */
 
+import { EnvTasks, RuntimeTasks } from "../../packages/core/mod.ts";
 import { WorkerHost } from "../../packages/engine/src/host.ts";
 import { materialize } from "../../packages/engine/src/materialize.ts";
 import { conformanceSuite, WORKER_COMMAND } from "../_conformance.ts";
 import { runCli } from "./_harness.ts";
+import { RUN } from "../_eval.ts";
 
 /** The engine entrypoint, run as a process for the engine-death case. */
-const ENGINE = new URL("../../packages/engine/mod.ts", import.meta.url).href;
+const ENGINE = `${import.meta.dirname ?? "."}/../../packages/engine/mod.ts`;
 /**
  * The workspace config, which a run from a temp directory would not find. The
  * flag takes an OS path, never a URL, so it is built from the module's
@@ -27,11 +29,11 @@ await conformanceSuite("conformance", () =>
   Promise.resolve({
     // Start a fake worker on `manifest`, materialise its build, run it.
     run: async (manifest, argv) => {
-      Deno.env.set("ZUKE_FAKE_PLAN", JSON.stringify(manifest));
-      Deno.env.delete("ZUKE_FAKE_BAD_TOKEN");
+      EnvTasks.set("ZUKE_FAKE_PLAN", JSON.stringify(manifest));
+      EnvTasks.delete("ZUKE_FAKE_BAD_TOKEN");
       const host = await WorkerHost.start({
         command: WORKER_COMMAND,
-        cwd: Deno.cwd(),
+        cwd: RuntimeTasks.cwd(),
         graceMs: 1_000,
       });
       try {
@@ -40,5 +42,9 @@ await conformanceSuite("conformance", () =>
         await host.finish(0);
       }
     },
-    engine: [Deno.execPath(), "run", "-A", "--config", CONFIG, ENGINE],
+    // Deno needs the workspace config; Node resolves the workspace's imports
+    // through its node_modules.
+    engine: RuntimeTasks.facts().name === "deno"
+      ? [RuntimeTasks.execPath(), ...RUN, "--config", CONFIG, ENGINE]
+      : [RuntimeTasks.execPath(), ENGINE],
   }));

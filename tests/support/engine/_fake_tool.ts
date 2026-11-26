@@ -4,26 +4,30 @@
 /**
  * A wrapper for the tool bridge's tests, shaped like a published one: a
  * settings class on the core base, a task object of functions. Its tool is
- * the running Deno, so a call spawns nothing the suite does not already have.
+ * the running runtime, so a call spawns nothing the suite does not already
+ * have.
  *
  * @module
  */
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { RuntimeTasks } from "@zuke/core";
+import { EVAL } from "../../_eval.ts";
 
-/** Settings for the fake tool: what its `deno eval` prints and how it exits. */
+/** Settings for the fake tool: what its evaluated script prints and how it exits. */
 export class FakeSettings extends ToolSettings {
   #prints: string[] = [];
   #exitCode = 0;
 
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return RuntimeTasks.execPath();
   }
 
   protected override buildArgs(): string[] {
     const lines = this.#prints.map((line) => `console.log(${line});`).join("");
-    return ["eval", `${lines}Deno.exit(${this.#exitCode});`];
+    // An exit code, not an exit, so Node drains what it piped first.
+    return [EVAL, `${lines}process.exitCode = ${this.#exitCode};`];
   }
 
   /** Print `text`. */
@@ -34,13 +38,13 @@ export class FakeSettings extends ToolSettings {
 
   /** Print the environment variable `name` as the child sees it. */
   printsEnv(name: string): this {
-    this.#prints.push(`String(Deno.env.get(${JSON.stringify(name)}))`);
+    this.#prints.push(`String(process.env[${JSON.stringify(name)}])`);
     return this;
   }
 
   /** Print the child's working directory. */
   printsCwd(): this {
-    this.#prints.push("Deno.cwd()");
+    this.#prints.push("process.cwd()");
     return this;
   }
 
