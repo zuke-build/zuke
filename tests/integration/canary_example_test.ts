@@ -12,6 +12,7 @@ import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Release } from "../../examples/canary-release/build.ts";
 import { runCli, withStateDir } from "./_harness.ts";
+import { NetTasks } from "../../packages/core/mod.ts";
 
 /** A free port, so the test never collides with whatever holds 8080. */
 const QUICK = ["--port", "0"];
@@ -43,18 +44,18 @@ test("canary example: a broken candidate fails the probe and is rolled back", as
 });
 
 test("canary example: a port already in use is named, with the way out", async () => {
-  const taken = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const taken = await NetTasks.listen();
   try {
     await withStateDir(async () => {
       const { code, out, err } = await runCli(Release, [
         "ship",
         "--port",
-        String(taken.addr.port),
+        String(taken.port),
       ]);
       assertEquals(code, 1);
       assertStringIncludes(
         out + err,
-        `Port ${taken.addr.port} is already in use — pass --port <n>`,
+        `Port ${taken.port} is already in use — pass --port <n>`,
       );
     });
   } finally {
