@@ -4,13 +4,26 @@
 /**
  * A fake `brew` on disk for the tests that need a real process: a POSIX shim
  * named `brew` that runs `fixtures/fake_brew.ts` with the running `deno`
- * (`Deno.execPath()`), so nothing beyond `deno` and `/bin/sh` is needed.
+ * (`RuntimeTasks.execPath()`), so nothing beyond it and `/bin/sh` is needed.
  *
  * POSIX only — Homebrew itself runs only on macOS and Linux, so the tests that
  * use this skip on Windows.
  *
  * @module
  */
+
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { RuntimeTasks } from "@zuke/core";
+import { RUN_SCRIPT } from "../../_eval.ts";
 
 /** A fake brew's paths and what it recorded. */
 export interface FakeBrew {
@@ -30,21 +43,21 @@ export interface FakeBrew {
 
 /** Create a fake brew; `fail` names verbs that should exit 1. */
 export function fakeBrew(fail: string[] = []): FakeBrew {
-  const dir = Deno.makeTempDirSync({ prefix: "zuke-fake-brew-" });
+  const dir = mkdtempSync(join(tmpdir(), "zuke-fake-brew-"));
   const binDir = `${dir}/bin`;
   const root = `${dir}/taps`;
   const log = `${dir}/calls.jsonl`;
-  Deno.mkdirSync(binDir);
-  Deno.mkdirSync(root);
-  Deno.writeTextFileSync(log, "");
+  mkdirSync(binDir);
+  mkdirSync(root);
+  writeFileSync(log, "");
   const script = new URL("./fixtures/fake_brew.ts", import.meta.url).pathname;
   const brew = `${binDir}/brew`;
-  Deno.writeTextFileSync(
+  writeFileSync(
     brew,
-    `#!/bin/sh\nexec "${Deno.execPath()}" run --no-config --no-lock -A ` +
+    `#!/bin/sh\nexec "${RuntimeTasks.execPath()}" ${RUN_SCRIPT.join(" ")} ` +
       `"${script}" "$@"\n`,
   );
-  Deno.chmodSync(brew, 0o755);
+  chmodSync(brew, 0o755);
   const env = {
     FAKE_BREW_LOG: log,
     FAKE_BREW_ROOT: root,
@@ -56,15 +69,15 @@ export function fakeBrew(fail: string[] = []): FakeBrew {
     root,
     env,
     calls() {
-      return Deno.readTextFileSync(log).trim().split("\n").filter((line) =>
+      return readFileSync(log, "utf8").trim().split("\n").filter((line) =>
         line !== ""
       ).map((line) => JSON.parse(line));
     },
     dispose() {
-      Deno.removeSync(dir, { recursive: true });
+      rmSync(dir, { recursive: true });
     },
   };
 }
 
 /** Whether the fake can run here: it is a POSIX shell shim. */
-export const FAKE_BREW_UNSUPPORTED = Deno.build.os === "windows";
+export const FAKE_BREW_UNSUPPORTED = RuntimeTasks.os() === "windows";

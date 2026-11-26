@@ -9,7 +9,9 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 import {
   assertEquals,
   assertRejects,
@@ -302,11 +304,13 @@ test({
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
     // A choco that hangs, standing in for a push that never answers.
-    const dir = Deno.makeTempDirSync({ prefix: "zuke-hung-choco-" });
-    const hung = `${dir}/choco`;
-    Deno.writeTextFileSync(hung, "#!/bin/sh\nexec sleep 5\n");
-    Deno.chmodSync(hung, 0o755);
-    try {
+    await withTemp(async (dir) => {
+      const hung = `${dir}/choco`;
+      await FileTasks.writeText(
+        hung,
+        "#!/bin/sh\nexec sleep 5\n",
+        (s) => s.mode(0o755),
+      );
       const settings = new ChocoPushSettings().toolPath(hung)
         .apiKey("hidden-key-789").killAfter(50).quiet();
       const error = await assertRejects(
@@ -316,9 +320,7 @@ test({
       );
       assertEquals(String(error).includes("hidden-key-789"), false);
       assertStringIncludes(String(error), "--api-key=[redacted]");
-    } finally {
-      Deno.removeSync(dir, { recursive: true });
-    }
+    }, { prefix: "zuke-hung-choco-" });
   },
 });
 

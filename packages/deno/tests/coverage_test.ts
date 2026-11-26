@@ -1,6 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -190,8 +192,8 @@ test("the per-file floor skips files with no measurable lines", () => {
 async function makeProfile(
   covered: boolean,
 ): Promise<{ dir: string; profile: string }> {
-  const dir = await Deno.makeTempDir();
-  await Deno.writeTextFile(
+  const dir = await FileTasks.makeTempDirectory();
+  await FileTasks.writeText(
     `${dir}/mod.ts`,
     "export function sign(n: number): string {\n" +
       '  if (n >= 0) return "pos";\n' +
@@ -202,69 +204,82 @@ async function makeProfile(
     ? '  if (sign(1) !== "pos") throw new Error("x");\n' +
       '  if (sign(-1) !== "neg") throw new Error("y");'
     : '  if (sign(1) !== "pos") throw new Error("x");';
-  await Deno.writeTextFile(
+  await FileTasks.writeText(
     `${dir}/mod_test.ts`,
     `import { sign } from "./mod.ts";\n` +
       `Deno.test("sign", () => {\n${checks}\n});\n`,
   );
   const profile = `${dir}/profile`;
-  await new Deno.Command(Deno.execPath(), {
-    args: ["test", "-A", `--coverage=${profile}`, dir],
-    stdout: "null",
-    stderr: "null",
-  }).output();
+  await $`${RuntimeTasks.execPath()} test -A --coverage=${profile} ${dir}`
+    .quiet().noThrow();
   return { dir, profile };
 }
 
-test("coverage passes above the threshold, reading the output file", async () => {
-  const { dir, profile } = await makeProfile(true);
-  try {
-    const out = await DenoTasks.coverage((s) =>
-      s.dir(profile).output(`${dir}/c.lcov`).threshold(100).quiet()
-    );
-    assertEquals(out.code, 0);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+test({
+  name: "coverage passes above the threshold, reading the output file",
+  denoOnly: "profiles a test run with deno test",
+  fn: async () => {
+    const { dir, profile } = await makeProfile(true);
+    try {
+      const out = await DenoTasks.coverage((s) =>
+        s.dir(profile).output(`${dir}/c.lcov`).threshold(100).quiet()
+      );
+      assertEquals(out.code, 0);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("coverage throws below the threshold, reading stdout", async () => {
-  const { dir, profile } = await makeProfile(false);
-  try {
-    await assertRejects(
-      () => DenoTasks.coverage((s) => s.dir(profile).threshold(100)),
-      CoverageThresholdError,
-    );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+test({
+  name: "coverage throws below the threshold, reading stdout",
+  denoOnly: "profiles a test run with deno test",
+  fn: async () => {
+    const { dir, profile } = await makeProfile(false);
+    try {
+      await assertRejects(
+        () => DenoTasks.coverage((s) => s.dir(profile).threshold(100)),
+        CoverageThresholdError,
+      );
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("coverage with noThrow reports a shortfall without throwing", async () => {
-  const { dir, profile } = await makeProfile(false);
-  try {
-    const out = await DenoTasks.coverage((s) =>
-      s.dir(profile).threshold(100).noThrow().quiet()
-    );
-    assertEquals(out.code, 0); // deno coverage itself succeeded
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+test({
+  name: "coverage with noThrow reports a shortfall without throwing",
+  denoOnly: "profiles a test run with deno test",
+  fn: async () => {
+    const { dir, profile } = await makeProfile(false);
+    try {
+      const out = await DenoTasks.coverage((s) =>
+        s.dir(profile).threshold(100).noThrow().quiet()
+      );
+      assertEquals(out.code, 0); // deno coverage itself succeeded
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("a per-file floor alone gates the run and fails a low file", async () => {
-  // No aggregate threshold — only .perFileThreshold(). It must still force
-  // --lcov and enforce, so the under-covered single file trips the gate.
-  const { dir, profile } = await makeProfile(false);
-  try {
-    await assertRejects(
-      () => DenoTasks.coverage((s) => s.dir(profile).perFileThreshold(100)),
-      CoverageThresholdError,
-      "per-file line floor",
-    );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+test({
+  name: "a per-file floor alone gates the run and fails a low file",
+  denoOnly: "profiles a test run with deno test",
+  fn: async () => {
+    // No aggregate threshold — only .perFileThreshold(). It must still force
+    // --lcov and enforce, so the under-covered single file trips the gate.
+    const { dir, profile } = await makeProfile(false);
+    try {
+      await assertRejects(
+        () => DenoTasks.coverage((s) => s.dir(profile).perFileThreshold(100)),
+        CoverageThresholdError,
+        "per-file line floor",
+      );
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
 test("enforceCoverage reports the measured percentages into the ambient summary", async () => {

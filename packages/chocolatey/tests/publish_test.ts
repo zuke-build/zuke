@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -34,7 +35,7 @@ const PKG: ChocolateyPackage = ChocolateyTasks.package((s) =>
 /** Whether `path` exists. */
 function exists(path: string): boolean {
   try {
-    Deno.statSync(path);
+    FileTasks.statSync(path);
     return true;
   } catch {
     return false;

@@ -6,24 +6,29 @@
  * CLI `main()` entry point, that resolves dependencies, tests and builds an app
  * bundle in dependency order — and fails the run when `flutter` does.
  *
- * Hermetic per AGENTS.md guideline 5: the "flutter" is the running `deno`.
- * Deno 2 runs `deno <file> <args…>` as a script, so a wrapper pointed at
- * `Deno.execPath()` from a directory holding scripts named after the
- * subcommands (`pub`, `build`) spawns them with the wrapper's real argv, which
- * each prints back.
+ * Hermetic per AGENTS.md guideline 5: the "flutter" is the running runtime.
+ * Deno 2 runs `deno <file> <args…>` as a script, as Node does, so a wrapper
+ * pointed at `RuntimeTasks.execPath()` from a directory holding scripts named
+ * after the subcommands (`pub`, `build`) spawns them with the wrapper's real
+ * argv, which each prints back.
  *
  * @module
  */
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { FlutterTasks } from "../../packages/flutter/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** A fake subcommand script: prints its argv as JSON, then exits with `code`. */
 function fake(code: number): string {
-  return `console.log(JSON.stringify(Deno.args)); Deno.exit(${code});`;
+  return `console.log(JSON.stringify(process.argv.slice(2))); process.exit(${code});`;
 }
 
 /** A Flutter app's build, recording each `flutter` call's argv into `calls`. */
@@ -32,13 +37,13 @@ function appBuild(dir: string, calls: string[][]) {
   return class App extends Build {
     deps = target().executes(async () => {
       const out = await FlutterTasks.pubGet((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().enforceLockfile()
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().enforceLockfile()
       );
       record(out.stdout);
     });
     bundle = target().dependsOn(this.deps).executes(async () => {
       const out = await FlutterTasks.buildAppBundle((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().release()
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().release()
           .flavor("prod").buildNumber(7).dartDefine("ENV", "prod")
       );
       record(out.stdout);
@@ -50,15 +55,17 @@ function appBuild(dir: string, calls: string[][]) {
 async function runApp(
   buildCode: number,
 ): Promise<{ code: number; calls: string[][] }> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-flutter-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-flutter-")
+  );
   try {
-    await Deno.writeTextFile(`${dir}/pub`, fake(0));
-    await Deno.writeTextFile(`${dir}/build`, fake(buildCode));
+    await FileTasks.writeText(`${dir}/pub`, fake(0));
+    await FileTasks.writeText(`${dir}/build`, fake(buildCode));
     const calls: string[][] = [];
     const { code } = await runCli(appBuild(dir, calls), ["bundle"]);
     return { code, calls };
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 

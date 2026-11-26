@@ -6,9 +6,9 @@
  * `main()` entry point, that resolves dependencies, analyzes and dry-runs a
  * publish in dependency order — and fails the run when `dart` does.
  *
- * Hermetic per AGENTS.md guideline 5: the "dart" is the running `deno`. Deno 2
- * runs `deno <file> <args…>` as a script, so a wrapper pointed at
- * `Deno.execPath()` from a directory holding scripts named after the
+ * Hermetic per AGENTS.md guideline 5: the "dart" is the running runtime. Deno 2
+ * runs `deno <file> <args…>` as a script, as Node does, so a wrapper pointed
+ * at `RuntimeTasks.execPath()` from a directory holding scripts named after the
  * subcommands (`pub`, `analyze`) spawns them with the wrapper's real argv,
  * which each prints back. The subcommands `dart` shares with `deno` (`run`,
  * `test`, `compile`, `doc`, `fmt`) cannot be faked this way.
@@ -18,13 +18,18 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { DartTasks } from "../../packages/dart/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** A fake subcommand script: prints its argv as JSON, then exits with `code`. */
 function fake(code: number): string {
-  return `console.log(JSON.stringify(Deno.args)); Deno.exit(${code});`;
+  return `console.log(JSON.stringify(process.argv.slice(2))); process.exit(${code});`;
 }
 
 /** A Dart package's build, recording each `dart` call's argv into `calls`. */
@@ -33,19 +38,21 @@ function packageBuild(dir: string, calls: string[][]) {
   return class Package extends Build {
     deps = target().executes(async () => {
       const out = await DartTasks.pubGet((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().enforceLockfile()
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().enforceLockfile()
       );
       record(out.stdout);
     });
     check = target().dependsOn(this.deps).executes(async () => {
       const out = await DartTasks.analyze((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().fatalInfos().path("lib")
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().fatalInfos().path(
+          "lib",
+        )
       );
       record(out.stdout);
     });
     publish = target().dependsOn(this.check).executes(async () => {
       const out = await DartTasks.pubPublish((s) =>
-        s.toolPath(Deno.execPath()).cwd(dir).quiet().dryRun()
+        s.toolPath(RuntimeTasks.execPath()).cwd(dir).quiet().dryRun()
       );
       record(out.stdout);
     });
@@ -56,15 +63,17 @@ function packageBuild(dir: string, calls: string[][]) {
 async function runBuild(
   analyzeCode: number,
 ): Promise<{ code: number; calls: string[][] }> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-dart-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-dart-")
+  );
   try {
-    await Deno.writeTextFile(`${dir}/pub`, fake(0));
-    await Deno.writeTextFile(`${dir}/analyze`, fake(analyzeCode));
+    await FileTasks.writeText(`${dir}/pub`, fake(0));
+    await FileTasks.writeText(`${dir}/analyze`, fake(analyzeCode));
     const calls: string[][] = [];
     const { code } = await runCli(packageBuild(dir, calls), ["publish"]);
     return { code, calls };
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 

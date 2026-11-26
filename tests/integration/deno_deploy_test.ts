@@ -10,7 +10,7 @@
  * secret value fails, the error the build prints masks that value.
  *
  * Hermetic per AGENTS.md guideline 5: the "deno" is a POSIX shell shim that
- * runs a small script with the running `deno`, so nothing reaches Deno
+ * runs a small script with the running runtime, so nothing reaches Deno
  * Deploy. Like the fake brew, the shim does not run on Windows.
  *
  * @module
@@ -18,9 +18,15 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  FileTasks,
+  RuntimeTasks,
+  target,
+} from "../../packages/core/mod.ts";
 import { DenoDeployTasks } from "../../packages/deno/mod.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
+import { RUN_SCRIPT } from "../_eval.ts";
 
 const TOKEN = "ddp_integration_token_never_printed";
 const SECRET = "sk-integration-secret-never-printed";
@@ -30,28 +36,31 @@ const SECRET = "sk-integration-secret-never-printed";
  * the environment, and exits 3 when an argv token equals `FAKE_FAIL_ON`.
  */
 const FAKE = `
-const ok = Deno.env.get("DENO_DEPLOY_TOKEN") === Deno.env.get("FAKE_TOKEN");
-console.log("fake-deploy " + JSON.stringify(Deno.args) + " token-ok=" + ok);
-if (Deno.args.includes(Deno.env.get("FAKE_FAIL_ON") ?? "")) Deno.exit(3);
+const args = process.argv.slice(2);
+const ok = process.env.DENO_DEPLOY_TOKEN === process.env.FAKE_TOKEN;
+console.log("fake-deploy " + JSON.stringify(args) + " token-ok=" + ok);
+if (args.includes(process.env.FAKE_FAIL_ON ?? "")) process.exit(3);
 `;
 
 /** Run `fn` with a fake `deno` shim, removed afterwards. */
 async function withFakeDeno(
   fn: (deno: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-deploy-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-deploy-")
+  );
   try {
-    await Deno.writeTextFile(`${dir}/fake.ts`, FAKE);
+    await FileTasks.writeText(`${dir}/fake.ts`, FAKE);
     const shim = `${dir}/deno`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       shim,
-      `#!/bin/sh\nexec "${Deno.execPath()}" run --no-config --no-lock -A ` +
+      `#!/bin/sh\nexec "${RuntimeTasks.execPath()}" ${RUN_SCRIPT.join(" ")} ` +
         `"${dir}/fake.ts" "$@"\n`,
     );
-    await Deno.chmod(shim, 0o755);
+    await FileTasks.chmod(shim, 0o755);
     await fn(shim);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -82,7 +91,7 @@ function release(deno: string, printed: string[], failOn = "-") {
 
 test({
   name: "deno deploy: the token rides the environment, not the argv",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     const printed: string[] = [];
     await withFakeDeno(async (deno) => {
@@ -100,7 +109,7 @@ test({
 
 test({
   name: "deno deploy: a failed command fails the run with the secret masked",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     const printed: string[] = [];
     let result = { code: -1, out: "", err: "" };

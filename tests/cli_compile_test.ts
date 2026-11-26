@@ -18,7 +18,8 @@ import {
   assertStringIncludes,
 } from "./_assert.ts";
 import { withTemp, withTempCwd } from "./_temp.ts";
-import { absolutePath, RuntimeTasks } from "@zuke/core";
+import { absolutePath, FileTasks, RuntimeTasks } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 import { DenoBundleSettings } from "@zuke/deno";
 import {
   assertReportsVersion,
@@ -33,14 +34,11 @@ import { hostTriple } from "../build/cli_node_compile.ts";
 import { binaryPath } from "../build/cli_package.ts";
 
 /** The running deno, as the absolute path the smoke check takes. */
-const deno = absolutePath(Deno.execPath());
+const deno = absolutePath(RuntimeTasks.execPath());
 
-/** The first line `deno --version` prints. */
+/** The first line the running runtime's `--version` prints. */
 async function denoVersionLine(): Promise<string> {
-  const { stdout } = await new Deno.Command(Deno.execPath(), {
-    args: ["--version"],
-  }).output();
-  return new TextDecoder().decode(stdout).split("\n")[0];
+  return (await $`${RuntimeTasks.execPath()} --version`.text()).split("\n")[0];
 }
 
 test("the binaries are compiled from the published JSR release", () => {
@@ -78,20 +76,23 @@ test("compileCliBinaries bundles the entry, compiles the bundle, and runs the ho
         // The entry is written before the bundle reads it, in its directory.
         const cwd = settings.dir;
         assertEquals(
-          await Deno.readTextFile(`${cwd}/${ENTRY_FILE}`),
+          await FileTasks.readText(`${cwd}/${ENTRY_FILE}`),
           "// the entry\n",
         );
-        await Deno.writeTextFile(`${cwd}/${BUNDLE_FILE}`, "// bundled\n");
+        await FileTasks.writeText(`${cwd}/${BUNDLE_FILE}`, "// bundled\n");
       },
       async (bundle, binDir) => {
-        compiled = await Deno.readTextFile(bundle.path);
+        compiled = await FileTasks.readText(bundle.path);
         assertEquals(binDir.path, bin.path);
         // Stand in for the binary built for this machine with the running
         // deno, whose --version the check then reads. Copied, not linked:
         // a symlink needs privileges on Windows, which is a host too.
         if (host !== undefined) {
-          await Deno.mkdir(`${bin.path}/${host}`, { recursive: true });
-          await Deno.copyFile(Deno.execPath(), binaryPath(bin.path, host));
+          await FileTasks.createDirectory(`${bin.path}/${host}`);
+          await FileTasks.copy(
+            RuntimeTasks.execPath(),
+            binaryPath(bin.path, host),
+          );
         }
       },
       (binary) => {
@@ -133,12 +134,12 @@ test("assertReportsVersion runs a binary named relative to the build's directory
   // The signing job names the binary under `dist/cli/bin`, relative to the
   // checkout; the check runs it from a temporary directory, so the path must
   // be resolved against the checkout first.
-  if (Deno.build.os === "windows") return;
+  if (RuntimeTasks.os() === "windows") return;
   await withTempCwd(async () => {
-    await Deno.mkdir("bin/host", { recursive: true });
-    await Deno.symlink(Deno.execPath(), binaryPath("bin", "host"));
+    await FileTasks.createDirectory("bin/host");
+    await FileTasks.symlink(RuntimeTasks.execPath(), binaryPath("bin", "host"));
     await assertReportsVersion(
-      absolutePath(Deno.cwd(), binaryPath("bin", "host")),
+      absolutePath(RuntimeTasks.cwd(), binaryPath("bin", "host")),
       await denoVersionLine(),
     );
   });

@@ -9,6 +9,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -23,10 +24,12 @@ import {
 } from "../../../tests/support/homebrew/_fake_brew.ts";
 
 /** A formula file on disk, in a temp dir. */
-function formulaFile(): string {
-  const dir = Deno.makeTempDirSync({ prefix: "zuke-formula-" });
+async function formulaFile(): Promise<string> {
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-formula-")
+  );
   const path = `${dir}/app.rb`;
-  Deno.writeTextFileSync(path, "class App < Formula\nend\n");
+  await FileTasks.writeText(path, "class App < Formula\nend\n");
   return path;
 }
 
@@ -41,7 +44,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew();
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(
         brew.env,
@@ -77,7 +80,7 @@ test({
       assertEquals(calls.every((call) => call.autoUpdate === "1"), true);
       // The formula was copied into the tap the install read it from.
       assertEquals(
-        Deno.readTextFileSync(`${brew.root}/${tap}/Formula/app.rb`),
+        await FileTasks.readText(`${brew.root}/${tap}/Formula/app.rb`),
         "class App < Formula\nend\n",
       );
     } finally {
@@ -91,7 +94,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["trust"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(
         brew.env,
@@ -121,7 +124,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["test"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(brew.env, async () => {
         await assertRejects(
@@ -154,7 +157,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["install"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(brew.env, async () => {
         await assertRejects(
@@ -184,7 +187,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["test", "uninstall", "untap"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(brew.env, async () => {
         const error = await assertRejects(
@@ -212,7 +215,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["untap"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(brew.env, async () => {
         await assertRejects(
@@ -235,7 +238,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["tap-new"]);
-    const file = formulaFile();
+    const file = await formulaFile();
     try {
       await withEnv(brew.env, async () => {
         await assertRejects(
@@ -276,7 +279,7 @@ test("verify: the file and a valid name are required before brew runs", async ()
     "invalid formula name",
   );
   // A file that defines some other formula is refused before a tap is made.
-  const file = formulaFile();
+  const file = await formulaFile();
   await assertRejects(
     () =>
       HomebrewTasks.verify((s) =>

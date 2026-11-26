@@ -4,7 +4,7 @@
 /**
  * A fake `choco` on disk for the tests that need a real process: a POSIX shim
  * named `choco` that runs `fixtures/fake_choco.ts` with the running `deno`
- * (`Deno.execPath()`), so nothing beyond `deno` and `/bin/sh` is needed.
+ * (`RuntimeTasks.execPath()`), so nothing beyond it and `/bin/sh` is needed.
  *
  * POSIX only: the fake and the shims it installs are shell scripts, which
  * Windows cannot launch — so the tests that use it skip there. What they prove
@@ -13,6 +13,20 @@
  *
  * @module
  */
+
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { RuntimeTasks } from "@zuke/core";
+import { RUN_SCRIPT } from "../../_eval.ts";
 
 /** A fake choco's paths and what it recorded. */
 export interface FakeChoco {
@@ -30,25 +44,25 @@ export interface FakeChoco {
 
 /** Create a fake choco; `fail` names verbs (and modes) that should fail. */
 export function fakeChoco(fail: string[] = []): FakeChoco {
-  const dir = Deno.makeTempDirSync({ prefix: "zuke-fake-choco-" });
+  const dir = mkdtempSync(join(tmpdir(), "zuke-fake-choco-"));
   const binDir = `${dir}/bin`;
   const log = `${dir}/calls.jsonl`;
-  Deno.mkdirSync(binDir);
-  Deno.writeTextFileSync(log, "");
+  mkdirSync(binDir);
+  writeFileSync(log, "");
   const script = new URL("./fixtures/fake_choco.ts", import.meta.url).pathname;
   const choco = `${binDir}/choco`;
-  Deno.writeTextFileSync(
+  writeFileSync(
     choco,
-    `#!/bin/sh\nexec "${Deno.execPath()}" run --no-config --no-lock -A ` +
+    `#!/bin/sh\nexec "${RuntimeTasks.execPath()}" ${RUN_SCRIPT.join(" ")} ` +
       `"${script}" "$@"\n`,
   );
-  Deno.chmodSync(choco, 0o755);
+  chmodSync(choco, 0o755);
   // The staging directory is created under TMPDIR. Pointed at a resolved path,
   // the directory a task passes to choco and the working directory the fake
   // records (which the OS reports resolved) agree on macOS, where the default
   // temp dir sits behind the /var -> /private/var link.
-  const tmp = `${Deno.realPathSync(dir)}/tmp`;
-  Deno.mkdirSync(tmp);
+  const tmp = `${realpathSync(dir)}/tmp`;
+  mkdirSync(tmp);
   const env = {
     TMPDIR: tmp,
     FAKE_CHOCO_LOG: log,
@@ -60,15 +74,15 @@ export function fakeChoco(fail: string[] = []): FakeChoco {
     choco,
     env,
     calls() {
-      return Deno.readTextFileSync(log).trim().split("\n").filter((line) =>
+      return readFileSync(log, "utf8").trim().split("\n").filter((line) =>
         line !== ""
       ).map((line) => JSON.parse(line));
     },
     dispose() {
-      Deno.removeSync(dir, { recursive: true });
+      rmSync(dir, { recursive: true });
     },
   };
 }
 
 /** Whether the fake can run here: it is a POSIX shell shim. */
-export const FAKE_CHOCO_UNSUPPORTED = Deno.build.os === "windows";
+export const FAKE_CHOCO_UNSUPPORTED = RuntimeTasks.os() === "windows";

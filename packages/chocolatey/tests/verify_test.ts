@@ -9,6 +9,7 @@
  * @module
  */
 
+import { EnvTasks, FileTasks } from "@zuke/core";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -44,7 +45,7 @@ function verbs(calls: Array<{ args: string[] }>): string[] {
 /** Whether `path` exists. */
 function exists(path: string): boolean {
   try {
-    Deno.statSync(path);
+    FileTasks.statSync(path);
     return true;
   } catch {
     return false;
@@ -60,7 +61,7 @@ function verify(
   configure: Configure<ChocolateyVerifySettings>,
 ): Promise<void> {
   return withEnv(
-    { ...choco.env, PATH: `${choco.binDir}:${Deno.env.get("PATH") ?? ""}` },
+    { ...choco.env, PATH: `${choco.binDir}:${EnvTasks.get("PATH") ?? ""}` },
     () =>
       ChocolateyTasks.verify((s) =>
         configure(s.package(PKG).binary("app").toolPath(choco.choco))

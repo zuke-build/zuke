@@ -13,6 +13,7 @@
  * @module
  */
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../_testing.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
@@ -42,83 +43,96 @@ docs = { script = "app.docs:main" }
 ci.sequence = ["lint", "test"]
 `;
 
-test("zuke import turns a pyproject.toml into a Python build on the pinned engine", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-import-py-" });
-  const prev = Deno.cwd();
-  Deno.chdir(dir);
-  try {
-    await Deno.writeTextFile(`${dir}/pyproject.toml`, PYPROJECT);
-    const lines: string[] = [];
-    const code = await main(
-      ["import", "--yes", "--zuke", "2.3.0", "--name", "App"],
-      quietHost(lines),
-      defaultPrompter,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pinRegistry([testPin("2.3.0", "1.2.0")]),
+test({
+  name:
+    "zuke import turns a pyproject.toml into a Python build on the pinned engine",
+  denoOnly:
+    "forwards to Deno, as a Deno-installed zuke does; on Node it refuses a hosted build",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-it-import-py-")
     );
-    assertEquals(code, 0, lines.join("\n"));
-    assertStringIncludes(
-      lines.join("\n"),
-      "imported 4 task(s) from pyproject.toml",
-    );
-
-    const names = new Set<string>();
-    for await (const entry of Deno.readDir(dir)) names.add(entry.name);
-    assertEquals(
-      [...names].sort(),
-      [
-        ".gitignore",
-        "build.py",
-        "pyproject.toml",
-        "zuke",
-        "zuke.json",
-        "zuke.ps1",
-      ],
-    );
-    assertEquals(JSON.parse(await Deno.readTextFile(`${dir}/zuke.json`)), {
-      name: "App",
-      sdk: { command: ["uv", "run", "build.py"] },
-      engine: "1.2.0",
-    });
-    const build = await Deno.readTextFile(`${dir}/build.py`);
-    assertStringIncludes(build, '# dependencies = ["zuke"]');
-    assertStringIncludes(build, "from zuke import Build, Context, run, target");
-    assertStringIncludes(build, 'await ctx.sh("ruff", "check", ".")');
-    assertStringIncludes(build, 'await ctx.sh("pytest", "-q")');
-    assertStringIncludes(
-      build,
-      '# TODO: translate this task: {"script":"app.docs:main"}',
-    );
-    assertStringIncludes(
-      build,
-      '    ci = target().description("imported: ci").depends_on(lint, test)\n',
-    );
-    assertStringIncludes(build, "class App(Build):");
-    assertStringIncludes(build, "\nrun(App)\n");
-
-    // The zuke command forwards to the engine the import pinned.
-    let seen: string[] | undefined;
-    await withEnv({ ZUKE_FORWARDED: "1" }, async () => {
-      const forwarded = await main(
-        ["--list"],
+    const prev = RuntimeTasks.cwd();
+    RuntimeTasks.chdir(dir);
+    try {
+      await FileTasks.writeText(`${dir}/pyproject.toml`, PYPROJECT);
+      const lines: string[] = [];
+      const code = await main(
+        ["import", "--yes", "--zuke", "2.3.0", "--name", "App"],
         quietHost(lines),
         defaultPrompter,
         undefined,
         undefined,
-        (_root, args) => {
-          seen = args;
-          return Promise.resolve(0);
-        },
-        defaultBuildProbe,
+        undefined,
+        undefined,
+        pinRegistry([testPin("2.3.0", "1.2.0")]),
       );
-      assertEquals(forwarded, 0);
-    });
-    assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.0", "--list"]);
-  } finally {
-    Deno.chdir(prev);
-    await Deno.remove(dir, { recursive: true });
-  }
+      assertEquals(code, 0, lines.join("\n"));
+      assertStringIncludes(
+        lines.join("\n"),
+        "imported 4 task(s) from pyproject.toml",
+      );
+
+      const names = new Set<string>();
+      for (const entry of await FileTasks.readDirectory(dir)) {
+        names.add(entry.name);
+      }
+      assertEquals(
+        [...names].sort(),
+        [
+          ".gitignore",
+          "build.py",
+          "pyproject.toml",
+          "zuke",
+          "zuke.json",
+          "zuke.ps1",
+        ],
+      );
+      assertEquals(JSON.parse(await FileTasks.readText(`${dir}/zuke.json`)), {
+        name: "App",
+        sdk: { command: ["uv", "run", "build.py"] },
+        engine: "1.2.0",
+      });
+      const build = await FileTasks.readText(`${dir}/build.py`);
+      assertStringIncludes(build, '# dependencies = ["zuke"]');
+      assertStringIncludes(
+        build,
+        "from zuke import Build, Context, run, target",
+      );
+      assertStringIncludes(build, 'await ctx.sh("ruff", "check", ".")');
+      assertStringIncludes(build, 'await ctx.sh("pytest", "-q")');
+      assertStringIncludes(
+        build,
+        '# TODO: translate this task: {"script":"app.docs:main"}',
+      );
+      assertStringIncludes(
+        build,
+        '    ci = target().description("imported: ci").depends_on(lint, test)\n',
+      );
+      assertStringIncludes(build, "class App(Build):");
+      assertStringIncludes(build, "\nrun(App)\n");
+
+      // The zuke command forwards to the engine the import pinned.
+      let seen: string[] | undefined;
+      await withEnv({ ZUKE_FORWARDED: "1" }, async () => {
+        const forwarded = await main(
+          ["--list"],
+          quietHost(lines),
+          defaultPrompter,
+          undefined,
+          undefined,
+          (_root, args) => {
+            seen = args;
+            return Promise.resolve(0);
+          },
+          defaultBuildProbe,
+        );
+        assertEquals(forwarded, 0);
+      });
+      assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.0", "--list"]);
+    } finally {
+      RuntimeTasks.chdir(prev);
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
