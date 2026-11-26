@@ -1,9 +1,11 @@
 # Zuke authoring cheatsheet
 
-A quick map for writing targets. **Always confirm exact signatures** with `deno
-doc jsr:@zuke/<package>`, which resolves the version the project actually has
-installed. For breadth — which packages and tasks exist — use `llms-full.txt`:
-at the repo root in the Zuke repo itself, or from a consumer repo
+A quick map for writing targets. **Always confirm exact signatures** against the
+version the project actually has installed: on Node, the package's
+`node_modules/@zuke/<package>/README.md` (its `## API` section) and `.d.ts`
+files; on Deno, `deno doc jsr:@zuke/<package>`. For breadth — which packages and
+tasks exist — use `llms-full.txt`: at the repo root in the Zuke repo itself, or
+from a consumer repo
 <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>, which
 tracks `master` and so may list symbols not yet in any published release. This
 cheatsheet is a summary, not the source of truth.
@@ -651,7 +653,7 @@ A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
 Fetch pinned, checksum-verified tool binaries from the build itself instead of
 assuming they're installed. Both return the installed binary's `AbsolutePath`;
 hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`
-(`jsr:@zuke/core/tooling` — the submodule, not the package root).
+(`@zuke/core/tooling` — the submodule, not the package root).
 
 ```ts
 import { toolchain, ToolTasks } from "@zuke/core";
@@ -699,7 +701,8 @@ prependPath(node("bin")); // node/npm (and node_modules/.bin shims) now on PATH
 
 `prependPath(dir)` puts `dir` first on the process `PATH` (idempotent, platform
 separator) so every subprocess Zuke spawns — the shell `$`, `Command`, and the
-tool wrappers, which inherit `Deno.env` — finds the provisioned tool.
+tool wrappers, which inherit the process environment — finds the provisioned
+tool.
 
 **Resolve from `node_modules/.bin`** — in a Node monorepo where tool binaries
 are hoisted to the repo root, a wrapper can find its binary npx-style instead of
@@ -714,13 +717,13 @@ hermetic. `resolvedArgv()` shows what a run will spawn. See `docs/tools.md`.
 ## Tool wrappers — the settings-lambda style
 
 Every external tool is a `*Tasks` object; each task takes `(s) => s.…` mirroring
-the real CLI's flags. A non-exhaustive map (run `deno doc jsr:@zuke/<pkg>` for
-the full task list and settings methods of each):
+the real CLI's flags. A non-exhaustive map (see each installed package's docs,
+above, for the full task list and settings methods of each):
 
 | Package                                                                                                                                             | Object                                                                                                                                             | Typical tasks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@zuke/core`                                                                                                                                        | `FileTasks`, `EnvTasks`, `ProcessTasks`, `RuntimeTasks`, `StreamTasks`, `NetTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks`                   | copy/move/remove/read/write/stat files, symlink/readLink (`force` re-points an existing link); env vars, child processes and signals, runtime facts (os, arch, cwd, whether a stream is a terminal), changing directory and exit, temp files and directories, a stream to a file, TCP listeners and connections, an HTTP server; Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `@zuke/cli`                                                                                                                                         | the `zuke` command                                                                                                                                 | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project; inside one, `zuke <target>` runs that project's build from any directory in it; `zuke upgrade` updates the installed CLI; `zuke setup --sdk python` scaffolds a Python build the engine runs, and `zuke upgrade --engine` moves its engine pin; `zuke add <tool>`/`remove` edit the project's deno.json (`zuke add docker` = `jsr:@zuke/docker`), `zuke cache` fetches the build's graph, and `zuke relock [--min-dep-age 0]` regenerates the lock whatever core the project is on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `@zuke/cli`                                                                                                                                         | the `zuke` command                                                                                                                                 | not a wrapper — `npm install -g @zuke-build/cli` (or, on Deno, `deno install -A -g -n zuke jsr:@zuke/cli`), then `zuke setup` scaffolds a project, on Node unless `--runtime deno`; inside one, `zuke <target>` runs that project's build from any directory in it; `zuke upgrade` updates the installed CLI; `zuke setup --sdk python` scaffolds a Python build the engine runs, and `zuke upgrade --engine` moves its engine pin; `zuke add <tool>`/`remove` edit the project's package.json (`zuke add docker` = `npm:@zuke-build/docker`, aliased `@zuke/docker`), or its deno.json on Deno (`jsr:@zuke/docker`), `zuke cache` fetches the build's graph, and `zuke relock [--min-dep-age 0]` regenerates the lock whatever core the project is on                                                                                                                                                                                                                                                                                                                                                                    |
 | `@zuke/engine`                                                                                                                                      | the engine for SDK-hosted builds                                                                                                                   | not a wrapper — runs the worker a project's `zuke.json` names under `sdk` (e.g. `{ "command": ["uv", "run", "build.py"] }`) on the core engine; the standalone `zuke` binary carries it, and a Python project's `./zuke` launcher downloads the pinned `zuke` release and runs that, so the project needs no Deno anywhere                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                                                                                                                     | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/qr`                                                                                                                                          | `QrTasks`                                                                                                                                          | `print`/`render`/`encode` a QR code for any data — URLs, Wi-Fi and login strings, tokens, JSON — as terminal output, text lines or the raw module matrix; no `qrencode` needed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -755,10 +758,10 @@ the full task list and settings methods of each):
 
 The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
 catalogue (or the table above) is the source of truth for **whether a wrapper
-exists**; `deno doc jsr:@zuke/<pkg>` only confirms the **shape** of a package
-whose name you already know, it cannot tell you one exists. Check the catalogue
-before reaching for the fallback below — using `CmdTasks.exec`/`$` for a tool
-that has a `@zuke/<tool>` package is a bug, not a style choice.
+exists**; a package's own docs only confirm the **shape** of a package whose
+name you already know, it cannot tell you one exists. Check the catalogue before
+reaching for the fallback below — using `CmdTasks.exec`/`$` for a tool that has
+a `@zuke/<tool>` package is a bug, not a style choice.
 
 ```ts
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
@@ -1917,8 +1920,8 @@ await ChocolateyTasks.publish((s) =>
   message. Fails closed on unparseable input; secrets in the path are not
   recognised. `HttpError` already applies it. Run the build's secret redactor
   over the text first.
-- `$` from `jsr:@zuke/core/shell` — injection-safe tagged-template shell, only
-  when no typed wrapper fits.
+- `$` from `@zuke/core/shell` — injection-safe tagged-template shell, only when
+  no typed wrapper fits.
 
 ## Code-first CI — `cicd()`
 
@@ -1957,7 +1960,7 @@ Copy the closest one instead of composing from primitives; each is a full
 `examples/`:
 
 - **Replace a shell script** (`docs/recipes/replace-shell-scripts.md`,
-  `examples/scripts-to-zuke`) — `$` from `jsr:@zuke/core/shell` with no `Build`
+  `examples/scripts-to-zuke`) — `$` from `@zuke/core/shell` with no `Build`
   class at all, then the same steps as targets.
 - **Generate the CI** (`docs/recipes/generate-ci.md`, `examples/ci-only`) —
   `cicd({ provider, fanOut: true })` per provider, `generate-ci --check` as the
@@ -2007,7 +2010,7 @@ zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
                               # authz tiers: allow-list, operator token, confirm
 zuke runs show mcp-audit      # the MCP tool-call audit trail (host only, not served over MCP)
 zuke register [--json]        # record this build in the build registry (idempotent)
-zuke doc deno                 # print a package's API (deno doc) from an isolated empty dir
+zuke doc deno                 # print a package's API (deno doc, so Deno) from an isolated empty dir
                               # A bare name takes the @zuke scope, @scope/pkg takes
                               # the scheme, a path (./m.ts, src/m.ts, m.ts) is resolved
                               # against your cwd, and jsr:/npm:/https: pass through.

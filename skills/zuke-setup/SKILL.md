@@ -1,6 +1,6 @@
 ---
 name: zuke-setup
-description: Set up Zuke — a code-first, strongly-typed build automation system for Deno/TypeScript — in a project. Use when the user wants to add Zuke to a repo, scaffold a build.ts build file, install the Zuke CLI, or bootstrap the ./zuke launcher. After scaffolding, switch to the zuke-write-build skill to author targets.
+description: Set up Zuke — a code-first, strongly-typed build automation system for TypeScript, on Node or Deno — in a project. Use when the user wants to add Zuke to a repo, scaffold a build.ts build file, install the Zuke CLI, or bootstrap the ./zuke launcher. After scaffolding, switch to the zuke-write-build skill to author targets.
 ---
 
 # Set up Zuke in a project
@@ -16,24 +16,28 @@ The `@zuke/cli` tool scaffolds everything. Install it once, then run `setup` in
 the target project:
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # once, globally
-zuke setup                                 # in the project root
+npm install -g @zuke-build/cli             # once, globally (Node 24.12 or newer)
+zuke setup                                 # in the project root: a Node project
 zuke                                       # run the build
-zuke upgrade                               # later: update the global CLI
 zuke add docker                            # add a wrapper: @zuke/docker into package.json
 zuke relock --min-dep-age 0                # regenerate the lock (e.g. to move core forward)
 ```
+
+Update an npm install with `npm install -g @zuke-build/cli@latest`. On Deno, the
+CLI installs with `deno install -A -g -n zuke jsr:@zuke/cli` and updates with
+`zuke upgrade`; builds on Deno are supported until October 2027, so scaffold a
+new project on Node unless the user asks for Deno.
 
 No global install? The same wizard runs directly (install the CLI afterwards to
 run the build with `zuke`):
 
 ```sh
-deno run -A jsr:@zuke/cli setup
+npx @zuke-build/cli setup
 ```
 
-No Deno at all, on macOS or Linux? `brew install zuke-build/tap/zuke` installs
+No Node at all, on macOS or Linux? `brew install zuke-build/tap/zuke` installs
 the same CLI as a signed standalone binary; `zuke setup` then works at once, and
-the `./zuke` launcher it writes installs Deno when the build first runs. Update
+the `./zuke` launcher it writes installs Node when the build first runs. Update
 that install with `brew upgrade zuke`, not `zuke upgrade` (which refuses it). On
 Windows, `choco install zuke` installs the same binary through Chocolatey (not
 Authenticode-signed yet, so SmartScreen may warn); update it with `choco upgrade
@@ -60,9 +64,10 @@ including the closing "star the Zuke repository?" prompt — that question is fo
 a human at a terminal, and an agent must never answer it (or star anything) on
 the user's behalf.
 
-To read a `@zuke/*` package's API without a Node repo's `@types/node` noise, run
-`zuke doc <package>` (e.g. `zuke doc core`) — it runs `deno doc` in an isolated
-directory.
+To read a `@zuke/*` package's API in a Node project, read its
+`node_modules/@zuke/<package>/README.md` (the `## API` section) once the
+dependencies are installed. With Deno at hand, `zuke doc <package>` (e.g. `zuke
+doc core`) runs `deno doc` in an isolated directory.
 
 ### A Node project: `zuke setup --runtime node`
 
@@ -155,7 +160,11 @@ commands are kept as `# TODO` comments. `--zuke <version>` pins the `zuke`
 release its launchers run, as for `setup --sdk python`; there is no `deno.json`,
 no `CmdTasks` and no Deno.
 
-### What `zuke setup` writes
+### What `zuke setup --runtime deno` writes
+
+The files of a Deno project, which builds on Deno are supported until
+October 2027. A Node project's are in the Node section above; a Python project's
+in the Python section.
 
 - **`build.ts`** — a starter build class with a sample target and a `default`. A
   new project gets `build.ts`: the wizard asks the name, `--build-file <name>`
@@ -208,8 +217,8 @@ no `CmdTasks` and no Deno.
 ## Running the build
 
 Run the build with the global `zuke` command, from any directory inside the
-project. If `zuke` is not on `PATH`, install it first with `deno install -A -g
--n zuke jsr:@zuke/cli`.
+project. If `zuke` is not on `PATH`, install it first with `npm install -g
+@zuke-build/cli`, or run the project's `./zuke` launcher instead.
 
 ```sh
 zuke                      # run the default target
@@ -221,10 +230,10 @@ zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
 zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
 ```
 
-Every run opens with a banner: the Zuke wordmark, then `zuke <version> · deno
-<version> · <platform>` and `run <id> · <cwd>`. On CI the wordmark is dropped —
-the identifying lines are what a runner log wants, six lines of ASCII are not —
-and the detected host is appended to the first line. `--no-banner` or
+Every run opens with a banner: the Zuke wordmark, then `zuke <version> ·
+<runtime> <version> · <platform>` and `run <id> · <cwd>`. On CI the wordmark is
+dropped — the identifying lines are what a runner log wants, six lines of ASCII
+are not — and the detected host is appended to the first line. `--no-banner` or
 `ZUKE_NO_BANNER` turns it off entirely. On an interactive terminal `--version`,
 `--help`, `--list` and `graph` print a rich, coloured form; `--plain` or
 `ZUKE_PLAIN=1` asks for plain output everywhere (no banner or colour,
@@ -241,37 +250,53 @@ alone, and `zuke -- <target>` reaches a target that shares one of those names.
 It walks up to the `zuke.json` that marks the repository root and runs the
 executable `./zuke <args>` launcher there, so a project's customised launcher
 (pinned Deno, exported env, a lock outside the repo) applies to `zuke` too. With
-no executable launcher (and on Windows) it runs `deno run -A build.ts <args>`,
-with `--frozen` once a `deno.lock` exists. Outside a project, `zuke <target>`
-reports the unknown command and the missing `zuke.json`, and a bare `zuke`
-prints the usage. The forwarding refuses a project whose root directory is owned
-by another user or is world-writable, and one where an ancestor `deno.json`,
-`deno.jsonc` or `package.json` Deno would read is owned by another user (the
-`safe.directory` rule git applies, since discovery runs code the caller never
-named); the error names what was refused and the fix — run that project's own
-`./zuke` there, or fix the ownership. On Windows the gate is inert.
+no executable launcher (and on Windows) it runs `node build.ts <args>` for a
+Node project, and `deno run -A build.ts <args>` for a Deno one, with `--frozen`
+once a `deno.lock` exists. Outside a project, `zuke <target>` reports the
+unknown command and the missing `zuke.json`, and a bare `zuke` prints the usage.
+The forwarding refuses a project whose root directory is owned by another user
+or is world-writable, and one where an ancestor `deno.json`, `deno.jsonc` or
+`package.json` Deno would read is owned by another user (the `safe.directory`
+rule git applies, since discovery runs code the caller never named); the error
+names what was refused and the fix — run that project's own `./zuke` there, or
+fix the ownership. On Windows the gate is inert.
 
 The CLI is self-describing: `zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
 surface instead of guessing. For an AI client to operate the build through typed
 calls, `zuke mcp` runs a Model Context Protocol server over it (register with
-`claude mcp add zuke -- deno run -A build.ts mcp`; add `--allow-run` to let the
-agent execute targets, not just inspect them).
+`claude mcp add zuke -- node build.ts mcp`, or `-- deno run -A build.ts mcp` on
+Deno; add `--allow-run` to let the agent execute targets, not just inspect
+them).
 
-The scaffolded `deno.json` also carries a `zuke` task (`deno task zuke
-<target>`), but it is not quite equivalent: it deliberately omits `--frozen`, so
-it may heal a stale lockfile where `zuke` would fail on it. Prefer `zuke`.
+A Deno project's scaffolded `deno.json` also carries a `zuke` task (`deno task
+zuke <target>`), but it is not quite equivalent: it deliberately omits
+`--frozen`, so it may heal a stale lockfile where `zuke` would fail on it.
+Prefer `zuke`.
 
 On a machine without the CLI — a CI runner — the committed `./zuke` launcher
-(`zuke.ps1` on Windows) installs Deno and runs the build, which is why generated
-CI workflows call `./zuke <target>`.
+(`zuke.ps1` on Windows) installs Node (or Deno) and runs the build, which is why
+generated CI workflows call `./zuke <target>`.
 
 ## Manual setup (without `zuke setup`)
 
-Declare the packages the build imports in `deno.json` — bare specifier to `jsr:`
-dependency, caret major — so the build can import them by bare specifier. An
-inline `jsr:@zuke/core@^1` in the import statement fails `deno lint` under its
-default `no-import-prefix` rule:
+On Node, declare the packages in `package.json`, under their npm aliases, with
+`"type": "module"`:
+
+```json
+{
+  "type": "module",
+  "dependencies": {
+    "@zuke/core": "npm:@zuke-build/core@^1",
+    "@zuke/npm": "npm:@zuke-build/npm@^1"
+  }
+}
+```
+
+On Deno, declare them in `deno.json` — bare specifier to `jsr:` dependency,
+caret major — so the build can import them by bare specifier. An inline
+`jsr:@zuke/core@^1` in the import statement fails `deno lint` under its default
+`no-import-prefix` rule:
 
 ```json
 {
@@ -283,18 +308,18 @@ default `no-import-prefix` rule:
 ```
 
 Then create `build.ts` in the project root, extend `Build`, declare targets with
-`target()`, and call `await run(MyBuild)` at the bottom:
+`target()`, and call `await run(MyBuild)` at the bottom. The imports read the
+same on both runtimes:
 
 <!-- check -->
 
 ```ts
 import { Build, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class CI extends Build {
-  lint = target().executes(() => DenoTasks.lint());
-  test = target().dependsOn(this.lint)
-    .executes(() => DenoTasks.test((s) => s.allowAll()));
+  install = target().executes(() => NpmTasks.ci());
+  test = target().dependsOn(this.install).executes(() => NpmTasks.test());
   default = target().dependsOn(this.test).executes(() => {});
 }
 
@@ -302,30 +327,32 @@ await run(CI);
 ```
 
 Mark the project root with a `zuke.json` (`{ "name": "my-project", "build":
-"build.ts" }`) so the `zuke` command can find the build and knows its file, then
-run it with `zuke test`. (For the launcher scripts a CLI-less CI runner needs,
-prefer `zuke setup`, which drops them in for you.)
+"build.ts", "runtime": "node" }`, without `runtime` on Deno) so the `zuke`
+command can find the build, knows its file and its runtime, then run it with
+`zuke test`. (For the launcher scripts a CLI-less CI runner needs, prefer `zuke
+setup`, which drops them in for you.)
 
 ## Finding the exact API — never guess
 
 Every external tool has a typed `*Tasks` wrapper; **do not fall back to
-`Deno.Command` or hand-rolled shell.** First confirm a wrapper exists at all —
-`llms.txt`'s `## Packages` catalogue or the table in
+`Deno.Command`, `node:child_process` or hand-rolled shell.** First confirm a
+wrapper exists at all — `llms.txt`'s `## Packages` catalogue or the table in
 [`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md)
-is the only way to answer that; a per-package `deno doc` needs a name to target,
-so it cannot reveal that one exists. Once you know the package name, get its
-exact signatures:
+is the only way to answer that; a package's own docs need its name, so they
+cannot reveal that one exists. Once you know the package name, get its exact
+signatures:
 
-- A single package on the command line: `deno doc jsr:@zuke/<package>`. Prefer
-  this in a consumer repo — it resolves the version the project actually has
-  installed, so it cannot describe an API that version lacks.
+- A single package, in the version the project actually has installed — prefer
+  this in a consumer repo, since it cannot describe an API that version lacks:
+  on Node, `node_modules/@zuke/<package>/README.md` (its `## API` section) and
+  its `.d.ts` files; on Deno, `deno doc jsr:@zuke/<package>`.
 - The whole typed surface of every package is in **`llms-full.txt`** (indexed by
   `llms.txt`) — at the repo root in the Zuke repo itself, or from a consumer
   repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
   Both track `master`, so they may document symbols that are merged but not yet
-  released; use them to find what exists, then confirm the signature with `deno
-  doc`.
+  released; use them to find what exists, then confirm the signature in the
+  installed package.
 
 Once the project is scaffolded, use the **zuke-write-build** skill to add and
 edit targets.
