@@ -6,8 +6,11 @@ import { assertEquals } from "../../../tests/_assert.ts";
 import {
   ambientOutput,
   type ByteWriter,
+  scopedOutput,
   withAmbientOutput,
 } from "../src/ambient_output.ts";
+import { RuntimeTasks } from "../src/runtime_tasks.ts";
+import { EVAL } from "../../../tests/_eval.ts";
 import { bufferReporter } from "../src/reporter.ts";
 import { $ } from "../src/shell.ts";
 
@@ -27,10 +30,14 @@ function recorder(max = Infinity): ByteWriter & { text: () => string } {
   };
 }
 
-test("ambientOutput: defaults to the process's own stdout and stderr", () => {
-  const out = ambientOutput();
-  assertEquals(out.stdout === Deno.stdout, true);
-  assertEquals(out.stderr === Deno.stderr, true);
+test({
+  name: "ambientOutput: defaults to the process's own stdout and stderr",
+  denoOnly: "compares the writers with Deno's own",
+  fn: () => {
+    const out = ambientOutput();
+    assertEquals(out.stdout === Deno.stdout, true);
+    assertEquals(out.stderr === Deno.stderr, true);
+  },
 });
 
 test("withAmbientOutput: a command's live output goes to the installed sink", async () => {
@@ -39,14 +46,14 @@ test("withAmbientOutput: a command's live output goes to the installed sink", as
   const code = `console.log("to-out"); console.error("to-err");`;
   const result = await withAmbientOutput(
     { stdout, stderr },
-    async () => await $`${Deno.execPath()} eval ${code}`,
+    async () => await $`${RuntimeTasks.execPath()} ${EVAL} ${code}`,
   );
   assertEquals(stdout.text(), "to-out\n");
   assertEquals(stderr.text(), "to-err\n");
   // Capture is unaffected by where the live copy goes.
   assertEquals(result.stdout, "to-out\n");
   // The sink is scoped to the call.
-  assertEquals(ambientOutput().stdout === Deno.stdout, true);
+  assertEquals(scopedOutput(), undefined);
 });
 
 test("bufferReporter: flushes lines and command bytes in arrival order", () => {
@@ -175,7 +182,8 @@ test("withAmbientOutput: a spawned process's output goes to the sink", async () 
   const code = `console.log("svc-out"); console.error("svc-err");`;
   const proc = await withAmbientOutput(
     { stdout, stderr },
-    () => Promise.resolve($`${Deno.execPath()} eval ${code}`.spawn()),
+    () =>
+      Promise.resolve($`${RuntimeTasks.execPath()} ${EVAL} ${code}`.spawn()),
   );
   assertEquals((await proc.status).code, 0);
   await until(() => stdout.text() !== "" && stderr.text() !== "");
@@ -186,7 +194,7 @@ test("withAmbientOutput: a spawned process's output goes to the sink", async () 
 test("withAmbientOutput: a spawned process does not hang when the sink fails", async () => {
   const broken: ByteWriter = {
     writeSync: () => {
-      throw new Deno.errors.BrokenPipe("terminal closed");
+      throw Object.assign(new Error("terminal closed"), { code: "EPIPE" });
     },
   };
   // Far more than a pipe buffer holds, so an undrained pipe would block it.
@@ -194,7 +202,8 @@ test("withAmbientOutput: a spawned process does not hang when the sink fails", a
 for (let i = 0; i < 512; i++) console.log(line);`;
   const proc = await withAmbientOutput(
     { stdout: broken, stderr: recorder() },
-    () => Promise.resolve($`${Deno.execPath()} eval ${code}`.spawn()),
+    () =>
+      Promise.resolve($`${RuntimeTasks.execPath()} ${EVAL} ${code}`.spawn()),
   );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hung = new Promise<"hung">((r) => {

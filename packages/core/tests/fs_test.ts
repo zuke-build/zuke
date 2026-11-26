@@ -38,6 +38,7 @@ import {
   writeStream,
 } from "../src/fs.ts";
 import { withTemp } from "../../../tests/_temp.ts";
+import { RuntimeTasks } from "../src/runtime_tasks.ts";
 
 /** What a failed call threw: its class name and its code. */
 interface Failure {
@@ -94,39 +95,48 @@ function shared(info: Deno.FileInfo) {
   };
 }
 
-test("reads return what Deno's return, as plain bytes and text", async () => {
-  await withTemp(async (dir) => {
-    const path = `${dir}/data.bin`;
-    await Deno.writeFile(path, new Uint8Array([0, 1, 2, 250, 255]));
-    const bytes = await readFile(path);
-    assertEquals(bytes, await Deno.readFile(path));
-    // A plain Uint8Array, not a Buffer: callers compare and hash it.
-    assertEquals(bytes.constructor.name, "Uint8Array");
+test({
+  name: "reads return what Deno's return, as plain bytes and text",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const path = `${dir}/data.bin`;
+      await Deno.writeFile(path, new Uint8Array([0, 1, 2, 250, 255]));
+      const bytes = await readFile(path);
+      assertEquals(bytes, await Deno.readFile(path));
+      // A plain Uint8Array, not a Buffer: callers compare and hash it.
+      assertEquals(bytes.constructor.name, "Uint8Array");
 
-    await Deno.writeTextFile(`${dir}/text.txt`, "π ≈ 3.14\n日本語\n");
-    assertEquals(
-      await readTextFile(`${dir}/text.txt`),
-      await Deno.readTextFile(`${dir}/text.txt`),
-    );
-  });
+      await Deno.writeTextFile(`${dir}/text.txt`, "π ≈ 3.14\n日本語\n");
+      assertEquals(
+        await readTextFile(`${dir}/text.txt`),
+        await Deno.readTextFile(`${dir}/text.txt`),
+      );
+    });
+  },
 });
 
-test("stat and lstat describe a file, a directory and a link as Deno does", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/file`, "12345");
-    await Deno.mkdir(`${dir}/sub`);
-    for (const path of [`${dir}/file`, `${dir}/sub`]) {
-      assertEquals(await stat(path), shared(await Deno.stat(path)));
-      assertEquals(await lstat(path), shared(await Deno.lstat(path)));
-      assertEquals(lstatSync(path), shared(Deno.lstatSync(path)));
-    }
-  });
+test({
+  name: "stat and lstat describe a file, a directory and a link as Deno does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "12345");
+      await Deno.mkdir(`${dir}/sub`);
+      for (const path of [`${dir}/file`, `${dir}/sub`]) {
+        assertEquals(await stat(path), shared(await Deno.stat(path)));
+        assertEquals(await lstat(path), shared(await Deno.lstat(path)));
+        assertEquals(lstatSync(path), shared(Deno.lstatSync(path)));
+      }
+    });
+  },
 });
 
 test({
   name: "lstat describes a link and stat follows it, as Deno does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
   // Creating a symlink needs a privilege a Windows runner does not have.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await Deno.writeTextFile(`${dir}/target`, "x");
@@ -148,7 +158,8 @@ test({
 
 test({
   name: "a symlink loop surfaces as Deno's FilesystemLoop on every operation",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await Deno.symlink(`${dir}/b`, `${dir}/a`);
@@ -180,33 +191,45 @@ test({
   },
 });
 
-test("mkdirRecursive creates the whole path and accepts one that exists", async () => {
-  await withTemp(async (dir) => {
-    await mkdirRecursive(`${dir}/a/b/c`);
-    assertEquals((await Deno.stat(`${dir}/a/b/c`)).isDirectory, true);
-    await mkdirRecursive(`${dir}/a/b/c`);
-  });
+test({
+  name: "mkdirRecursive creates the whole path and accepts one that exists",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await mkdirRecursive(`${dir}/a/b/c`);
+      assertEquals((await Deno.stat(`${dir}/a/b/c`)).isDirectory, true);
+      await mkdirRecursive(`${dir}/a/b/c`);
+    });
+  },
 });
 
-test("writeFile writes bytes and text, replacing what is there", async () => {
-  await withTemp(async (dir) => {
-    await writeFile(`${dir}/out`, new Uint8Array([9, 8, 7]));
-    assertEquals(await Deno.readFile(`${dir}/out`), new Uint8Array([9, 8, 7]));
-    await writeFile(`${dir}/out`, "text now");
-    assertEquals(await Deno.readTextFile(`${dir}/out`), "text now");
-    // With a mode, on every platform: Windows has no permission bits and
-    // ignores it, as Deno's own write does, and the contents still land.
-    await writeFile(`${dir}/out`, "with a mode", 0o644);
-    assertEquals(await Deno.readTextFile(`${dir}/out`), "with a mode");
-    await writeFile(`${dir}/fresh`, new Uint8Array([1, 2]), 0o600);
-    assertEquals(await Deno.readFile(`${dir}/fresh`), new Uint8Array([1, 2]));
-  });
+test({
+  name: "writeFile writes bytes and text, replacing what is there",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await writeFile(`${dir}/out`, new Uint8Array([9, 8, 7]));
+      assertEquals(
+        await Deno.readFile(`${dir}/out`),
+        new Uint8Array([9, 8, 7]),
+      );
+      await writeFile(`${dir}/out`, "text now");
+      assertEquals(await Deno.readTextFile(`${dir}/out`), "text now");
+      // With a mode, on every platform: Windows has no permission bits and
+      // ignores it, as Deno's own write does, and the contents still land.
+      await writeFile(`${dir}/out`, "with a mode", 0o644);
+      assertEquals(await Deno.readTextFile(`${dir}/out`), "with a mode");
+      await writeFile(`${dir}/fresh`, new Uint8Array([1, 2]), 0o600);
+      assertEquals(await Deno.readFile(`${dir}/fresh`), new Uint8Array([1, 2]));
+    });
+  },
 });
 
 test({
   name:
     "writeFile sets the mode on a new file and on one that exists, as Deno does",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       const bits = async (path: string) =>
@@ -226,103 +249,124 @@ test({
   },
 });
 
-test("each failure surfaces as the Deno error class it always was, keeping its code", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/file`, "x");
-    const missing = `${dir}/nope`;
-    const underFile = `${dir}/file/child`;
-    const pairs: Pair[] = [
-      [
-        "readFile missing",
-        () => readFile(missing),
-        () => Deno.readFile(missing),
-      ],
-      [
-        "readTextFile missing",
-        () => readTextFile(missing),
-        () => Deno.readTextFile(missing),
-      ],
-      ["stat missing", () => stat(missing), () => Deno.stat(missing)],
-      ["lstat missing", () => lstat(missing), () => Deno.lstat(missing)],
-      [
-        "lstatSync missing",
-        () => lstatSync(missing),
-        () => Deno.lstatSync(missing),
-      ],
-      [
-        "readFile of a directory",
-        () => readFile(dir),
-        () => Deno.readFile(dir),
-      ],
-      ["stat under a file", () => stat(underFile), () => Deno.stat(underFile)],
-      [
-        "readFile under a file",
-        () => readFile(underFile),
-        () => Deno.readFile(underFile),
-      ],
-      [
-        "writeFile under a file",
-        () => writeFile(underFile, "x"),
-        () => Deno.writeTextFile(underFile, "x"),
-      ],
-      [
-        "writeFile into a missing directory",
-        () => writeFile(`${missing}/f`, "x"),
-        () => Deno.writeTextFile(`${missing}/f`, "x"),
-      ],
-      [
-        "mkdirRecursive under a file",
-        () => mkdirRecursive(underFile),
-        () => Deno.mkdir(underFile, { recursive: true }),
-      ],
-    ];
-    assertEquals(await mismatches(pairs), []);
-    // The class is the real one, so a build's own instanceof check matches.
-    const caught = await readFile(missing).catch((error: unknown) => error);
-    assertEquals(caught instanceof Deno.errors.NotFound, true);
-    assertEquals(
-      caught instanceof Error && caught.cause instanceof Error,
-      true,
-    );
-  });
+test({
+  name:
+    "each failure surfaces as the Deno error class it always was, keeping its code",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "x");
+      const missing = `${dir}/nope`;
+      const underFile = `${dir}/file/child`;
+      const pairs: Pair[] = [
+        [
+          "readFile missing",
+          () => readFile(missing),
+          () => Deno.readFile(missing),
+        ],
+        [
+          "readTextFile missing",
+          () => readTextFile(missing),
+          () => Deno.readTextFile(missing),
+        ],
+        ["stat missing", () => stat(missing), () => Deno.stat(missing)],
+        ["lstat missing", () => lstat(missing), () => Deno.lstat(missing)],
+        [
+          "lstatSync missing",
+          () => lstatSync(missing),
+          () => Deno.lstatSync(missing),
+        ],
+        [
+          "readFile of a directory",
+          () => readFile(dir),
+          () => Deno.readFile(dir),
+        ],
+        [
+          "stat under a file",
+          () => stat(underFile),
+          () => Deno.stat(underFile),
+        ],
+        [
+          "readFile under a file",
+          () => readFile(underFile),
+          () => Deno.readFile(underFile),
+        ],
+        [
+          "writeFile under a file",
+          () => writeFile(underFile, "x"),
+          () => Deno.writeTextFile(underFile, "x"),
+        ],
+        [
+          "writeFile into a missing directory",
+          () => writeFile(`${missing}/f`, "x"),
+          () => Deno.writeTextFile(`${missing}/f`, "x"),
+        ],
+        [
+          "mkdirRecursive under a file",
+          () => mkdirRecursive(underFile),
+          () => Deno.mkdir(underFile, { recursive: true }),
+        ],
+      ];
+      assertEquals(await mismatches(pairs), []);
+      // The class is the real one, so a build's own instanceof check matches.
+      const caught = await readFile(missing).catch((error: unknown) => error);
+      assertEquals(caught instanceof Deno.errors.NotFound, true);
+      assertEquals(
+        caught instanceof Error && caught.cause instanceof Error,
+        true,
+      );
+    });
+  },
 });
 
-test("directories are made, listed, copied into, renamed and removed as Deno does", async () => {
-  await withTemp(async (dir) => {
-    await mkdir(`${dir}/d`);
-    await mkdir(`${dir}/d/sub`);
-    await writeFile(`${dir}/d/a.txt`, "a");
-    const names = (entries: { name: string; isDirectory: boolean }[]) =>
-      entries.map((entry) => `${entry.name}:${entry.isDirectory}`).sort();
-    assertEquals(
-      names(await readDir(`${dir}/d`)),
-      names(await Array.fromAsync(Deno.readDir(`${dir}/d`))),
-    );
-    assertEquals(names(await readDir(`${dir}/d`)), ["a.txt:false", "sub:true"]);
+test({
+  name:
+    "directories are made, listed, copied into, renamed and removed as Deno does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await mkdir(`${dir}/d`);
+      await mkdir(`${dir}/d/sub`);
+      await writeFile(`${dir}/d/a.txt`, "a");
+      const names = (entries: { name: string; isDirectory: boolean }[]) =>
+        entries.map((entry) => `${entry.name}:${entry.isDirectory}`).sort();
+      assertEquals(
+        names(await readDir(`${dir}/d`)),
+        names(await Array.fromAsync(Deno.readDir(`${dir}/d`))),
+      );
+      assertEquals(names(await readDir(`${dir}/d`)), [
+        "a.txt:false",
+        "sub:true",
+      ]);
 
-    await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
-    await writeFile(`${dir}/d/a.txt`, "changed");
-    await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
-    assertEquals(await readTextFile(`${dir}/d/b.txt`), "changed");
+      await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
+      await writeFile(`${dir}/d/a.txt`, "changed");
+      await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
+      assertEquals(await readTextFile(`${dir}/d/b.txt`), "changed");
 
-    await rename(`${dir}/d/b.txt`, `${dir}/d/a.txt`);
-    assertEquals(names(await readDir(`${dir}/d`)), ["a.txt:false", "sub:true"]);
+      await rename(`${dir}/d/b.txt`, `${dir}/d/a.txt`);
+      assertEquals(names(await readDir(`${dir}/d`)), [
+        "a.txt:false",
+        "sub:true",
+      ]);
 
-    await remove(`${dir}/d/a.txt`, false);
-    await remove(`${dir}/d/sub`, false);
-    assertEquals(await readDir(`${dir}/d`), []);
-    await writeFile(`${dir}/d/kept`, "x");
-    await remove(`${dir}/d`, true);
-    assertEquals(await failure(() => stat(`${dir}/d`)), {
-      kind: "NotFound",
-      code: "ENOENT",
+      await remove(`${dir}/d/a.txt`, false);
+      await remove(`${dir}/d/sub`, false);
+      assertEquals(await readDir(`${dir}/d`), []);
+      await writeFile(`${dir}/d/kept`, "x");
+      await remove(`${dir}/d`, true);
+      assertEquals(await failure(() => stat(`${dir}/d`)), {
+        kind: "NotFound",
+        code: "ENOENT",
+      });
     });
-  });
+  },
 });
 
 test({
   name: "a link holds its target as given, and is removed without its target",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await mkdir(`${dir}/real`);
@@ -348,127 +392,134 @@ test({
   },
 });
 
-test("directory, copy, rename and remove failures surface as Deno's do", async () => {
-  // Some of these succeed on one platform or another, and change what is on
-  // disk when they do, so each side of each pair gets a tree of its own.
-  const inFreshTree = async (call: (dir: string) => unknown) => {
-    let result: Failure = { kind: "not run", code: undefined };
-    await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/file`, "x");
-      await Deno.mkdir(`${dir}/full/inner`, { recursive: true });
-      result = await failure(() => call(dir));
-    });
-    return result;
-  };
-  const pairs = (dir: string): Pair[] => {
-    const missing = `${dir}/nope`;
-    const full = `${dir}/full`;
-    return [
-      ["mkdir existing", () => mkdir(full), () => Deno.mkdir(full)],
-      [
-        "mkdir without its parent",
-        () => mkdir(`${missing}/x`),
-        () => Deno.mkdir(`${missing}/x`),
-      ],
-      [
-        "mkdir under a file",
-        () => mkdir(`${dir}/file/x`),
-        () => Deno.mkdir(`${dir}/file/x`),
-      ],
-      [
-        "readDir missing",
-        () => readDir(missing),
-        () => Array.fromAsync(Deno.readDir(missing)),
-      ],
-      [
-        "readDir of a file",
-        () => readDir(`${dir}/file`),
-        () => Array.fromAsync(Deno.readDir(`${dir}/file`)),
-      ],
-      [
-        "remove missing",
-        () => remove(missing, false),
-        () => Deno.remove(missing),
-      ],
-      [
-        "remove missing, recursive",
-        () => remove(missing, true),
-        () => Deno.remove(missing, { recursive: true }),
-      ],
-      [
-        "remove a directory that is not empty",
-        () => remove(full, false),
-        () => Deno.remove(full),
-      ],
-      [
-        "copyFile missing",
-        () => copyFile(missing, `${dir}/out`),
-        () => Deno.copyFile(missing, `${dir}/out`),
-      ],
-      [
-        "copyFile into a missing directory",
-        () => copyFile(`${dir}/file`, `${missing}/out`),
-        () => Deno.copyFile(`${dir}/file`, `${missing}/out`),
-      ],
-      [
-        "copyFile of a directory",
-        () => copyFile(full, `${dir}/out`),
-        () => Deno.copyFile(full, `${dir}/out`),
-      ],
-      [
-        "rename missing",
-        () => rename(missing, `${dir}/out`),
-        () => Deno.rename(missing, `${dir}/out`),
-      ],
-      [
-        "rename a file over a directory",
-        () => rename(`${dir}/file`, full),
-        () => Deno.rename(`${dir}/file`, full),
-      ],
-      [
-        "rename a directory over a file",
-        () => rename(full, `${dir}/file`),
-        () => Deno.rename(full, `${dir}/file`),
-      ],
-      [
-        "readLink missing",
-        () => readLink(missing),
-        () => Deno.readLink(missing),
-      ],
-      [
-        "readLink of a file",
-        () => readLink(`${dir}/file`),
-        () => Deno.readLink(`${dir}/file`),
-      ],
-    ];
-  };
-  const count = pairs("").length;
-  const found: string[] = [];
-  for (let index = 0; index < count; index++) {
-    const name = pairs("")[index][0];
-    const a = await inFreshTree((dir) => pairs(dir)[index][1]());
-    const b = await inFreshTree((dir) => pairs(dir)[index][2]());
-    if (a.kind !== b.kind || a.code !== b.code) {
-      found.push(`${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`);
+test({
+  name: "directory, copy, rename and remove failures surface as Deno's do",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    // Some of these succeed on one platform or another, and change what is on
+    // disk when they do, so each side of each pair gets a tree of its own.
+    const inFreshTree = async (call: (dir: string) => unknown) => {
+      let result: Failure = { kind: "not run", code: undefined };
+      await withTemp(async (dir) => {
+        await Deno.writeTextFile(`${dir}/file`, "x");
+        await Deno.mkdir(`${dir}/full/inner`, { recursive: true });
+        result = await failure(() => call(dir));
+      });
+      return result;
+    };
+    const pairs = (dir: string): Pair[] => {
+      const missing = `${dir}/nope`;
+      const full = `${dir}/full`;
+      return [
+        ["mkdir existing", () => mkdir(full), () => Deno.mkdir(full)],
+        [
+          "mkdir without its parent",
+          () => mkdir(`${missing}/x`),
+          () => Deno.mkdir(`${missing}/x`),
+        ],
+        [
+          "mkdir under a file",
+          () => mkdir(`${dir}/file/x`),
+          () => Deno.mkdir(`${dir}/file/x`),
+        ],
+        [
+          "readDir missing",
+          () => readDir(missing),
+          () => Array.fromAsync(Deno.readDir(missing)),
+        ],
+        [
+          "readDir of a file",
+          () => readDir(`${dir}/file`),
+          () => Array.fromAsync(Deno.readDir(`${dir}/file`)),
+        ],
+        [
+          "remove missing",
+          () => remove(missing, false),
+          () => Deno.remove(missing),
+        ],
+        [
+          "remove missing, recursive",
+          () => remove(missing, true),
+          () => Deno.remove(missing, { recursive: true }),
+        ],
+        [
+          "remove a directory that is not empty",
+          () => remove(full, false),
+          () => Deno.remove(full),
+        ],
+        [
+          "copyFile missing",
+          () => copyFile(missing, `${dir}/out`),
+          () => Deno.copyFile(missing, `${dir}/out`),
+        ],
+        [
+          "copyFile into a missing directory",
+          () => copyFile(`${dir}/file`, `${missing}/out`),
+          () => Deno.copyFile(`${dir}/file`, `${missing}/out`),
+        ],
+        [
+          "copyFile of a directory",
+          () => copyFile(full, `${dir}/out`),
+          () => Deno.copyFile(full, `${dir}/out`),
+        ],
+        [
+          "rename missing",
+          () => rename(missing, `${dir}/out`),
+          () => Deno.rename(missing, `${dir}/out`),
+        ],
+        [
+          "rename a file over a directory",
+          () => rename(`${dir}/file`, full),
+          () => Deno.rename(`${dir}/file`, full),
+        ],
+        [
+          "rename a directory over a file",
+          () => rename(full, `${dir}/file`),
+          () => Deno.rename(full, `${dir}/file`),
+        ],
+        [
+          "readLink missing",
+          () => readLink(missing),
+          () => Deno.readLink(missing),
+        ],
+        [
+          "readLink of a file",
+          () => readLink(`${dir}/file`),
+          () => Deno.readLink(`${dir}/file`),
+        ],
+      ];
+    };
+    const count = pairs("").length;
+    const found: string[] = [];
+    for (let index = 0; index < count; index++) {
+      const name = pairs("")[index][0];
+      const a = await inFreshTree((dir) => pairs(dir)[index][1]());
+      const b = await inFreshTree((dir) => pairs(dir)[index][2]());
+      if (a.kind !== b.kind || a.code !== b.code) {
+        found.push(
+          `${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`,
+        );
+      }
     }
-  }
-  // The class is the same on every platform. On Windows two codes are not:
-  // Deno gives a wrong one for the first and none at all for the second,
-  // where node:fs names the failure, and that is kept.
-  assertEquals(
-    found,
-    Deno.build.os === "windows"
-      ? [
-        "readDir of a file: ours NotADirectory/ENOTDIR, Deno NotADirectory/ENOENT",
-        "readLink of a file: ours Error/EINVAL, Deno Error/undefined",
-      ]
-      : [],
-  );
+    // The class is the same on every platform. On Windows two codes are not:
+    // Deno gives a wrong one for the first and none at all for the second,
+    // where node:fs names the failure, and that is kept.
+    assertEquals(
+      found,
+      Deno.build.os === "windows"
+        ? [
+          "readDir of a file: ours NotADirectory/ENOTDIR, Deno NotADirectory/ENOENT",
+          "readLink of a file: ours Error/EINVAL, Deno Error/undefined",
+        ]
+        : [],
+    );
+  },
 });
 
 test({
   name: "a link onto a taken path fails as Deno's does",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await Deno.writeTextFile(`${dir}/file`, "x");
@@ -489,42 +540,52 @@ test({
   },
 });
 
-test("alreadyExists is the class and code of the file system's own refusal", async () => {
-  await withTemp(async (dir) => {
-    const made = alreadyExists("taken");
-    assertEquals(made instanceof Deno.errors.AlreadyExists, true);
-    assertEquals(made.message, "taken");
-    const real = await failure(() => mkdir(dir));
-    assertEquals(
-      { kind: made.constructor.name, code: "code" in made && made.code },
-      real,
-    );
-  });
+test({
+  name: "alreadyExists is the class and code of the file system's own refusal",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const made = alreadyExists("taken");
+      assertEquals(made instanceof Deno.errors.AlreadyExists, true);
+      assertEquals(made.message, "taken");
+      const real = await failure(() => mkdir(dir));
+      assertEquals(
+        { kind: made.constructor.name, code: "code" in made && made.code },
+        real,
+      );
+    });
+  },
 });
 
-test("makeTempDir makes a new, empty directory each time, where Deno makes its own", async () => {
-  const [a, b, theirs] = [
-    await makeTempDir(),
-    await makeTempDir(),
-    await Deno.makeTempDir(),
-  ];
-  try {
-    assertEquals(a === b, false);
-    assertEquals(await readDir(a), []);
-    // Beside Deno's, compared as the system resolves them.
-    const parent = async (path: string) => await Deno.realPath(`${path}/..`);
-    assertEquals(await parent(a), await parent(theirs));
-    if (Deno.build.os !== "windows") {
-      assertEquals((await stat(a)).mode, (await Deno.stat(theirs)).mode);
+test({
+  name:
+    "makeTempDir makes a new, empty directory each time, where Deno makes its own",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    const [a, b, theirs] = [
+      await makeTempDir(),
+      await makeTempDir(),
+      await Deno.makeTempDir(),
+    ];
+    try {
+      assertEquals(a === b, false);
+      assertEquals(await readDir(a), []);
+      // Beside Deno's, compared as the system resolves them.
+      const parent = async (path: string) => await Deno.realPath(`${path}/..`);
+      assertEquals(await parent(a), await parent(theirs));
+      if (Deno.build.os !== "windows") {
+        assertEquals((await stat(a)).mode, (await Deno.stat(theirs)).mode);
+      }
+    } finally {
+      for (const dir of [a, b, theirs]) await remove(dir, true);
     }
-  } finally {
-    for (const dir of [a, b, theirs]) await remove(dir, true);
-  }
+  },
 });
 
 test({
   name: "chmod sets the bits Deno's sets, and fails as Deno's does",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await writeFile(`${dir}/ours`, "x", 0o600);
@@ -549,7 +610,8 @@ test({
 
 test({
   name: "makeTempDir works without permission to read the environment",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       const module = new URL("../src/fs.ts", import.meta.url).href;
@@ -580,28 +642,33 @@ test({
   },
 });
 
-test("createNew makes an empty file once, and refuses a taken path as Deno does", async () => {
-  await withTemp(async (dir) => {
-    await createNew(`${dir}/lock`);
-    assertEquals(await readFile(`${dir}/lock`), new Uint8Array());
-    await Deno.mkdir(`${dir}/sub`);
-    const theirs = (path: string) => async () =>
-      (await Deno.open(path, { createNew: true, write: true })).close();
-    const pairs: Pair[] = [
-      ["a taken path", () => createNew(`${dir}/lock`), theirs(`${dir}/lock`)],
-      ["a directory", () => createNew(`${dir}/sub`), theirs(`${dir}/sub`)],
-      [
-        "a missing directory",
-        () => createNew(`${dir}/nope/lock`),
-        theirs(`${dir}/nope/lock`),
-      ],
-    ];
-    assertEquals(await mismatches(pairs), []);
-    // Refused, not replaced: what was there is untouched.
-    await writeFile(`${dir}/lock`, "held");
-    await failure(() => createNew(`${dir}/lock`));
-    assertEquals(await readTextFile(`${dir}/lock`), "held");
-  });
+test({
+  name:
+    "createNew makes an empty file once, and refuses a taken path as Deno does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await createNew(`${dir}/lock`);
+      assertEquals(await readFile(`${dir}/lock`), new Uint8Array());
+      await Deno.mkdir(`${dir}/sub`);
+      const theirs = (path: string) => async () =>
+        (await Deno.open(path, { createNew: true, write: true })).close();
+      const pairs: Pair[] = [
+        ["a taken path", () => createNew(`${dir}/lock`), theirs(`${dir}/lock`)],
+        ["a directory", () => createNew(`${dir}/sub`), theirs(`${dir}/sub`)],
+        [
+          "a missing directory",
+          () => createNew(`${dir}/nope/lock`),
+          theirs(`${dir}/nope/lock`),
+        ],
+      ];
+      assertEquals(await mismatches(pairs), []);
+      // Refused, not replaced: what was there is untouched.
+      await writeFile(`${dir}/lock`, "held");
+      await failure(() => createNew(`${dir}/lock`));
+      assertEquals(await readTextFile(`${dir}/lock`), "held");
+    });
+  },
 });
 
 test("of many callers racing to createNew one path, exactly one succeeds", async () => {
@@ -616,26 +683,31 @@ test("of many callers racing to createNew one path, exactly one succeeds", async
   });
 });
 
-test("realPath gives the path Deno's gives, and fails as Deno's does", async () => {
-  await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/a/b`, { recursive: true });
-    for (const path of [dir, `${dir}/a/b/..`, `${dir}/a/./b`]) {
-      assertEquals(await realPath(path), await Deno.realPath(path));
-    }
-    assertEquals(
-      await mismatches([[
-        "realPath missing",
-        () => realPath(`${dir}/nope`),
-        () => Deno.realPath(`${dir}/nope`),
-      ]]),
-      [],
-    );
-  });
+test({
+  name: "realPath gives the path Deno's gives, and fails as Deno's does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.mkdir(`${dir}/a/b`, { recursive: true });
+      for (const path of [dir, `${dir}/a/b/..`, `${dir}/a/./b`]) {
+        assertEquals(await realPath(path), await Deno.realPath(path));
+      }
+      assertEquals(
+        await mismatches([[
+          "realPath missing",
+          () => realPath(`${dir}/nope`),
+          () => Deno.realPath(`${dir}/nope`),
+        ]]),
+        [],
+      );
+    });
+  },
 });
 
 test({
   name: "realPath resolves a link as Deno's does",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       await Deno.mkdir(`${dir}/real`);
@@ -674,161 +746,201 @@ function chunked(
   });
 }
 
-test("openFile streams the bytes Deno's open does, with the owner and mode of its stat", async () => {
-  await withTemp(async (dir) => {
-    // Larger than one read, and not a multiple of it, so chunks are joined.
-    const bytes = new Uint8Array(200_001).map((_, index) => index % 251);
-    await Deno.writeFile(`${dir}/big`, bytes);
-    await Deno.writeFile(`${dir}/empty`, new Uint8Array());
-    for (const name of ["big", "empty"]) {
-      const ours = await openFile(`${dir}/${name}`);
-      using theirs = await Deno.open(`${dir}/${name}`);
-      const info = await theirs.stat();
-      assertEquals(ours.mode, info.mode);
-      // Windows has no owner: Deno reports none, node:fs zero.
-      assertEquals(ours.uid, info.uid ?? 0);
+test({
+  name:
+    "openFile streams the bytes Deno's open does, with the owner and mode of its stat",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      // Larger than one read, and not a multiple of it, so chunks are joined.
+      const bytes = new Uint8Array(200_001).map((_, index) => index % 251);
+      await Deno.writeFile(`${dir}/big`, bytes);
+      await Deno.writeFile(`${dir}/empty`, new Uint8Array());
+      for (const name of ["big", "empty"]) {
+        const ours = await openFile(`${dir}/${name}`);
+        using theirs = await Deno.open(`${dir}/${name}`);
+        const info = await theirs.stat();
+        assertEquals(ours.mode, info.mode);
+        // Windows has no owner: Deno reports none, node:fs zero.
+        assertEquals(ours.uid, info.uid ?? 0);
+        assertEquals(
+          await drained(ours.readable),
+          await Deno.readFile(`${dir}/${name}`),
+        );
+      }
+    });
+  },
+});
+
+test({
+  name:
+    "openFile closes the file when it is closed unread or its stream is cancelled",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeFile(`${dir}/file`, new Uint8Array(100_000));
+      // The test runner fails a test that leaves a file open.
+      await (await openFile(`${dir}/file`)).close();
+      const reader = (await openFile(`${dir}/file`)).readable.getReader();
+      await reader.read();
+      await reader.cancel();
+    });
+  },
+});
+
+test({
+  name: "openFile fails as Deno's open does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const theirs = (path: string) => async () =>
+        (await Deno.open(path)).close();
       assertEquals(
-        await drained(ours.readable),
-        await Deno.readFile(`${dir}/${name}`),
+        await mismatches([
+          ["missing", () => openFile(`${dir}/nope`), theirs(`${dir}/nope`)],
+          [
+            "under a missing directory",
+            () => openFile(`${dir}/nope/file`),
+            theirs(`${dir}/nope/file`),
+          ],
+        ]),
+        [],
       );
-    }
-  });
+    });
+  },
 });
 
-test("openFile closes the file when it is closed unread or its stream is cancelled", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeFile(`${dir}/file`, new Uint8Array(100_000));
-    // The test runner fails a test that leaves a file open.
-    await (await openFile(`${dir}/file`)).close();
-    const reader = (await openFile(`${dir}/file`)).readable.getReader();
-    await reader.read();
-    await reader.cancel();
-  });
-});
-
-test("openFile fails as Deno's open does", async () => {
-  await withTemp(async (dir) => {
-    const theirs = (path: string) => async () =>
-      (await Deno.open(path)).close();
-    assertEquals(
-      await mismatches([
-        ["missing", () => openFile(`${dir}/nope`), theirs(`${dir}/nope`)],
-        [
-          "under a missing directory",
-          () => openFile(`${dir}/nope/file`),
-          theirs(`${dir}/nope/file`),
-        ],
-      ]),
-      [],
-    );
-  });
-});
-
-test("writeStream writes every chunk in order, replacing what is there, as Deno's does", async () => {
-  await withTemp(async (dir) => {
-    const chunks = () => [
-      new Uint8Array([1, 2, 3]),
-      new Uint8Array(),
-      new Uint8Array(70_000).fill(7),
-      new Uint8Array([9]),
-    ];
-    await writeFile(`${dir}/ours`, "something longer than nothing");
-    await writeStream(`${dir}/ours`, chunked(chunks()));
-    await Deno.writeFile(`${dir}/theirs`, chunked(chunks()));
-    assertEquals(
-      await Deno.readFile(`${dir}/ours`),
-      await Deno.readFile(`${dir}/theirs`),
-    );
-    await writeStream(`${dir}/ours`, chunked([]));
-    assertEquals(await Deno.readFile(`${dir}/ours`), new Uint8Array());
-  });
-});
-
-test("writeStream fails with the stream's own error, and with Deno's for a path it cannot open", async () => {
-  await withTemp(async (dir) => {
-    const reset = new Error("connection reset");
-    const thrown = await writeStream(
-      `${dir}/partial`,
-      chunked([new Uint8Array([1])], reset),
-    ).catch((error: unknown) => error);
-    assertEquals(thrown, reset);
-
-    let cancelled = false;
-    const unread = () =>
-      new ReadableStream<Uint8Array<ArrayBuffer>>({
-        cancel() {
-          cancelled = true;
-        },
-      });
-    assertEquals(
-      await mismatches([[
-        "into a missing directory",
-        () => writeStream(`${dir}/nope/file`, unread()),
-        () => Deno.writeFile(`${dir}/nope/file`, unread()),
-      ]]),
-      [],
-    );
-    // Unlike Deno's, a stream that cannot be written is cancelled, so its
-    // source, such as a response body, is released rather than left open.
-    assertEquals(cancelled, true);
-  });
-});
-
-test("userId is the id Deno gives", () => {
-  assertEquals(userId(), Deno.uid());
-});
-
-test("the calls that do not wait give what Deno's give, and fail the same way", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/file`, "12345");
-    for (const path of [dir, `${dir}/file`]) {
-      assertEquals(statSync(path), shared(Deno.statSync(path)));
+test({
+  name:
+    "writeStream writes every chunk in order, replacing what is there, as Deno's does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const chunks = () => [
+        new Uint8Array([1, 2, 3]),
+        new Uint8Array(),
+        new Uint8Array(70_000).fill(7),
+        new Uint8Array([9]),
+      ];
+      await writeFile(`${dir}/ours`, "something longer than nothing");
+      await writeStream(`${dir}/ours`, chunked(chunks()));
+      await Deno.writeFile(`${dir}/theirs`, chunked(chunks()));
       assertEquals(
-        realPathSync(path),
-        Deno.realPathSync(path),
+        await Deno.readFile(`${dir}/ours`),
+        await Deno.readFile(`${dir}/theirs`),
       );
-    }
-    const missing = `${dir}/nope`;
-    assertEquals(
-      await mismatches([
-        [
-          "statSync missing",
-          () => statSync(missing),
-          () => Deno.statSync(missing),
-        ],
-        [
-          "realPathSync missing",
-          () => realPathSync(missing),
-          () => Deno.realPathSync(missing),
-        ],
-        [
-          "appendTextSync into a missing directory",
-          () => appendTextSync(`${missing}/log`, "x"),
-          () => Deno.writeTextFileSync(`${missing}/log`, "x", { append: true }),
-        ],
-      ]),
-      [],
-    );
-  });
+      await writeStream(`${dir}/ours`, chunked([]));
+      assertEquals(await Deno.readFile(`${dir}/ours`), new Uint8Array());
+    });
+  },
 });
 
-test("appendTextSync creates the file, then adds to its end, as Deno's append does", async () => {
-  await withTemp(async (dir) => {
-    for (const text of ["first\n", "second\n"]) {
-      appendTextSync(`${dir}/ours`, text);
-      Deno.writeTextFileSync(`${dir}/theirs`, text, { append: true });
-    }
-    assertEquals(await readTextFile(`${dir}/ours`), "first\nsecond\n");
-    assertEquals(
-      await readTextFile(`${dir}/ours`),
-      await readTextFile(`${dir}/theirs`),
-    );
-  });
+test({
+  name:
+    "writeStream fails with the stream's own error, and with Deno's for a path it cannot open",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const reset = new Error("connection reset");
+      const thrown = await writeStream(
+        `${dir}/partial`,
+        chunked([new Uint8Array([1])], reset),
+      ).catch((error: unknown) => error);
+      assertEquals(thrown, reset);
+
+      let cancelled = false;
+      const unread = () =>
+        new ReadableStream<Uint8Array<ArrayBuffer>>({
+          cancel() {
+            cancelled = true;
+          },
+        });
+      assertEquals(
+        await mismatches([[
+          "into a missing directory",
+          () => writeStream(`${dir}/nope/file`, unread()),
+          () => Deno.writeFile(`${dir}/nope/file`, unread()),
+        ]]),
+        [],
+      );
+      // Unlike Deno's, a stream that cannot be written is cancelled, so its
+      // source, such as a response body, is released rather than left open.
+      assertEquals(cancelled, true);
+    });
+  },
+});
+
+test({
+  name: "userId is the id Deno gives",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: () => {
+    assertEquals(userId(), Deno.uid());
+  },
+});
+
+test({
+  name:
+    "the calls that do not wait give what Deno's give, and fail the same way",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "12345");
+      for (const path of [dir, `${dir}/file`]) {
+        assertEquals(statSync(path), shared(Deno.statSync(path)));
+        assertEquals(
+          realPathSync(path),
+          Deno.realPathSync(path),
+        );
+      }
+      const missing = `${dir}/nope`;
+      assertEquals(
+        await mismatches([
+          [
+            "statSync missing",
+            () => statSync(missing),
+            () => Deno.statSync(missing),
+          ],
+          [
+            "realPathSync missing",
+            () => realPathSync(missing),
+            () => Deno.realPathSync(missing),
+          ],
+          [
+            "appendTextSync into a missing directory",
+            () => appendTextSync(`${missing}/log`, "x"),
+            () =>
+              Deno.writeTextFileSync(`${missing}/log`, "x", { append: true }),
+          ],
+        ]),
+        [],
+      );
+    });
+  },
+});
+
+test({
+  name:
+    "appendTextSync creates the file, then adds to its end, as Deno's append does",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      for (const text of ["first\n", "second\n"]) {
+        appendTextSync(`${dir}/ours`, text);
+        Deno.writeTextFileSync(`${dir}/theirs`, text, { append: true });
+      }
+      assertEquals(await readTextFile(`${dir}/ours`), "first\nsecond\n");
+      assertEquals(
+        await readTextFile(`${dir}/ours`),
+        await readTextFile(`${dir}/theirs`),
+      );
+    });
+  },
 });
 
 test({
   name: "appendTextSync leaves a file's mode alone, and makes one with Deno's",
-  ignore: Deno.build.os === "windows",
+  denoOnly: "compares fs.ts with the Deno call it replaces",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       appendTextSync(`${dir}/ours`, "x");

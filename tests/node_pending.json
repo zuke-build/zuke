@@ -1,11 +1,5 @@
 [
   "packages/cli/tests/setup_test.ts",
-  "packages/core/tests/ambient_output_test.ts",
-  "packages/core/tests/file_test.ts",
-  "packages/core/tests/fs_test.ts",
-  "packages/core/tests/process_test.ts",
-  "packages/core/tests/runtime_tasks_test.ts",
-  "packages/core/tests/stream_net_test.ts",
   "tests/integration/canary_example_test.ts",
   "tests/integration/engine_conformance_test.ts",
   "tests/integration/engine_host_test.ts",

@@ -1,7 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
+import { ARGS, EVAL } from "../../../tests/_eval.ts";
 import {
   assertEquals,
   assertRejects,
@@ -22,22 +24,27 @@ import { SpawnedProcess } from "../src/shell.ts";
 type Spawn = (command: string, options: ProcessOptions) => ChildProcess;
 
 /**
- * The two ways core starts one. Both run here: the Node one through Deno's
- * `node:child_process`, so every expectation below is held to on both.
+ * The ways core starts one. On Deno both run: the Node one through Deno's
+ * `node:child_process`, so every expectation below is held to on both. On
+ * Node, `spawnProcess` is the Node one.
  */
-const BACKENDS: [name: string, spawn: Spawn][] = [
-  ["Deno", spawnProcess],
-  ["Node", spawnOnNode],
-];
+const BACKENDS: [name: string, spawn: Spawn][] =
+  RuntimeTasks.facts().name === "deno"
+    ? [["Deno", spawnProcess], ["Node", spawnOnNode]]
+    : [["Node", spawnOnNode]];
 
-/** Start this Deno running `script`, with every stream piped. */
+/** A script's way to read all of its stdin, as text, into `input`. */
+const READ_INPUT =
+  'let input = ""; for await (const chunk of process.stdin) input += chunk;';
+
+/** Start the running runtime evaluating `script`, with every stream piped. */
 function run(
   spawn: Spawn,
   script: string,
   extra: Partial<ProcessOptions> = {},
 ) {
-  return spawn(Deno.execPath(), {
-    args: ["eval", script],
+  return spawn(RuntimeTasks.execPath(), {
+    args: [EVAL, script],
     stdin: "piped",
     stdout: "piped",
     stderr: "piped",
@@ -52,10 +59,10 @@ async function text(stream: ReadableStream<Uint8Array>): Promise<string> {
 
 for (const [backend, spawn] of BACKENDS) {
   test(`${backend}: spawnProcess starts the command with its arguments, one per entry`, async () => {
-    const child = run(spawn, "console.log(JSON.stringify(Deno.args))");
+    const child = run(spawn, `console.log(JSON.stringify(${ARGS}))`);
     // Nothing re-splits or re-quotes an argument: this one stays whole.
-    const odd = spawn(Deno.execPath(), {
-      args: ["eval", "console.log(JSON.stringify(Deno.args))", "a b", '"&c'],
+    const odd = spawn(RuntimeTasks.execPath(), {
+      args: [EVAL, `console.log(JSON.stringify(${ARGS}))`, "a b", '"&c'],
       stdout: "piped",
       stderr: "piped",
     });
@@ -71,13 +78,14 @@ for (const [backend, spawn] of BACKENDS) {
   });
 
   test(`${backend}: spawnProcess wires stdin, stdout, stderr, the directory and the environment`, async () => {
-    const dir = await Deno.makeTempDir();
+    const dir = await FileTasks.makeTempDirectory();
     const child = run(
       spawn,
-      `const input = await new Response(Deno.stdin.readable).text();
-       console.log(input + "|" + Deno.env.get("ZUKE_PROCESS_TEST") + "|" + Deno.realPathSync(Deno.cwd()));
+      `${READ_INPUT}
+       const real = process.getBuiltinModule("node:fs").realpathSync.native;
+       console.log(input + "|" + process.env.ZUKE_PROCESS_TEST + "|" + real(process.cwd()));
        console.error("to stderr");
-       Deno.exit(3);`,
+       process.exitCode = 3;`,
       { cwd: dir, env: { ZUKE_PROCESS_TEST: "set" } },
     );
     const writer = child.stdin.getWriter();
@@ -87,19 +95,19 @@ for (const [backend, spawn] of BACKENDS) {
       text(child.stdout),
       text(child.stderr),
     ]);
-    assertEquals(out.trim(), `typed|set|${await Deno.realPath(dir)}`);
+    assertEquals(out.trim(), `typed|set|${await FileTasks.realPath(dir)}`);
     assertEquals(err.trim(), "to stderr");
     assertEquals(await child.status, { success: false, code: 3, signal: null });
-    await Deno.remove(dir);
+    await FileTasks.remove(dir);
   });
 
   test(`${backend}: a child started from a cleared environment sees none of the parent's`, async () => {
-    Deno.env.set("ZUKE_PROCESS_PARENT", "inherited");
+    EnvTasks.set("ZUKE_PROCESS_PARENT", "inherited");
     try {
       const script =
-        `console.log(Deno.env.get("ZUKE_PROCESS_PARENT") + "|" + Deno.env.get("ZUKE_PROCESS_TEST"))`;
+        `console.log(process.env.ZUKE_PROCESS_PARENT + "|" + process.env.ZUKE_PROCESS_TEST)`;
       // A Windows program cannot start without knowing the system directory.
-      const system = Deno.env.get("SystemRoot");
+      const system = EnvTasks.get("SystemRoot");
       const base: Record<string, string> = system === undefined
         ? {}
         : { SystemRoot: system };
@@ -118,23 +126,26 @@ for (const [backend, spawn] of BACKENDS) {
         await child.status;
       }
     } finally {
-      Deno.env.delete("ZUKE_PROCESS_PARENT");
+      EnvTasks.delete("ZUKE_PROCESS_PARENT");
     }
   });
 
   test(`${backend}: a process run to its end gives its status and what it piped`, async () => {
     const options: ProcessOptions = {
       args: [
-        "eval",
-        `await Deno.stdout.write(new Uint8Array(300_000).fill(120));
+        EVAL,
+        `process.stdout.write(new Uint8Array(300_000).fill(120));
          console.error("to stderr");
-         Deno.exit(4);`,
+         process.exitCode = 4;`,
       ],
       stdin: "null",
       stdout: "piped",
       stderr: "piped",
     };
-    const output = await outputOf(spawn(Deno.execPath(), options), options);
+    const output = await outputOf(
+      spawn(RuntimeTasks.execPath(), options),
+      options,
+    );
     assertEquals(
       {
         success: output.success,
@@ -146,12 +157,15 @@ for (const [backend, spawn] of BACKENDS) {
     );
     // A stream that was not piped comes back empty.
     const quiet: ProcessOptions = {
-      args: ["eval", "console.log('unseen')"],
+      args: [EVAL, "console.log('unseen')"],
       stdin: "null",
       stdout: "null",
       stderr: "null",
     };
-    const silent = await outputOf(spawn(Deno.execPath(), quiet), quiet);
+    const silent = await outputOf(
+      spawn(RuntimeTasks.execPath(), quiet),
+      quiet,
+    );
     assertEquals(
       [silent.code, silent.stdout.length, silent.stderr.length],
       [0, 0, 0],
@@ -193,8 +207,8 @@ for (const [backend, spawn] of BACKENDS) {
   });
 
   test(`${backend}: a stream that was not piped is not there to read`, async () => {
-    const child = spawn(Deno.execPath(), {
-      args: ["eval", ""],
+    const child = spawn(RuntimeTasks.execPath(), {
+      args: [EVAL, ""],
       stdin: "null",
       stdout: "null",
       stderr: "null",
@@ -215,7 +229,7 @@ for (const [backend, spawn] of BACKENDS) {
       child.stderr.cancel(),
     ]);
     const status = await child.status;
-    if (Deno.build.os !== "windows") {
+    if (RuntimeTasks.os() !== "windows") {
       assertEquals(status, { success: false, code: 143, signal: "SIGTERM" });
     }
     assertEquals(status.success, false);
@@ -226,8 +240,8 @@ for (const [backend, spawn] of BACKENDS) {
   test(`${backend}: output larger than a pipe holds arrives whole, with input written meanwhile`, async () => {
     const child = run(
       spawn,
-      `const input = await new Response(Deno.stdin.readable).text();
-       await Deno.stdout.write(new TextEncoder().encode("x".repeat(1_000_000) + input.length));`,
+      `${READ_INPUT}
+       process.stdout.write("x".repeat(1_000_000) + input.length);`,
     );
     const writer = child.stdin.getWriter();
     const [out] = await Promise.all([
@@ -243,8 +257,8 @@ for (const [backend, spawn] of BACKENDS) {
   });
 
   test(`${backend}: closing the input of a child that has exited succeeds`, async () => {
-    const child = spawn(Deno.execPath(), {
-      args: ["eval", ""],
+    const child = spawn(RuntimeTasks.execPath(), {
+      args: [EVAL, ""],
       stdin: "piped",
       stdout: "null",
       stderr: "null",
@@ -254,11 +268,15 @@ for (const [backend, spawn] of BACKENDS) {
   });
 }
 
-test("Deno: a command that does not exist is refused at once", () => {
-  assertThrows(
-    () => spawnProcess("zuke-no-such-command-anywhere", { args: [] }),
-    Deno.errors.NotFound,
-  );
+test({
+  name: "Deno: a command that does not exist is refused at once",
+  denoOnly: "checks Deno's own NotFound from Deno.Command",
+  fn: () => {
+    assertThrows(
+      () => spawnProcess("zuke-no-such-command-anywhere", { args: [] }),
+      Deno.errors.NotFound,
+    );
+  },
 });
 
 test("Node: a command that does not exist is a child that never started", async () => {
@@ -282,8 +300,8 @@ test("Node: a command that does not exist is a child that never started", async 
 });
 
 test("Node: a directory that does not exist is a child that never started", async () => {
-  const child = spawnOnNode(Deno.execPath(), {
-    args: ["eval", ""],
+  const child = spawnOnNode(RuntimeTasks.execPath(), {
+    args: [EVAL, ""],
     cwd: "/zuke/no/such/directory",
     stdout: "null",
     stderr: "null",
@@ -292,8 +310,8 @@ test("Node: a directory that does not exist is a child that never started", asyn
 });
 
 test("Node: a signal the platform does not have is refused by name", async () => {
-  const child = spawnOnNode(Deno.execPath(), {
-    args: ["eval", ""],
+  const child = spawnOnNode(RuntimeTasks.execPath(), {
+    args: [EVAL, ""],
     stdin: "null",
     stdout: "null",
     stderr: "null",
@@ -349,8 +367,8 @@ test("a child's environment is the parent's with the added variables over it", (
 });
 
 test("runProcess starts the command and waits for it", async () => {
-  const output = await runProcess(Deno.execPath(), {
-    args: ["eval", "console.log('ran')"],
+  const output = await runProcess(RuntimeTasks.execPath(), {
+    args: [EVAL, "console.log('ran')"],
     stdin: "null",
     stdout: "piped",
     stderr: "null",
