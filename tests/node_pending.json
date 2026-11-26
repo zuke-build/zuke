@@ -1,7 +1,5 @@
 [
-  "packages/cli/tests/setup_test.ts",
   "tests/integration/canary_example_test.ts",
   "tests/integration/engine_conformance_test.ts",
-  "tests/integration/engine_host_test.ts",
-  "tests/integration/global_cli_test.ts"
+  "tests/integration/engine_host_test.ts"
 ]
