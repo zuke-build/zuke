@@ -32552,7 +32552,33 @@
           "name": "DprintFmtSettings",
           "doc": "Settings for `dprint fmt` (format files in place).",
           "extends": "DprintSettings",
-          "setters": []
+          "setters": [
+            {
+              "name": "stdin",
+              "doc": "Format `text` instead of files, as the file `name` would be formatted\n(`--stdin`): `name` is a file name, a path, or just an extension such as\n`ts`, and picks the plugin and the config's rules. The result is the\ncommand's stdout, and nothing is written.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
         },
         {
           "name": "DprintCheckSettings",

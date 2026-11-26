@@ -14,6 +14,13 @@ import {
   DprintTasks,
 } from "../src/dprint.ts";
 
+/** Exposes the text a run writes to the tool's standard input. */
+class StdinProbe extends DprintFmtSettings {
+  input(): string | undefined {
+    return this.stdinInput();
+  }
+}
+
 test("the default binary and subcommands are dprint fmt/check", () => {
   assertEquals(new DprintFmtSettings().argv(), ["dprint", "fmt"]);
   assertEquals(new DprintCheckSettings().argv(), ["dprint", "check"]);
@@ -37,6 +44,21 @@ test("dprint fmt: every option renders, files last", () => {
     "src",
     "mod.ts",
   ]);
+});
+
+test("dprint fmt: given text goes to stdin, and only its name is in the argv", () => {
+  const settings = new StdinProbe().config("dprint.json")
+    .stdin("ts", "const  x=1\n");
+  assertEquals(settings.argv(), [
+    "dprint",
+    "fmt",
+    "-c",
+    "dprint.json",
+    "--stdin",
+    "ts",
+  ]);
+  assertEquals(settings.input(), "const  x=1\n");
+  assertEquals(new StdinProbe().input(), undefined);
 });
 
 test("dprint check: minimal checks everything", () => {

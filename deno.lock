@@ -2513,7 +2513,7 @@
       },
       "packages/dprint": {
         "dependencies": [
-          "jsr:@zuke/core@^1.44.0"
+          "jsr:@zuke/core@^1.55.0"
         ]
       },
       "packages/engine": {
