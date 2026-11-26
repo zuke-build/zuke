@@ -106,6 +106,16 @@ export function isBatchFile(command: string): boolean {
   return /\.(cmd|bat)[. ]*$/i.test(command);
 }
 
+/**
+ * `name` without the dots and spaces Windows drops from its end. A loop, not
+ * a regular expression, whose backtracking a long run of them would make slow.
+ */
+function withoutTrailingDots(name: string): string {
+  let end = name.length;
+  while (end > 0 && (name[end - 1] === "." || name[end - 1] === " ")) end--;
+  return name.slice(0, end);
+}
+
 /** The value of the variable `name` in `env`, whatever the case of its name. */
 function variable(
   env: Readonly<Record<string, string | undefined>>,
@@ -285,7 +295,7 @@ export function invocation(
   if (!isBatchFile(resolved)) return { file: command, args, verbatim: false };
   // Windows drops dots and spaces from the end of a name; cmd.exe, given the
   // name in quotes, does not, and would not find the file.
-  const named = resolved.replace(/[. ]+$/, "");
+  const named = withoutTrailingDots(resolved);
   const script = resolvedBatchFile(named, searchPath, host.isFile);
   const target = shimTarget(script, host.readText, host.isFile);
   if (target !== null) {
