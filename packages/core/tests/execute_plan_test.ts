@@ -10,6 +10,7 @@
  * @module
  */
 
+import { EnvTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { testPlan } from "../../../tests/_fakes.ts";
 import { assertEquals } from "../../../tests/_assert.ts";
@@ -30,58 +31,40 @@ const CI_VARS = [
 function withLocalHost(fn: () => void): void {
   const saved = new Map<string, string | undefined>();
   for (const name of CI_VARS) {
-    saved.set(name, Deno.env.get(name));
-    Deno.env.delete(name);
+    saved.set(name, EnvTasks.get(name));
+    EnvTasks.delete(name);
   }
   try {
     fn();
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     }
   }
 }
 
-/** Run `fn` with the global `prompt` stubbed, restored afterwards. */
-function withPrompt(
-  stub: (message?: string, defaultValue?: string) => string | null,
-  fn: () => void,
-): void {
-  const original = globalThis.prompt;
-  globalThis.prompt = stub;
-  try {
-    fn();
-  } finally {
-    globalThis.prompt = original;
-  }
-}
-
 test("defaultPrompt never prompts when stdin is not a terminal", () => {
-  withLocalHost(() =>
-    withPrompt(() => {
-      throw new Error("prompt must not be reached");
-    }, () => {
-      assertEquals(
-        defaultPrompt("env", "target environment", false),
-        undefined,
-      );
-    })
-  );
+  withLocalHost(() => {
+    assertEquals(
+      defaultPrompt("env", "target environment", false, () => {
+        throw new Error("prompt must not be reached");
+      }),
+      undefined,
+    );
+  });
 });
 
 test("defaultPrompt asks at an interactive terminal, labelling flag and description", () => {
   withLocalHost(() => {
-    const asked: (string | undefined)[] = [];
-    withPrompt((message) => {
-      asked.push(message);
-      return "sit-7";
-    }, () => {
-      assertEquals(
-        defaultPrompt("env", "target environment", true),
-        "sit-7",
-      );
-    });
+    const asked: string[] = [];
+    assertEquals(
+      defaultPrompt("env", "target environment", true, (message) => {
+        asked.push(message);
+        return "sit-7";
+      }),
+      "sit-7",
+    );
     // The label names the flag the operator would have passed, with the
     // declared description so they know what is being asked for.
     assertEquals(asked, ["--env (target environment):"]);
@@ -90,13 +73,14 @@ test("defaultPrompt asks at an interactive terminal, labelling flag and descript
 
 test("a dismissed prompt leaves the parameter unset", () => {
   withLocalHost(() => {
-    const asked: (string | undefined)[] = [];
-    withPrompt((message) => {
-      asked.push(message);
-      return null; // the operator hit Ctrl-D / entered nothing
-    }, () => {
-      assertEquals(defaultPrompt("env", undefined, true), undefined);
-    });
+    const asked: string[] = [];
+    assertEquals(
+      defaultPrompt("env", undefined, true, (message) => {
+        asked.push(message);
+        return null; // the operator hit Ctrl-D / entered nothing
+      }),
+      undefined,
+    );
     // Without a description the label is the bare flag.
     assertEquals(asked, ["--env:"]);
   });

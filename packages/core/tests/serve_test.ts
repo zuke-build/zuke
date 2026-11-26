@@ -316,23 +316,31 @@ test("every Set-Cookie header is sent, not only the last", async () => {
   assertEquals(set, { "x-one": "1", "set-cookie": ["a=1", "b=2"] });
 });
 
-test("Node: a Host header that makes no URL is answered on the bound address", async () => {
-  await serving(serveOnNode, (request) => {
-    return new Response(new URL(request.url).pathname);
-  }, async (base) => {
-    const { port } = new URL(base);
-    const conn = await NetTasks.connect(Number(port));
-    await conn.write(
-      new TextEncoder().encode(
-        "GET /seen HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",
-      ),
-    );
-    const reply = await new Response(conn.readable).text();
-    assertEquals(reply.split("\r\n")[0], "HTTP/1.1 200 OK");
-    // The body, however it is framed, carries the path.
-    assertEquals(reply.split("\r\n\r\n")[1].includes("/seen"), true);
+/** Each server the malformed-`Host` case runs against. */
+const STARTS: Array<[name: string, start: Serve]> = [
+  ["Node", serveOnNode],
+  ["serve", serve],
+];
+
+for (const [name, start] of STARTS) {
+  test(`${name}: a Host header that makes no URL is answered on the bound address`, async () => {
+    await serving(start, (request) => {
+      return new Response(new URL(request.url).pathname);
+    }, async (base) => {
+      const { port } = new URL(base);
+      const conn = await NetTasks.connect(Number(port));
+      await conn.write(
+        new TextEncoder().encode(
+          "GET /seen HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",
+        ),
+      );
+      const reply = await new Response(conn.readable).text();
+      assertEquals(reply.split("\r\n")[0], "HTTP/1.1 200 OK");
+      // The body, however it is framed, carries the path.
+      assertEquals(reply.split("\r\n\r\n")[1].includes("/seen"), true);
+    });
   });
-});
+}
 
 test("a server whose signal was aborted before it starts resolves at once", async () => {
   const controller = new AbortController();
