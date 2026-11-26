@@ -99,7 +99,10 @@ regenerate them in the same PR.
   [Oxlint](https://oxc.rs/) (`.oxlintrc.json`) and type-checks with `tsc`
   (`tsconfig.json`); all three are pinned in the npm workspace (`package.json`),
   which the gate's `npmInstall` target installs, so they need Node. `npmBuild`
-  also uses npm, to install `tsc` and compile the packages for npm.
+  also uses npm, to install `tsc` and compile the packages for npm. The steps
+  that still run Deno itself (`apiDocs`, `docLint`, `apiReference` and
+  `publishJsr`) use the Deno release the launchers pin, which the build
+  installs, checksum-verified, into `.zuke/tools` (`build/deno_tool.ts`).
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 72 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,

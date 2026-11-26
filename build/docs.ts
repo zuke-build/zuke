@@ -16,6 +16,7 @@ import type {
   ProjectInfo,
 } from "@zuke/docs";
 import { packageEntrypoints, PACKAGES } from "./packages.ts";
+import { provisionedDeno } from "./deno_tool.ts";
 
 /** Project framing for the generated API docs (`@zuke/docs`). */
 const DOCS_PROJECT: ProjectInfo = {
@@ -108,8 +109,9 @@ export async function collectPackageDocs(): Promise<PackageDoc[]> {
     // typed surface in `llms-full.txt` and its
     // README — the "whole typed surface" the docs claim to carry.
     const entrypoints = await packageEntrypoints(dir);
+    const deno = await provisionedDeno();
     const { stdout } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
+      s.toolPath(deno).paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
     );
     docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
   }
@@ -173,8 +175,10 @@ export async function collectDocLintReports(): Promise<DocLintReport[]> {
   const reports: DocLintReport[] = [];
   for (const dir of PACKAGES) {
     const entrypoints = await packageEntrypoints(dir);
+    const deno = await provisionedDeno();
     const { stderr } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).lint().env({ NO_COLOR: "1" }).noThrow().quiet()
+      s.toolPath(deno).paths(...entrypoints).lint().env({ NO_COLOR: "1" })
+        .noThrow().quiet()
     );
     reports.push({
       pkg: `@zuke/${dir}`,

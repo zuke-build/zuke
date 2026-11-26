@@ -24,11 +24,13 @@ import {
   buildToolchain,
   CODECOV_CLI_VERSION,
   codecovTool,
+  denoTool,
   GITLEAKS_VERSION,
   gitleaksTool,
   ZIZMOR_VERSION,
   zizmorTool,
 } from "../build/scanners.ts";
+import { DENO_PIN } from "../packages/cli/src/deno_pin.ts";
 
 /** Enrich `{ os, arch }` into the {@link Platform} the resolvers are called with. */
 function platformFor(data: InstallPlatform): Platform {
@@ -174,5 +176,26 @@ test("an unpublished platform is named, not left to fail as a 404", () => {
     () => resolve(zizmorTool, { os: "windows", arch: "aarch64" }),
     Error,
     "zizmor publishes no pinned artifact for",
+  );
+});
+
+test("deno resolves the launchers' pinned release, a zip on every platform", () => {
+  const linux = resolve(denoTool, LINUX);
+  assertEquals(
+    linux.url,
+    `https://github.com/denoland/deno/releases/download/v${DENO_PIN.version}/deno-x86_64-unknown-linux-gnu.zip`,
+  );
+  assertEquals(linux.archive, "zip");
+  assertEquals(linux.binaryPath, "deno");
+  assertEquals(
+    linux.checksum,
+    DENO_PIN.checksums["x86_64-unknown-linux-gnu"],
+  );
+  const windows = resolve(denoTool, WINDOWS);
+  assertEquals(windows.archive, "zip");
+  assertEquals(windows.binaryPath, "deno.exe");
+  assertEquals(
+    windows.checksum,
+    DENO_PIN.checksums["x86_64-pc-windows-msvc"],
   );
 });

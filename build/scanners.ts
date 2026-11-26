@@ -3,8 +3,9 @@
 
 /**
  * The build's toolchain: the supply-chain scanners behind the `security`
- * target and the Codecov CLI behind `coverageUpload`, declared as pinned
- * toolchain entries so the build provisions them itself.
+ * target, the Codecov CLI behind `coverageUpload` and the Deno behind the
+ * `deno doc` and `deno publish` steps, declared as pinned toolchain entries so
+ * the build provisions them itself.
  *
  * This exists so the security workflow needs **no install step**. It used to
  * run `pipx install zizmor`, `go install actionlint`, and `go install gitleaks`
@@ -29,6 +30,7 @@ import {
   toolchain,
   type ToolInstallSettings,
 } from "@zuke/core";
+import { DENO_PIN, denoReleaseTag } from "../packages/cli/src/deno_pin.ts";
 
 /**
  * The pinned Codecov CLI version `coverageUpload` runs. Codecov serves
@@ -132,8 +134,8 @@ function pinned(
   return sha;
 }
 
-/** The cargo-dist target triple `zizmor` names its release artifacts with. */
-function zizmorTriple(platform: Platform): string {
+/** The Rust target triple zizmor and Deno name their release artifacts with. */
+function rustTriple(platform: Platform): string {
   const arch = platform.archLabel({ x86_64: "x86_64", aarch64: "aarch64" });
   const os = platform.osLabel({
     linux: "unknown-linux-gnu",
@@ -154,6 +156,25 @@ function inArchive(name: string): (platform: Platform) => string {
 }
 
 /**
+ * Declare `deno` on a toolchain: the release the launchers pin
+ * ({@link DENO_PIN}), at the checksums pinned there, which Deno publishes as one
+ * zip per target triple on every platform. The build's own Deno steps run it, so
+ * they need no Deno on PATH.
+ */
+export function denoTool(s: ToolInstallSettings): ToolInstallSettings {
+  return s
+    .name("deno")
+    .archive(() => "zip")
+    .binaryPath(inArchive("deno"))
+    .checksum((p) => pinned("deno", DENO_PIN.checksums, rustTriple(p)))
+    .url((p) =>
+      `https://github.com/denoland/deno/releases/download/${
+        denoReleaseTag(DENO_PIN)
+      }/deno-${rustTriple(p)}.zip`
+    );
+}
+
+/**
  * Declare `zizmor` on a toolchain: the Rust workflow analyzer, published by
  * cargo-dist as one flat archive per target triple.
  */
@@ -162,10 +183,10 @@ export function zizmorTool(s: ToolInstallSettings): ToolInstallSettings {
     .name("zizmor")
     .archive(packedAsZip)
     .binaryPath(inArchive("zizmor"))
-    .checksum((p) => pinned("zizmor", ZIZMOR_SHA256, zizmorTriple(p)))
+    .checksum((p) => pinned("zizmor", ZIZMOR_SHA256, rustTriple(p)))
     .url((p) =>
       `https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-${
-        zizmorTriple(p)
+        rustTriple(p)
       }.${packedAsZip(p)}`
     );
 }

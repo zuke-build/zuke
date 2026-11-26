@@ -12,6 +12,7 @@
 import { FileTasks } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 import { localVersion, packageEntrypoints, PACKAGES } from "./packages.ts";
+import { provisionedDeno } from "./deno_tool.ts";
 
 /**
  * A `deno doc --json` type node — the subset we render. `value` holds the
@@ -357,8 +358,10 @@ async function collectApiJson(): Promise<ApiPackage[]> {
   const packages: ApiPackage[] = [];
   for (const dir of PACKAGES) {
     const entrypoints = await packageEntrypoints(dir);
+    const deno = await provisionedDeno();
     const { stdout } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).json().env({ NO_COLOR: "1" }).quiet()
+      s.toolPath(deno).paths(...entrypoints).json().env({ NO_COLOR: "1" })
+        .quiet()
     );
     const root: DocRoot = JSON.parse(stdout);
     packages.push(transformPackage(dir, root));
