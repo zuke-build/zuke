@@ -15,12 +15,14 @@ import {
   buildRunArgs,
   defaultBuildProbe,
   defaultBuildRunner,
+  DENO_SUPPORT_NOTICE,
   embeddedEngineNotice,
   FORWARDED_ENV,
   LAUNCHER_FILE,
   locateBuild,
   LOCK_FILE,
   NO_LOCK_NOTICE,
+  owesDenoSupportNotice,
   type Ownership,
   runBuild,
   runningNotice,
@@ -1359,3 +1361,33 @@ test("runBuild runs a build file on Node as node <build>, unless a launcher or a
     [["ci"], "/opt/zuke"],
   ]);
 });
+
+test("owesDenoSupportNotice: a Deno build its launcher does not tell, and nothing else", async () => {
+  await withEnv({ [FORWARDED_ENV]: undefined }, () => owesCases());
+});
+
+async function owesCases(): Promise<void> {
+  const texts = {
+    "/d/zuke": `#!/usr/bin/env bash\necho "${DENO_SUPPORT_NOTICE}" >&2\n`,
+    "/old/zuke": "#!/usr/bin/env bash\nexec deno run -A zuke.ts\n",
+  };
+  const deno: BuildLocation = {
+    root: "/d",
+    frozen: true,
+    build: "zuke.ts",
+    runtime: "deno",
+    launcher: null,
+    engine: null,
+  };
+  const owes = (location: BuildLocation) =>
+    owesDenoSupportNotice(location, probe({ texts }));
+  assertEquals(await owes(deno), true);
+  assertEquals(await owes({ ...deno, launcher: "/d/zuke" }), false);
+  // A forwarded call runs Deno bare, so its launcher says nothing.
+  await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
+    assertEquals(await owes({ ...deno, launcher: "/d/zuke" }), true);
+  });
+  assertEquals(await owes({ ...deno, launcher: "/old/zuke" }), true);
+  assertEquals(await owes({ ...deno, runtime: "node" }), false);
+  assertEquals(await owes({ ...deno, engine: "1.0.0" }), false);
+}

@@ -57,7 +57,7 @@ import {
   type RuntimeFacts,
   RuntimeTasks,
 } from "@zuke/core";
-import { noLockNotice } from "./launcher.ts";
+import { denoSupportNotice, noLockNotice } from "./launcher.ts";
 import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
 import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
 import { type ProjectRuntime, runtimeNamed } from "./runtime_field.ts";
@@ -629,6 +629,27 @@ export function embeddedEngineNotice(
   return `zuke: this zuke's built-in @zuke/engine ${engine.version} cannot ` +
     `run ${CONFIG_FILE}'s ${location.engine}, so the project's launcher ` +
     "runs it";
+}
+
+/** The launchers' notice for a build on Deno, verbatim. */
+export const DENO_SUPPORT_NOTICE: string = denoSupportNotice("—");
+
+/**
+ * Whether `zuke` prints {@link DENO_SUPPORT_NOTICE} before running the build
+ * at `location`: a build on Deno that no launcher runs, or whose launcher
+ * was written before the launchers printed it themselves. A custom launcher
+ * that does not print it and calls `zuke` itself hears it twice. A build on Node,
+ * or one another SDK hosts, is told nothing.
+ */
+export async function owesDenoSupportNotice(
+  location: BuildLocation,
+  probe: BuildProbe,
+): Promise<boolean> {
+  if (location.engine !== null || location.runtime !== "deno") return false;
+  // runBuild skips the launcher when this is a launcher's own call, or one
+  // inherited from a build a launcher started: then nothing else says it.
+  return location.launcher === null || !viaLauncher(location) ||
+    !(await probe.readText(location.launcher)).includes(DENO_SUPPORT_NOTICE);
 }
 
 /** The launchers' notice for a run without a lockfile, verbatim. */

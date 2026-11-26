@@ -54,9 +54,11 @@ import {
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
+  DENO_SUPPORT_NOTICE,
   embeddedEngineNotice,
   locateBuild,
   NO_LOCK_NOTICE,
+  owesDenoSupportNotice,
   runBuild,
   runningNotice,
   servingEngine,
@@ -885,8 +887,12 @@ async function forwardToBuild(
     }
     const fallback = embeddedEngineNotice(location, engine);
     if (fallback !== undefined) output.error(fallback);
-    // A launcher has its own lockfile story to tell; only the bare `deno run`
-    // it stands in for is this notice's to report.
+    // A launcher prints its own notices; the CLI says where a Deno build
+    // stands only when the launcher it goes through does not.
+    if (await owesDenoSupportNotice(location, probe)) {
+      output.error(DENO_SUPPORT_NOTICE);
+    }
+    // Only the bare `deno run` a launcher stands in for is this notice's.
     // A hosted build has no Deno config for Deno to write a lock into, so
     // the launchers say nothing there, and neither does this.
     if (

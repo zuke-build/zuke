@@ -189,6 +189,12 @@ Both finish by scaffolding the launchers (and, for a `build.ts` build,
 `deno.json`), so the very next command you run can be your build's own CLI:
 `zuke`.
 
+A build on Deno says where it stands on every run: its launchers, and `zuke`
+when it runs the build without one or through one written before they did, print
+one line to stderr, that builds on Deno are supported until October 2027 and
+that `zuke setup --runtime node` moves the project to Node. A build on Node, or
+one another SDK hosts, prints nothing of the kind.
+
 A `pyproject.toml` import reads the first task table the file carries —
 `[tool.poe.tasks]`, `[tool.pdm.scripts]`, `[tool.hatch.envs.default.scripts]`,
 `[tool.taskipy.tasks]` or `[tool.rye.scripts]` — and scaffolds a Python build

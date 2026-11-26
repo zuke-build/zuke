@@ -62,6 +62,16 @@ export function noLockNotice(dash: string): string {
     "verification so Deno can write one.";
 }
 
+/**
+ * The line a build on Deno prints from its launcher, or from the CLI when it
+ * runs the build itself: how long Deno support is confirmed, and the command
+ * that moves the project to Node. `dash` as for {@link noLockNotice}.
+ */
+export function denoSupportNotice(dash: string): string {
+  return `zuke: builds on Deno are supported until October 2027 ${dash} run ` +
+    "zuke setup --runtime node to move this project to Node.";
+}
+
 export interface LauncherOptions {
   /**
    * Bootstrap a pinned, checksum-verified Deno when none is on `PATH`
@@ -286,6 +296,7 @@ ${bashResolveDeno(options, pin)}
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
+echo "${denoSupportNotice("—")}" >&2
 if [ -f deno.lock ]; then
   exec "$deno_bin" run -A --frozen ${build} "$@"
 else
@@ -449,10 +460,13 @@ ${pwshResolveDeno(options, pin)}
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
 $denoArgs = @("run", "-A")
+# Both notices go to stderr: Write-Warning lands on stdout for a caller that
+# ran this with -File, and stdout is the build's (--list --json, mcp).
+[Console]::Error.WriteLine("${denoSupportNotice("-")}")
 if (Test-Path (Join-Path $dir "deno.lock")) {
   $denoArgs += "--frozen"
 } else {
-  Write-Warning "${noLockNotice("-")}"
+  [Console]::Error.WriteLine("${noLockNotice("-")}")
 }
 $denoArgs += (Join-Path $dir "${build}")
 & $deno @denoArgs @args
