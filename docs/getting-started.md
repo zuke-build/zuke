@@ -13,6 +13,12 @@ Zuke is imported straight from JSR.
 
 ## Scaffold a project with `zuke setup`
 
+A new project's build runs on Node: `zuke setup` scaffolds what
+[the Node section](#scaffold-a-node-project-with-zuke-setup---runtime-node)
+below describes. This section is the Deno project, which `zuke setup --runtime
+deno` scaffolds and which a re-run of `zuke setup` in an existing Deno project
+keeps on Deno.
+
 The fastest start is the `@zuke/cli` tool. Install it once, then scaffold a
 starter `build.ts`, the `./zuke` launchers, a `deno.json` task, and a
 `zuke.json` config (which marks the repo root — see
@@ -56,10 +62,11 @@ the output.
 ## Scaffold a Node project with `zuke setup --runtime node`
 
 A build can run on Node 26 (which strips TypeScript types natively) instead of
-Deno:
+Deno, and a new project's does: `--runtime node` is the default for one.
 
 ```sh
-zuke setup --runtime node                   # in your project
+zuke setup                                  # in a new project
+zuke setup --runtime node                   # in a Deno project, to convert it
 ./zuke                                      # run the build
 ```
 
@@ -76,6 +83,16 @@ dependencies.
 `npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
 npm too: the `npm` on `PATH`, or else the one beside the Node `./zuke`
 downloaded.
+
+In an existing Deno project, `zuke setup --runtime node` converts it in place,
+with or without `--force`. It adds `"runtime": "node"` to `zuke.json`, keeping
+its other fields, rewrites the launchers for Node, and declares in
+`package.json` `@zuke/core` and every other `@zuke/*` package `deno.json`
+imports, through their npm aliases. The build file and `deno.json` are kept: a
+note names what else `deno.json` imports, which the build no longer sees, and
+setup stops with a manual step if the build file still imports a `jsr:`
+specifier, which Node cannot load. Setup does not move a Node project back to
+Deno.
 
 ## Scaffold a Python project with `zuke setup --sdk python`
 

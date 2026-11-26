@@ -46,7 +46,7 @@
 [9.36, "o", "  create   zuke\r\n"]
 [9.48, "o", "  create   zuke.ps1\r\n"]
 [9.6, "o", "  create   zuke.json\r\n"]
-[9.72, "o", "  create   deno.json\r\n"]
+[9.72, "o", "  create   package.json\r\n"]
 [9.84, "o", "  create   .gitignore\r\n"]
 [10.14, "o", "Done \u2014 6 file(s) written. Next: zuke\r\n"]
 [10.74, "o", "Enjoying Zuke? Star zuke-build/zuke on GitHub? (uses your gh login to star on your behalf) [y/N] "]

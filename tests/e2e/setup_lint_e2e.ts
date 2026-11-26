@@ -88,7 +88,7 @@ async function assertClean(dir: string): Promise<void> {
 
 test("e2e: a `zuke setup` scaffold passes its own deno lint and fmt", async () => {
   await withScaffold(
-    ["setup", "--yes", "--name", "Demo"],
+    ["setup", "--yes", "--runtime", "deno", "--name", "Demo"],
     {},
     assertClean,
   );
@@ -124,7 +124,7 @@ test("e2e: setup completes a deno.json that already declares the zuke task", asy
   // `deno lint`'s no-import-prefix rule forbids writing the specifier inline,
   // no way to author around it either.
   await withScaffold(
-    ["setup", "--yes", "--force", "--name", "Legacy"],
+    ["setup", "--yes", "--runtime", "deno", "--force", "--name", "Legacy"],
     { "deno.json": `${JSON.stringify({ tasks: { zuke: "custom" } })}\n` },
     async (dir) => {
       await assertClean(dir);
@@ -185,7 +185,16 @@ test("e2e: setup leaves a delegated import map resolving for real", async () => 
 
     // ...setup reports the import as a manual step rather than writing it...
     assertEquals(
-      await main(["setup", "--yes", "--name", "Demo", "--dir", dir], host),
+      await main([
+        "setup",
+        "--yes",
+        "--runtime",
+        "deno",
+        "--name",
+        "Demo",
+        "--dir",
+        dir,
+      ], host),
       1,
     );
 

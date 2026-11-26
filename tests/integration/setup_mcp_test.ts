@@ -46,7 +46,17 @@ test({
     );
     try {
       const code = await main(
-        ["setup", "--yes", "--dir", dir, "--mcp", "--name", "Scaffolded"],
+        [
+          "setup",
+          "--yes",
+          "--runtime",
+          "deno",
+          "--dir",
+          dir,
+          "--mcp",
+          "--name",
+          "Scaffolded",
+        ],
         undefined,
         new FakePrompter(false),
       );

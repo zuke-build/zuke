@@ -27007,7 +27007,7 @@ interface SetupFlags
     The SDK whose build to scaffold (`--sdk python`): a `build.py` the engine
     runs, in place of a `zuke.ts`. Unset: a TypeScript build.
   runtime?: string
-    The runtime of a TypeScript build (`--runtime deno|node`). Unset: Deno, asked when interactive.
+    The runtime of a TypeScript build (`--runtime deno|node`). Unset: the project's own, else Node; asked when interactive.
   zuke?: string
     The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
     `zuke.json` pins. Unset: this zuke's own release.

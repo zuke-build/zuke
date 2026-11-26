@@ -175,7 +175,7 @@ test("main setup --sdk python --zuke pins that release", async () => {
 test("main setup --mcp registers a zuke.ts build on Deno, whichever CLI ran it", async () => {
   const host = new FakeHost();
   const code = await main(
-    ["setup", "--yes", "--mcp"],
+    ["setup", "--yes", "--runtime", "deno", "--mcp"],
     host,
     new FakePrompter(false),
     undefined,
@@ -236,7 +236,10 @@ test("main --help documents --sdk and upgrade --engine", async () => {
 test("main setup --yes scaffolds the bootstrapping launchers by default", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true);
-  assertEquals(await main(["setup", "--yes"], host, prompter), 0);
+  assertEquals(
+    await main(["setup", "--yes", "--runtime", "deno"], host, prompter),
+    0,
+  );
   assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
   assertEquals(host.files.get("zuke.ps1")?.includes("$DenoChecksums"), true);
   // --yes means no questions, the launcher one included.
@@ -246,7 +249,7 @@ test("main setup --yes scaffolds the bootstrapping launchers by default", async 
 test("main setup --no-bootstrap-deno scaffolds the plain launchers", async () => {
   const host = new FakeHost();
   const code = await main(
-    ["setup", "--yes", "--no-bootstrap-deno"],
+    ["setup", "--yes", "--runtime", "deno", "--no-bootstrap-deno"],
     host,
     new FakePrompter(false),
   );
@@ -265,7 +268,7 @@ test("main setup --no-bootstrap-deno scaffolds the plain launchers", async () =>
 test("main setup (interactive) asks about the launcher and honours a no", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true, false, "n");
-  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(await main(["setup", "--runtime", "deno"], host, prompter), 0);
   const question = prompter.asks.find((q) => q.includes("bootstrap a pinned"));
   assertEquals(question !== undefined, true);
   // The question names the release a yes will pin, so the choice is informed.
@@ -279,7 +282,7 @@ test("main setup (interactive) asks about the launcher and honours a no", async 
 test("main setup (interactive) takes Enter as the default: bootstrap", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true);
-  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(await main(["setup", "--runtime", "deno"], host, prompter), 0);
   assertEquals(
     prompter.asks.some((q) => q.includes("bootstrap a pinned")),
     true,
@@ -290,7 +293,11 @@ test("main setup (interactive) takes Enter as the default: bootstrap", async () 
 test("main setup (interactive) does not ask when a flag already answered", async () => {
   const host = new FakeHost();
   const prompter = new FakePrompter(true, "", true, false, "n");
-  const code = await main(["setup", "--bootstrap-deno"], host, prompter);
+  const code = await main(
+    ["setup", "--runtime", "deno", "--bootstrap-deno"],
+    host,
+    prompter,
+  );
   assertEquals(code, 0);
   assertEquals(
     prompter.asks.some((q) => q.includes("bootstrap a pinned")),
@@ -349,7 +356,7 @@ test("main --help documents both launcher flags", async () => {
 test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {
   const host = new FakeHost();
   const code = await main(
-    ["setup", "--yes", "--dir", "app", "--mcp"],
+    ["setup", "--yes", "--runtime", "deno", "--dir", "app", "--mcp"],
     host,
     new FakePrompter(false),
   );
@@ -583,7 +590,7 @@ test("main setup honours --dir", async () => {
   );
   assertEquals(code, 0);
   assertEquals(host.files.get("sub/build.ts")?.includes("class Widget"), true);
-  assertEquals(host.files.has("sub/deno.json"), true);
+  assertEquals(host.files.has("sub/package.json"), true);
   assertEquals(host.logs.some((l) => l.includes("into sub")), true);
 });
 
@@ -2369,12 +2376,42 @@ test("main setup (interactive) asks the runtime, and takes an answer of node", a
     true,
   );
   assertEquals(asked.some((q) => q.includes("Deno")), false);
-  const deno = new FakeHost();
+  // Enter takes the default, which is Node for a new project.
+  const fresh = new FakeHost();
   assertEquals(
-    await main(["setup"], deno, new FakePrompter(true, "", true)),
+    await main(["setup"], fresh, new FakePrompter(true, "", true)),
     0,
   );
+  assertEquals(fresh.files.has("package.json"), true);
+  assertEquals(fresh.files.has("deno.json"), false);
+});
+
+test("main setup keeps an existing project's runtime when --runtime is not given", async () => {
+  // A Deno project re-run without --runtime stays on Deno, and is not asked
+  // to move: the question's default is its own runtime.
+  const deno = new FakeHost({
+    "zuke.json": '{"name": "MyBuild"}\n',
+    "build.ts": 'import { Build } from "@zuke/core";\n',
+  });
+  const defaults: string[] = [];
+  const prompter = {
+    interactive: () => true,
+    ask: (q: string, fallback: string) => {
+      if (q.startsWith("Runtime")) defaults.push(fallback);
+      return fallback;
+    },
+    confirm: () => false,
+  };
+  assertEquals(await main(["setup"], deno, prompter), 0);
+  assertEquals(defaults, ["deno"]);
   assertEquals(deno.files.has("deno.json"), true);
+  assertEquals(deno.files.has("package.json"), false);
+  const yes = new FakeHost({
+    "zuke.json": '{"name": "MyBuild"}\n',
+    "build.ts": 'import { Build } from "@zuke/core";\n',
+  });
+  assertEquals(await main(["setup", "--yes"], yes, new FakePrompter(false)), 0);
+  assertEquals(yes.files.has("package.json"), false);
 });
 
 test("main setup refuses an unknown runtime, from the flag and from the question", async () => {

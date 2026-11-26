@@ -5,9 +5,10 @@ description: Set up Zuke — a code-first, strongly-typed build automation syste
 
 # Set up Zuke in a project
 
-Zuke defines builds as a TypeScript class run on **Deno**. Each target is a
-class field; targets reference each other by `this.<field>` (never strings).
-Packages are imported from **JSR** (`jsr:@zuke/...`), not npm.
+Zuke defines builds as a TypeScript class run on **Node** or **Deno**. Each
+target is a class field; targets reference each other by `this.<field>` (never
+strings). Packages come from npm in a Node project (`npm:@zuke-build/...`,
+aliased as `@zuke/...`) and from **JSR** (`jsr:@zuke/...`) in a Deno one.
 
 ## The fast path: `zuke setup`
 
@@ -19,7 +20,7 @@ deno install -A -g -n zuke jsr:@zuke/cli   # once, globally
 zuke setup                                 # in the project root
 zuke                                       # run the build
 zuke upgrade                               # later: update the global CLI
-zuke add docker                            # add a wrapper: jsr:@zuke/docker into deno.json
+zuke add docker                            # add a wrapper: @zuke/docker into package.json
 zuke relock --min-dep-age 0                # regenerate the lock (e.g. to move core forward)
 ```
 
@@ -65,9 +66,10 @@ directory.
 
 ### A Node project: `zuke setup --runtime node`
 
-To run the build on Node 26 instead of Deno, pass `--runtime node` (`--runtime
-deno` is the default; it cannot combine with `--sdk`). Setup writes `build.ts`,
-a `package.json` (created, or merged without overwriting: `"type": "module"` and
+A new project's build runs on Node 26: `--runtime node` is the default for one,
+and an existing project keeps its own runtime (`--runtime deno` scaffolds a Deno
+project; neither combines with `--sdk`). Setup writes `build.ts`, a
+`package.json` (created, or merged without overwriting: `"type": "module"` and
 the `@zuke/core` dependency `npm:@zuke-build/core@^1` are added when absent), a
 `zuke.json` with `"runtime": "node"`, Node launchers that bootstrap a pinned,
 checksum-verified Node, and a `.gitignore` entry for `node_modules/`. **A Node
@@ -80,6 +82,13 @@ dependencies.
 `npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
 npm too: the `npm` on `PATH`, or else the one beside the Node `./zuke`
 downloaded.
+
+`zuke setup --runtime node` in an existing Deno project converts it in place,
+`--force` or not: `zuke.json` gains `"runtime": "node"`, the launchers are
+rewritten for Node, and `package.json` declares every `@zuke/*` package
+`deno.json` imports. The build file and `deno.json` are kept; if the build file
+imports a `jsr:` specifier, switch it to the bare `@zuke/…` form, which setup
+asks for as a manual step. Setup never moves a Node project back to Deno.
 
 ### A Python project: `zuke setup --sdk python`
 

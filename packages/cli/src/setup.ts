@@ -21,7 +21,7 @@ import {
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { FileTasks, RuntimeTasks } from "@zuke/core";
-import { isRecord } from "./records.ts";
+import { forgivingField, isRecord, parsedRecord } from "./records.ts";
 import {
   assertBuildFileName,
   BUILD_FILE,
@@ -30,7 +30,7 @@ import {
 } from "./build_file.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { nodeLauncherBash, nodeLauncherPowerShell } from "./node_launcher.ts";
-import type { ProjectRuntime } from "./runtime_field.ts";
+import { type ProjectRuntime, runtimeNamed } from "./runtime_field.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
 import { lstatOrNull } from "./fs.ts";
@@ -453,7 +453,15 @@ interface ScaffoldFile {
   mode?: number;
   /** Whether this file is a launcher (its name comes from `launcherName`). */
   launcher?: boolean;
+  /**
+   * Whether a conversion to Node rewrites this file even when it exists and
+   * `--force` was not given.
+   */
+  converted?: boolean;
 }
+
+/** The line every launcher setup writes opens its description with. */
+const ZUKE_LAUNCHER = /^# Zuke (?:bootstrap )?launcher\b/m;
 
 /** The default launcher base name. */
 export const DEFAULT_LAUNCHER = "zuke";
@@ -514,6 +522,34 @@ export async function existingBuildFile(
     return buildFileNamed(await host.readText(config));
   }
   return await host.exists(joinPath(dir, BUILD_FILE)) ? BUILD_FILE : undefined;
+}
+
+/**
+ * Whether the project in `dir` is one another SDK hosts: its `zuke.json`
+ * names an `sdk`. A `zuke.json` that is a link is not read.
+ */
+async function hostedBySdk(dir: string, host: SetupHost): Promise<boolean> {
+  const config = joinPath(dir, "zuke.json");
+  return await host.exists(config) && !(await host.isSymlink(config)) &&
+    forgivingField(await host.readText(config), "sdk") !== undefined;
+}
+
+/**
+ * The runtime the TypeScript project in `dir` already runs on: the one its
+ * `zuke.json` names, Deno for one that names none or has a build file and no
+ * `zuke.json` yet. `undefined` for a new project.
+ *
+ * @throws {Error} when `zuke.json` names a runtime Zuke does not run on.
+ */
+export async function existingRuntime(
+  dir: string,
+  host: SetupHost,
+): Promise<ProjectRuntime | undefined> {
+  if (await existingBuildFile(dir, host) === undefined) return undefined;
+  const config = joinPath(dir, "zuke.json");
+  return await host.exists(config) && !(await host.isSymlink(config))
+    ? runtimeNamed(await host.readText(config))
+    : "deno";
 }
 
 /**
@@ -600,6 +636,26 @@ export async function runSetup(
         "--sdk python builds run on the zuke binary.",
     );
   }
+  if (sdk === undefined && await hostedBySdk(options.dir, host)) {
+    throw new Error(
+      "zuke setup: this project's build is hosted by another SDK (zuke.json " +
+        'names an "sdk"), so it has no TypeScript build to scaffold. Re-run ' +
+        "with --sdk python.",
+    );
+  }
+  const was = sdk === undefined
+    ? await existingRuntime(options.dir, host)
+    : undefined;
+  if (was === "node" && !node) {
+    throw new Error(
+      "zuke setup: this project's build runs on Node (zuke.json's " +
+        '"runtime": "node"); setup does not move it back to Deno.',
+    );
+  }
+  // A Deno project asked for Node is converted in place: its launchers and
+  // zuke.json are rewritten whether or not --force is given, since that is
+  // what the conversion is, and its build file and deno.json are kept.
+  const converting = node && was === "deno";
   if (sdk !== undefined && options.buildFile !== undefined) {
     throw new Error(
       "zuke setup: --build-file names a TypeScript build file; a Python " +
@@ -633,6 +689,7 @@ export async function runSetup(
         : binaryLauncherBash({ download: variant.bootstrapDeno }, sdk.pin),
       mode: 0o755,
       launcher: true,
+      converted: converting,
     },
     {
       name: `${launcher}.ps1`,
@@ -642,12 +699,16 @@ export async function runSetup(
         ? launcherPwsh(variant)
         : binaryLauncherPwsh({ download: variant.bootstrapDeno }, sdk.pin),
       launcher: true,
+      converted: converting,
     },
     {
       name: "zuke.json",
-      content: sdk === undefined
+      content: converting
+        ? await convertedConfig(options.dir, options.name, buildFile, host)
+        : sdk === undefined
         ? starterConfig(options.name, buildFile, options.runtime)
         : starterSdkConfig(options.name, sdk.pin.engine),
+      converted: converting,
     },
   ];
 
@@ -660,6 +721,8 @@ export async function runSetup(
     ...(sdk === undefined
       ? [{ name: node ? "package.json" : "deno.json", launcher: false }]
       : []),
+    // A conversion reads deno.json's imports, so it is held to the same rule.
+    ...(converting ? [{ name: "deno.json", launcher: false }] : []),
     { name: ".gitignore", launcher: false },
     ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
   ];
@@ -696,7 +759,11 @@ export async function runSetup(
   for (const item of scaffold) {
     const path = joinPath(options.dir, item.name);
     const existed = await host.exists(path);
-    if (existed && !options.force) {
+    // A conversion rewrites zuke.json, and a launcher only when what is there
+    // is one of Zuke's: a file of the project's own at that name is kept.
+    const rewrite = existed && item.converted === true &&
+      (item.launcher !== true || ZUKE_LAUNCHER.test(await host.readText(path)));
+    if (existed && !options.force && !rewrite) {
       host.log(`  skip     ${item.name}  (already exists)`);
       files.push({ path: item.name, status: "skipped" });
       continue;
@@ -715,7 +782,24 @@ export async function runSetup(
   }
 
   if (node) {
-    files.push(await setupPackageJson(options.dir, host, manualSteps, notes));
+    const dependencies = converting
+      ? await convertedDependencies(
+        options.dir,
+        buildFile,
+        host,
+        manualSteps,
+        notes,
+      )
+      : [STARTER_NPM_DEPENDENCY];
+    files.push(
+      await setupPackageJson(
+        options.dir,
+        dependencies,
+        host,
+        manualSteps,
+        notes,
+      ),
+    );
   } else if (sdk === undefined) {
     files.push(
       await setupDenoJson(
@@ -845,40 +929,122 @@ function packageNameFor(dir: string): string {
   return name === "" ? "zuke-build" : name;
 }
 
+/** A dependency `package.json` declares: its name, and its npm specifier. */
+type NpmDependency = readonly [string, string];
+
+/** The dependency every Node build has: `@zuke/core`, through its npm alias. */
+const STARTER_NPM_DEPENDENCY: NpmDependency = [
+  "@zuke/core",
+  zukeNpmDependency("core"),
+];
+
+/** A Zuke package's bare specifier, `@zuke/<name>`, without a subpath. */
+const ZUKE_PACKAGE = /^@zuke\/([a-z0-9][a-z0-9-]*)$/;
+
 /**
- * Create or merge `package.json` for a Node project: `type: module` and the
- * `@zuke/core` dependency, each only when absent. A different `type` is kept
- * and noted, since a CommonJS package cannot load the starter build; a file
- * that is not JSON is left alone and reported as a manual step.
+ * The `zuke.json` of the Deno project in `dir`, converted to Node: its own
+ * fields, with `"runtime": "node"`. A project with no `zuke.json` yet gets
+ * none of its own, so it gets the starter one.
+ *
+ * @throws {Error} when `zuke.json` is a link, which setup never reads or
+ * writes through, or not a JSON object, which nothing can merge into without
+ * losing it.
+ */
+async function convertedConfig(
+  dir: string,
+  name: string,
+  buildFile: string,
+  host: SetupHost,
+): Promise<string> {
+  const path = joinPath(dir, "zuke.json");
+  if (!(await host.exists(path))) return starterConfig(name, buildFile, "node");
+  if (await host.isSymlink(path)) {
+    throw new Error(
+      `zuke setup: refusing to convert ${path} — it is a symbolic link. ` +
+        "Replace it with a regular file, then re-run setup.",
+    );
+  }
+  const parsed = parsedRecord(await host.readText(path));
+  if (parsed === undefined) {
+    throw new Error(
+      `zuke setup: ${path} is not a JSON object, so it cannot be converted ` +
+        'to Node. Fix it, or add "runtime": "node" to it by hand.',
+    );
+  }
+  return `${JSON.stringify({ ...parsed, runtime: "node" }, null, 2)}\n`;
+}
+
+/**
+ * The dependencies a Deno project converted to Node declares in
+ * `package.json`: `@zuke/core`, and the npm alias of every other `@zuke/*`
+ * package its `deno.json` imports. What else `deno.json` imports is named in
+ * a note, since npm cannot install it under that name; a build file that
+ * still imports a `jsr:` specifier is a manual step, since Node cannot load
+ * one.
+ */
+async function convertedDependencies(
+  dir: string,
+  buildFile: string,
+  host: SetupHost,
+  steps: string[],
+  notes: string[],
+): Promise<NpmDependency[]> {
+  const dependencies = new Map([STARTER_NPM_DEPENDENCY]);
+  const denoJson = joinPath(dir, "deno.json");
+  if (await host.exists(denoJson)) {
+    const imports = parsedRecord(await host.readText(denoJson))?.imports;
+    const others: string[] = [];
+    for (const specifier of isRecord(imports) ? Object.keys(imports) : []) {
+      const zuke = ZUKE_PACKAGE.exec(specifier);
+      if (zuke === null) others.push(specifier);
+      else dependencies.set(specifier, zukeNpmDependency(zuke[1]));
+    }
+    notes.push(
+      `${denoJson} is kept, but the build no longer reads it on Node. ` +
+        (others.length === 0
+          ? "Remove it once nothing else uses it."
+          : `If ${buildFile} imports ${
+            others.join(", ")
+          }, add an npm equivalent to package.json.`),
+    );
+  }
+  const build = joinPath(dir, buildFile);
+  if (/["']jsr:/.test(await host.readText(build))) {
+    steps.push(
+      `${build} imports a jsr: specifier, which Node cannot load. Import ` +
+        "@zuke/* by bare specifier instead, as package.json declares it.",
+    );
+  }
+  return [...dependencies];
+}
+
+/**
+ * Create or merge `package.json` for a Node project: `type: module` and
+ * `dependencies`, each only when absent. A different `type` is kept and
+ * noted, since a CommonJS package cannot load the starter build; a file that
+ * is not JSON is left alone and reported as a manual step.
  */
 async function setupPackageJson(
   dir: string,
+  dependency: readonly NpmDependency[],
   host: SetupHost,
   steps: string[],
   notes: string[],
 ): Promise<FileResult> {
   const name = "package.json";
   const path = joinPath(dir, name);
-  const dependency: ReadonlyArray<readonly [string, string]> = [
-    ["@zuke/core", zukeNpmDependency("core")],
-  ];
   const exists = await host.exists(path);
   const root: Record<string, unknown> = {};
   let original = "";
   if (exists) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await host.readText(path));
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = parsedRecord(await host.readText(path));
     // Not JSON, or JSON that is not an object: either way not a manifest setup
     // can merge into, so it is left exactly as it is.
-    if (!isRecord(parsed)) {
+    if (parsed === undefined) {
       host.log(`  skip     ${name}  (not a JSON object, edit by hand)`);
       steps.push(
-        `${path} is not a JSON object. Add "type": "module" and a dependency ` +
-          `"@zuke/core": "${dependency[0][1]}" — the scaffolded build will ` +
+        `${path} is not a JSON object. Add "type": "module" and the ` +
+          `dependencies ${npmDependencyLines(dependency)} — the build will ` +
           "not run until you do.",
       );
       return { path: name, status: "skipped" };
@@ -897,26 +1063,34 @@ async function setupPackageJson(
     );
   }
   const declared = root.dependencies;
-  const added = !(isRecord(declared) && dependency[0][0] in declared);
+  const added = dependency.filter(([dep]) =>
+    !(isRecord(declared) && dep in declared)
+  );
   mergeMissing(root, "dependencies", dependency);
   // The launcher runs npm ci, which refuses a lockfile that no longer matches
   // package.json, so a dependency added beside an existing lock needs one
   // npm install to record it.
   const lock = joinPath(dir, "package-lock.json");
-  if (added && await host.exists(lock)) {
+  if (added.length > 0 && await host.exists(lock)) {
     steps.push(
       `Run \`npm install --ignore-scripts\` in ${dir} once to add ` +
-        `${dependency[0][0]} to package-lock.json: ./zuke installs with ` +
+        `${added.map(([dep]) => dep).join(", ")} to package-lock.json: ` +
+        "./zuke installs with " +
         "npm ci, which refuses a lockfile that does not match package.json.",
     );
   }
   if (exists && JSON.stringify(root) === original) {
-    host.log(`  skip     ${name}  (type and @zuke/core already declared)`);
+    host.log(`  skip     ${name}  (type and dependencies already declared)`);
     return { path: name, status: "skipped" };
   }
   await host.writeText(path, `${JSON.stringify(root, null, 2)}\n`);
   host.log(`  ${exists ? "update" : "create"}   ${name}`);
   return { path: name, status: exists ? "overwritten" : "created" };
+}
+
+/** The `dependencies` entries `steps` tells the reader to add, as JSON. */
+function npmDependencyLines(dependencies: readonly NpmDependency[]): string {
+  return dependencies.map(([dep, spec]) => `"${dep}": "${spec}"`).join(", ");
 }
 
 /** The `imports` entries `steps` tells the reader to add, as JSON lines. */
