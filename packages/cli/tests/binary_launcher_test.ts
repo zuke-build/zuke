@@ -13,8 +13,16 @@
 
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
-import { withTemp } from "../../../tests/_temp.ts";
-import { gzip, sha256Hex, tar } from "@zuke/core";
+import { makeTempDir, withTemp } from "../../../tests/_temp.ts";
+import {
+  FileTasks,
+  gzip,
+  NetTasks,
+  ProcessTasks,
+  RuntimeTasks,
+  sha256Hex,
+  tar,
+} from "@zuke/core";
 import {
   BINARY_LAUNCHER_MARKER,
   binaryLauncherBash,
@@ -128,9 +136,12 @@ async function withRelease(
   fn: (base: string, hits: () => number) => Promise<void>,
 ): Promise<void> {
   let hits = 0;
-  const wanted = `/cli-v${version}/zuke-${version}-${Deno.build.target}.tar.gz`;
-  const server = Deno.serve(
-    { hostname: "127.0.0.1", port: 0, onListen: () => {} },
+  // This platform's triple, as the launcher maps uname's spelling to it.
+  const triple = `${RuntimeTasks.arch()}-${
+    RuntimeTasks.os() === "darwin" ? "apple-darwin" : "unknown-linux-gnu"
+  }`;
+  const wanted = `/cli-v${version}/zuke-${version}-${triple}.tar.gz`;
+  const server = await NetTasks.serve(
     (request) => {
       if (new URL(request.url).pathname !== wanted) {
         return new Response("not found", { status: 404 });
@@ -140,9 +151,9 @@ async function withRelease(
     },
   );
   try {
-    await fn(`http://127.0.0.1:${server.addr.port}`, () => hits);
+    await fn(`http://127.0.0.1:${server.port}`, () => hits);
   } finally {
-    await server.shutdown();
+    await server.close();
   }
 }
 
@@ -166,18 +177,16 @@ async function runLauncher(
   args: string[],
   env: Record<string, string>,
 ): Promise<{ code: number; out: string; err: string }> {
-  const { code, stdout, stderr } = await new Deno.Command("bash", {
-    args: [`${dir}/zuke`, ...args],
-    cwd: dir,
-    env,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
+  const { code, stdout, stderr } = await ProcessTasks.run("bash", (s) => {
+    s.args(`${dir}/zuke`, ...args).cwd(dir).stdout("piped").stderr("piped");
+    for (const [name, value] of Object.entries(env)) s.env(name, value);
+    return s;
+  });
   const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
   return { code, out: decode(stdout), err: decode(stderr) };
 }
 
-const POSIX = Deno.build.os !== "windows";
+const POSIX = RuntimeTasks.os() !== "windows";
 
 test({
   name:
@@ -191,14 +200,14 @@ test({
         mode: 0o755,
       }]));
       const pin = pinFor("2.4.0", await sha256Hex(archive));
-      const project = await Deno.realPath(await Deno.makeTempDir({ dir }));
-      await Deno.writeTextFile(
+      const project = await FileTasks.realPath(await makeTempDir({ dir }));
+      await FileTasks.writeText(
         `${project}/zuke`,
         binaryLauncherBash(DOWNLOAD, pin),
       );
       await withRelease("2.4.0", archive, async (base, hits) => {
         const tmp = `${dir}/tmp`;
-        await Deno.mkdir(tmp);
+        await FileTasks.createDirectory(tmp, { recursive: false });
         const env = {
           ZUKE_INSTALL: `${dir}/install`,
           ZUKE_RELEASES_URL: base,
@@ -211,7 +220,7 @@ test({
         assertStringIncludes(first.out, "forwarded:1\n");
         assertStringIncludes(first.out, `root:${project}\n`);
         // The download is gone before the exec, which no trap outlives.
-        assertEquals([...Deno.readDirSync(tmp)], []);
+        assertEquals(await FileTasks.readDirectory(tmp), []);
         // Kept, so the second run downloads nothing and says nothing.
         const second = await runLauncher(project, ["test"], env);
         assertEquals(second.code, 0, second.err);
@@ -233,8 +242,8 @@ test({
         data: new TextEncoder().encode(FAKE_ZUKE),
         mode: 0o755,
       }]));
-      const project = await Deno.realPath(await Deno.makeTempDir({ dir }));
-      await Deno.writeTextFile(
+      const project = await FileTasks.realPath(await makeTempDir({ dir }));
+      await FileTasks.writeText(
         `${project}/zuke`,
         binaryLauncherBash(DOWNLOAD, pinFor("2.4.0", "f".repeat(64))),
       );
@@ -249,7 +258,7 @@ test({
       });
       let kept = true;
       try {
-        await Deno.stat(`${dir}/install/releases/2.4.0/zuke`);
+        await FileTasks.stat(`${dir}/install/releases/2.4.0/zuke`);
       } catch {
         kept = false;
       }
@@ -262,13 +271,13 @@ test({
   ignore: !POSIX,
   fn: () =>
     withTemp(async (dir) => {
-      const project = await Deno.realPath(await Deno.makeTempDir({ dir }));
-      await Deno.writeTextFile(
+      const project = await FileTasks.realPath(await makeTempDir({ dir }));
+      await FileTasks.writeText(
         `${project}/zuke`,
         binaryLauncherBash(PLAIN, testPin()),
       );
       const bin = `${dir}/bin`;
-      await Deno.mkdir(bin);
+      await FileTasks.createDirectory(bin, { recursive: false });
       // dirname, and the shell the fake runs on, from the system's own PATH.
       const system = "/usr/bin:/bin";
       const missing = await runLauncher(project, ["ci"], {
@@ -276,7 +285,7 @@ test({
       });
       assertEquals(missing.code, 1);
       assertStringIncludes(missing.err, "the zuke command is not on PATH");
-      await Deno.writeTextFile(`${bin}/zuke`, FAKE_ZUKE, { mode: 0o755 });
+      await FileTasks.writeText(`${bin}/zuke`, FAKE_ZUKE, (s) => s.mode(0o755));
       const found = await runLauncher(project, ["ci"], {
         PATH: `${bin}:${system}`,
       });
@@ -291,11 +300,11 @@ test({
   ignore: !POSIX,
   fn: () =>
     withTemp(async (dir) => {
-      const project = await Deno.realPath(await Deno.makeTempDir({ dir }));
-      await Deno.writeTextFile(
+      const project = await FileTasks.realPath(await makeTempDir({ dir }));
+      await FileTasks.writeText(
         `${project}/zuke`,
         binaryLauncherBash(PLAIN, testPin()),
-        { mode: 0o755 },
+        (s) => s.mode(0o755),
       );
       // The trailing ":" is the working directory, which is the project.
       const ran = await runLauncher(project, ["ci"], {
