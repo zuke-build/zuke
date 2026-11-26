@@ -14,7 +14,6 @@ import { test } from "./_testing.ts";
 import { type AbsolutePath, absolutePath } from "@zuke/core";
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { sharedInstall } from "../build/deno_tool.ts";
-import { ToolNotFoundError } from "@zuke/core/tooling";
 import { collectDocLintReports, collectPackageDocs } from "../build/docs.ts";
 import { collectApiJson } from "../build/api_reference.ts";
 import { publishPackage } from "../build/publish.ts";
@@ -43,8 +42,10 @@ test("a failed install rejects every caller", async () => {
 });
 
 test("every Deno step runs the Deno it is handed, not one from PATH", async () => {
-  // A path that exists nowhere: each step must fail naming it, which shows the
-  // provisioned path reaches the spawn, even with a real Deno on PATH.
+  // A binary that exists nowhere: each step must fail naming it, which shows the
+  // provisioned path reaches the spawn, even with a real Deno on PATH. Only the
+  // name is matched, and not the error class: Windows resolves the path onto a
+  // drive and reports a failed spawn rather than a ToolNotFoundError.
   const fake = "/nonexistent/provisioned-deno";
   const deno = () => Promise.resolve(fake);
   const steps = [
@@ -54,6 +55,6 @@ test("every Deno step runs the Deno it is handed, not one from PATH", async () =
     () => publishPackage("core", deno),
   ];
   for (const step of steps) {
-    await assertRejects(step, ToolNotFoundError, fake);
+    await assertRejects(step, Error, "provisioned-deno");
   }
 });
