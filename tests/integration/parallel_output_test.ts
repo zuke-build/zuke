@@ -160,16 +160,16 @@ class SerialFanOutBuild extends Build {
 }
 
 test("integration: a fan-out limited to one item at a time streams each item live", async () => {
-  let build: SerialFanOutBuild | undefined;
+  const made: { build?: SerialFanOutBuild } = {};
   class Probe extends SerialFanOutBuild {
     constructor() {
       super();
-      build = this;
+      made.build = this;
     }
   }
   const { code, lines } = await transcript(Probe, ["fan", "--plain"]);
   assertEquals(code === 0, true, lines.join("\n"));
-  assertEquals(build?.live, [true, true]);
+  assertEquals(made.build?.live, [true, true]);
 });
 
 class HungBuild extends Build {
@@ -186,16 +186,20 @@ class HungBuild extends Build {
 }
 
 test("integration: a forced exit prints what a hung target had written", async () => {
-  let build: HungBuild | undefined;
+  const made: { build?: HungBuild } = {};
   class Probe extends HungBuild {
     constructor() {
       super();
-      build = this;
+      made.build = this;
     }
   }
   const { code, lines } = await transcript(Probe, ["hung", "other", "--plain"]);
   assertEquals(code === 0, true, lines.join("\n"));
-  assertEquals(build?.seen.includes("BEFORE-HANG"), true, build?.seen);
+  assertEquals(
+    made.build?.seen.includes("BEFORE-HANG"),
+    true,
+    made.build?.seen,
+  );
   // Flushed once: the block is not printed again when the target settles.
   assertEquals(lines.filter((l) => l === "BEFORE-HANG").length, 1);
 });
@@ -221,16 +225,16 @@ class HungItemBuild extends Build {
 }
 
 test("integration: a forced exit flushes a fan-out item to the sink it launched with", async () => {
-  let build: HungItemBuild | undefined;
+  const made: { build?: HungItemBuild } = {};
   class Probe extends HungItemBuild {
     constructor() {
       super();
-      build = this;
+      made.build = this;
     }
   }
   const { code, lines } = await transcript(Probe, ["fan", "other", "--plain"]);
   assertEquals(code === 0, true, lines.join("\n"));
-  assertEquals(build?.seen.includes("ITEM-a"), true, build?.seen);
+  assertEquals(made.build?.seen.includes("ITEM-a"), true, made.build?.seen);
   assertEquals(lines.filter((l) => l === "ITEM-a").length, 1);
 });
 

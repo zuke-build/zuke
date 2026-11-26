@@ -212,9 +212,9 @@ reuses the same `.comment()` / `.commentToken()` / `.criteria()` /
 
 For good diagnoses the fixer wants the PR diff. `.diff((d) => d.fetchBase())`
 makes the fixer **fetch the base branch itself** — auto-detected from the CI
-environment (GitHub's `GITHUB_BASE_REF`) — so your workflow needs no manual
-`git fetch` step. Pass a branch (`.fetchBase("main")`) to be explicit; if the
-fetch can't run, the fixer falls back to the working-tree diff.
+environment (GitHub's `GITHUB_BASE_REF`) — so your workflow needs no manual `git
+fetch` step. Pass a branch (`.fetchBase("main")`) to be explicit; if the fetch
+can't run, the fixer falls back to the working-tree diff.
 
 ## Cost controls and learning
 

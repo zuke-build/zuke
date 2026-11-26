@@ -1177,10 +1177,11 @@ test("runBuild hands an env to the runner on both the launcher and the Deno path
       "--help",
     ]);
   });
-  assertEquals(seen, [["/r/zuke", env], [undefined, env], [
-    undefined,
-    undefined,
-  ]]);
+  assertEquals(seen, [
+    ["/r/zuke", env],
+    [undefined, env],
+    [undefined, undefined],
+  ]);
 });
 
 test("a root whose zuke.json names its build file runs that file", async () => {

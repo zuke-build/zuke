@@ -202,11 +202,11 @@ test("planCliRelease owes nothing for a version older than the first binary rele
       old,
       probe({ release: true, sums: false }, asked),
     );
-    assertEquals([plan.build, plan.tap, plan.chocolatey], [
-      false,
-      false,
-      false,
-    ], old);
+    assertEquals(
+      [plan.build, plan.tap, plan.chocolatey],
+      [false, false, false],
+      old,
+    );
     assertStringIncludes(
       plan.reason,
       `first binary release (${FIRST_BINARY_VERSION})`,

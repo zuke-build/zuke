@@ -130,11 +130,10 @@ test("materialize applies every target setting, group and config field", () => {
     const result = targets.get(name)?.onFailure_?.();
     return typeof result === "string" ? result : result?.name_;
   };
-  assertEquals([disposition("a"), disposition("b"), disposition("c")], [
-    "b",
-    "cancel-run",
-    "fail",
-  ]);
+  assertEquals(
+    [disposition("a"), disposition("b"), disposition("c")],
+    ["b", "cancel-run", "fail"],
+  );
   assertEquals(a?.group_?.members_.map((t) => t.name_), ["a", "b"]);
   assertEquals(build.deadline(), "45m");
   assertEquals(build.unforceable().map((t) => t.name_), ["c"]);
@@ -145,9 +144,10 @@ test("materialize wires condition and cacheKey to the worker only when declared"
   const Remote = materialize(
     parseManifest({
       name: "B",
-      targets: [{ name: "gated", condition: true, cacheKey: true }, {
-        name: "plain",
-      }],
+      targets: [
+        { name: "gated", condition: true, cacheKey: true },
+        { name: "plain" },
+      ],
     }),
     runner,
   );
@@ -365,10 +365,10 @@ test("materialize declares each parameter kind as parameter() would", () => {
   );
   assertEquals(params.get("tag")?.options_, ["dev", "ci"]);
   assertEquals(params.get("v")?.flagName_, "verbose");
-  assertEquals([params.get("s")?.secret_, params.get("s")?.envName_], [
-    true,
-    "S",
-  ]);
+  assertEquals(
+    [params.get("s")?.secret_, params.get("s")?.envName_],
+    [true, "S"],
+  );
 });
 
 test("materialize refuses a duplicate, a forward dependency, or an undeclared name", () => {

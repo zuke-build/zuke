@@ -82,33 +82,12 @@
     "cov": "deno run -A --frozen build.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
     "check": "deno check --frozen build.ts build tests packages examples",
-    "fmt": "deno fmt",
-    "fmt:check": "deno fmt --check",
+    "fmt": "dprint fmt",
+    "fmt:check": "dprint check",
     "lint": "deno lint",
     "spell": "deno run --allow-read --allow-env --allow-sys npm:cspell@9 lint --no-progress '**'",
     "ci": "deno run -A --frozen build.ts ci",
     "lock": "deno install"
-  },
-  "fmt": {
-    "include": [
-      "build.ts",
-      "build/",
-      "tests/",
-      "packages/",
-      "examples/",
-      "docs/",
-      "skills/",
-      ".github/",
-      "*.md"
-    ],
-    "exclude": [
-      "CHANGELOG.md",
-      "packages/*/CHANGELOG.md",
-      "examples/*/.github/",
-      "examples/*/*.yml",
-      "examples/*/package-lock.json",
-      "packages/engine/spec/tools.json"
-    ]
   },
   "lint": {
     "include": [

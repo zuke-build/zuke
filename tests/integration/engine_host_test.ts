@@ -1101,9 +1101,12 @@ test("tool.call runs a wrapper's task with the worker's environment and director
       name: "caller",
       calls: [
         toolCall("echo", [{
-          configure: [["prints", ["hi"]], ["printsEnv", [
-            "ZUKE_FAKE_ENV_MARK",
-          ]]],
+          configure: [
+            ["prints", ["hi"]],
+            ["printsEnv", [
+              "ZUKE_FAKE_ENV_MARK",
+            ]],
+          ],
         }]),
         toolCall("echo", [{
           configure: [["printsEnv", ["ZUKE_ENGINE_TOKEN"]], ["printsCwd", []]],
@@ -1308,10 +1311,10 @@ test({
             tasks: "DenoTasks",
             task: "eval",
             args: [{
-              configure: [["code", ["console.log(40 + 2)"]], [
-                "toolPath",
-                [RuntimeTasks.execPath()],
-              ]],
+              configure: [
+                ["code", ["console.log(40 + 2)"]],
+                ["toolPath", [RuntimeTasks.execPath()]],
+              ],
             }],
           },
         }],
@@ -1376,10 +1379,10 @@ test("a worker program that does not exist rejects the start and leaves no liste
   // process that never exits after the error is caught.
   const script = `
     import { WorkerHost } from ${
-    JSON.stringify(
-      new URL("../../packages/engine/src/host.ts", import.meta.url).href,
-    )
-  };
+      JSON.stringify(
+        new URL("../../packages/engine/src/host.ts", import.meta.url).href,
+      )
+    };
     try {
       await WorkerHost.start({ command: ["zuke-no-such-program-xyz"], cwd: process.cwd() });
     } catch (error) {

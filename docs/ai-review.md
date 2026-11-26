@@ -67,12 +67,10 @@ structured-output mode:
 - **OpenAI** → `response_format: { type: "json_schema", strict: true }`.
 - **Gemini** → `generationConfig.responseSchema`.
 
-The assessment is
-`{ score: 0–10, severity, summary, findings: [{ title,
-severity, file?, line?, detail? }] }`.
-The strict dialect (OpenAI/Claude) makes the optional fields nullable; the
-Gemini dialect drops `additionalProperties` and uses `nullable`. Both map to the
-same parsed result.
+The assessment is `{ score: 0–10, severity, summary, findings: [{ title,
+severity, file?, line?, detail? }] }`. The strict dialect (OpenAI/Claude) makes
+the optional fields nullable; the Gemini dialect drops `additionalProperties`
+and uses `nullable`. Both map to the same parsed result.
 
 ## Choosing the gate
 
@@ -396,16 +394,16 @@ thread** names, never for one its text mentions.
 Resolution needs GraphQL, and a token GitHub lets run the mutation, which it
 allows to repository **write** access: an App installation token minted with
 `contents: write` may resolve, while the Actions token, and an App token holding
-`pull_requests: write` alone, are refused with
-`Resource not accessible by integration` on the same scope that lets them post
-the reply. So a build that wants its threads closed mints an App token with
-`contents: write` for **both** jobs (`secrets` on the spec, below). If
-resolution is unavailable the outcome reply still lands — the part a human reads
-— and a note records that the thread stays open, with the host's reason. Two
-caveats worth knowing: GitHub validates anchors against its own merge-base diff,
-so a line that looks anchorable locally can still be refused (that finding falls
-back to the table), and a thread is not re-anchored when a later push moves the
-code — the summary table always carries the current location.
+`pull_requests: write` alone, are refused with `Resource not accessible by
+integration` on the same scope that lets them post the reply. So a build that
+wants its threads closed mints an App token with `contents: write` for **both**
+jobs (`secrets` on the spec, below). If resolution is unavailable the outcome
+reply still lands — the part a human reads — and a note records that the thread
+stays open, with the host's reason. Two caveats worth knowing: GitHub validates
+anchors against its own merge-base diff, so a line that looks anchorable locally
+can still be refused (that finding falls back to the table), and a thread is not
+re-anchored when a later push moves the code — the summary table always carries
+the current location.
 
 ### Who counts as a maintainer, per host
 
@@ -668,8 +666,8 @@ not change that — it is still the fork's code that runs.
 A reviewer that takes commands adds the flow that does cover forks. Name the
 mention maintainers address it by, and the generator adds a second job that runs
 the review **from the default branch's checkout, with the pull request fetched
-as data** whenever a maintainer comments `<mention> review` or
-`<mention> accept …` on any pull request:
+as data** whenever a maintainer comments `<mention> review` or `<mention> accept
+…` on any pull request:
 
 ```ts
 security = securityReviewer((r) =>
@@ -737,8 +735,8 @@ deliberately not in the gate: GitHub reports an organisation member whose
 membership is private as `CONTRIBUTOR` (it turned this repository's own
 maintainers away), and `MEMBER` and `COLLABORATOR` both include read-only
 accounts, so the field can neither admit nor refuse anyone correctly.
-`startsWith` is case-insensitive, and a reply that quotes the command
-(`> @acme-bot review`) does not start a run. The comment body is matched in the
+`startsWith` is case-insensitive, and a reply that quotes the command (`>
+@acme-bot review`) does not start a run. The comment body is matched in the
 expression and never interpolated into a `run:` line; the login reaches the
 build as env and is checked against the characters a login can contain before it
 is put in a URL.
@@ -826,11 +824,11 @@ that resolves its threads needs, because most threads are answered on push runs;
 repository whose pull-request job you would hand them to: it executes the pull
 request's own build, so everyone who can push a branch can read what it holds,
 while a fork's run receives no secrets from GitHub at all and the job's gate
-skips it besides. A job holding such a key should also block egress:
-`egress: "block"` with `allowedEndpoints` naming what the launcher and module
-resolution reach, and the generator adds each reviewer's provider host itself.
-Comments an App posts do trigger `issue_comment` workflows (unlike
-`GITHUB_TOKEN`'s), which is what the bot check in the gate is for.
+skips it besides. A job holding such a key should also block egress: `egress:
+"block"` with `allowedEndpoints` naming what the launcher and module resolution
+reach, and the generator adds each reviewer's provider host itself. Comments an
+App posts do trigger `issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which
+is what the bot check in the gate is for.
 
 **On GitLab, Azure DevOps and Bitbucket.** There is no App to mint from and no
 comment-started job to generate; a bot identity there is a token variable — a
@@ -969,20 +967,20 @@ self-heals lint failures, so every pass drawing on that key — review, verify,
 adjudication, and the fixer — draws down the same 500k-token cap. That number is
 a runaway guard rather than a throttle: a normal run costs a small fraction of
 it (the diff alone is capped at 20k tokens), so it only bites if something
-loops. Exhausting it **skips**, never fails — the reviewer prints
-`AI budget exhausted — <spend> of 500,000 tokens` on the console and in the
-summary, and the lint failure the fixer would have healed simply stands.
+loops. Exhausting it **skips**, never fails — the reviewer prints `AI budget
+exhausted — <spend> of 500,000 tokens` on the console and in the summary, and
+the lint failure the fixer would have healed simply stands.
 
 `.skipIfKeyMissing()` replaces an `.onlyWhen(() => this.openaiKey.isSet_())`
 gate on the target: rather than the target vanishing silently when a key is
 absent, the reviewer runs, sees no key, and prints a "skipped — no API key" line
 (and a matching job-summary note). The
-[`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
-`./zuke review` in two ways. On every same-repository pull request it runs as
-the `pull_request` job — non-fork only, so the secrets are never exposed to code
-the repository does not control — passing `OPENAI_API_KEY` and the
-`GITHUB_TOKEN` for the comments. And on any pull request, a fork's included, a
-maintainer starts it by commenting `@zuke-build review`: the
+[`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs `./zuke
+review` in two ways. On every same-repository pull request it runs as the
+`pull_request` job — non-fork only, so the secrets are never exposed to code the
+repository does not control — passing `OPENAI_API_KEY` and the `GITHUB_TOKEN`
+for the comments. And on any pull request, a fork's included, a maintainer
+starts it by commenting `@zuke-build review`: the
 [comment command](#on-demand-a-comment-command) job, derived from the reviewers'
 `commands("@zuke-build")`, runs the same target from master's checkout with that
 pull request fetched as data, posts as `zuke-build[bot]` (both reviewers share

@@ -58,11 +58,14 @@ test("a build gates on a metric read through PrometheusTasks", async () => {
 test("a Prometheus refusal echoing the token never prints it", async () => {
   prom = fakeFetch(() => answer());
   answer = () =>
-    Response.json({
-      status: "error",
-      errorType: "bad_data",
-      error: `invalid token ${TOKEN}`,
-    }, { status: 401 });
+    Response.json(
+      {
+        status: "error",
+        errorType: "bad_data",
+        error: `invalid token ${TOKEN}`,
+      },
+      { status: 401 },
+    );
   const { code, out, err } = await runCli(Gate, ["gate", "--token", TOKEN]);
   assertEquals(code, 1);
   assertStringIncludes(out + err, "HTTP 401 (bad_data)");
@@ -85,11 +88,13 @@ class Deploy extends Build {
       abort: (ctx) => platform.abort(ctx),
     })
       .steps(10)
-      .analysis(prometheus((p) =>
-        p.name("error ratio").url("https://prom.example")
-          .query('sum(rate(errors{rev="canary"}[5m])) or vector(0)')
-          .header("Authorization", `Bearer ${TOKEN}`).max(0.01).fetch(prom)
-      ))
+      .analysis(
+        prometheus((p) =>
+          p.name("error ratio").url("https://prom.example")
+            .query('sum(rate(errors{rev="canary"}[5m])) or vector(0)')
+            .header("Authorization", `Bearer ${TOKEN}`).max(0.01).fetch(prom)
+        ),
+      )
   );
 }
 
@@ -121,10 +126,12 @@ class InCluster extends Build {
       abort: (ctx) => platform.abort(ctx),
     })
       .steps(10)
-      .analysis(prometheus((p) =>
-        p.name("error ratio").url("http://prometheus.monitoring.svc:9090")
-          .query("sum(rate(errors[5m])) or vector(0)").max(0.01).fetch(prom)
-      ))
+      .analysis(
+        prometheus((p) =>
+          p.name("error ratio").url("http://prometheus.monitoring.svc:9090")
+            .query("sum(rate(errors[5m])) or vector(0)").max(0.01).fetch(prom)
+        ),
+      )
   );
 }
 

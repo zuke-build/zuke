@@ -57,10 +57,10 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 ## Options (all optional, with defaults)
 
 `.model(...)`, `.effort(...)`, `.diff((d) => d.base("origin/main"))`,
-`.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
-`.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
-`.onError("fail" | "warn")`, `.retry({ attempts: 3 })`, `.skipIfKeyMissing()`,
-`.comment()`, `.commentToken(...)`, `.quiet()`.
+`.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`, `.failWhen((g) =>
+g.scoreAbove(7) / g.severityAtLeast("high"))`, `.onError("fail" | "warn")`,
+`.retry({ attempts: 3 })`, `.skipIfKeyMissing()`, `.comment()`,
+`.commentToken(...)`, `.quiet()`.
 
 The v2 depth-and-discussion settings: `.conventionsFile("AGENTS.md")` (judge
 against the project's conventions document, read from the diff base so the
@@ -86,10 +86,10 @@ console and in the job summary so the gap is visible rather than silent.
 `.retry(...)` controls transient-failure retries (`HTTP 408/429/500/502/503/504`
 and network errors) and a per-attempt timeout. The default is **on** — three
 attempts with exponential backoff (1s, 2s, …), `Retry-After` honoured, and a 60s
-timeout per attempt so a stuck connection can't hang the build. Pass
-`{ attempts: 5 }` to retry more, `{ attempts: 1 }` to disable,
-`{ timeoutMs: 0 }` to drop the timeout. Helps absorb provider hiccups — notably
-Gemini's frequent 503 "model overloaded" responses.
+timeout per attempt so a stuck connection can't hang the build. Pass `{
+attempts: 5 }` to retry more, `{ attempts: 1 }` to disable, `{ timeoutMs: 0 }`
+to drop the timeout. Helps absorb provider hiccups — notably Gemini's frequent
+503 "model overloaded" responses.
 
 Each review prints a **start line** echoing its settings (provider/model, gate)
 and a **notice on every retry**, so a slow run reads as progress rather than a

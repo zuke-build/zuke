@@ -205,7 +205,7 @@ test("parseIdentities reads hash and name, once each", () => {
     `  1) ${HASH.toLowerCase()} "Developer ID Application: Example (ABCDE12345)"`,
     `  2) ${
       "F".repeat(40)
-    } "Apple Development: \"Quoted\" Name" (CSSMERR_TP_CERT_EXPIRED)`,
+    } "Apple Development: "Quoted" Name" (CSSMERR_TP_CERT_EXPIRED)`,
     "     2 identities found",
     "",
     "  Valid identities only",

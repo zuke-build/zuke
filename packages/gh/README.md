@@ -120,10 +120,10 @@ await GhTasks.repoSync((s) => s.source("upstream/app").branch("master"));
 await GhTasks.labelCreate((s) => s.name("flaky").color("d73a4a").force());
 ```
 
-`gh repo clone` and `gh repo fork` forward what follows a `--` separator to
-`git clone`, so shallow-clone flags go through `.gitArgs(...)` rather than a
-flag of gh's own. This group also names its repository as an **operand** rather
-than with `--repo` — `repoRename` is the one exception, where `-R` names the
+`gh repo clone` and `gh repo fork` forward what follows a `--` separator to `git
+clone`, so shallow-clone flags go through `.gitArgs(...)` rather than a flag of
+gh's own. This group also names its repository as an **operand** rather than
+with `--repo` — `repoRename` is the one exception, where `-R` names the
 repository being renamed — so `.repo(...)` is refused here with a message naming
 the operand to use instead. `repoEdit`'s toggles are tri-state, as gh's are:
 `.enableIssues()` turns one on and `.enableIssues(false)` turns it off.
@@ -162,13 +162,13 @@ await run(Release);
 ```
 
 - **Dispatch-once, then poll.** It dispatches on first reach, records a
-  correlation marker in the gate's durable state, and suspends. Each
-  `zuke resume --check` polls; a resume in a **different process** never
+  correlation marker in the gate's durable state, and suspends. Each `zuke
+  resume --check` polls; a resume in a **different process** never
   re-dispatches.
 - **Correlation.** `workflow_dispatch` returns no run id, so by default the
   trigger passes a marker input (default `zuke_marker`) and matches it against
-  the run's display title — the dispatched workflow must echo it:
-  `run-name: ${{ inputs.zuke_marker }}`. For a workflow you can't modify, use
+  the run's display title — the dispatched workflow must echo it: `run-name: ${{
+  inputs.zuke_marker }}`. For a workflow you can't modify, use
   `.correlate("created-window")` to claim the run created just after dispatch on
   the dispatch ref (best-effort; loud on ambiguity).
 - **Fast-fail.** If no run is identified within `.discoveryTimeout(...)`

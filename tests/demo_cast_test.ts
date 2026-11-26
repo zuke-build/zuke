@@ -30,7 +30,7 @@ import {
  * carries Deno's interactive-prompt sequences too.
  */
 // deno-lint-ignore no-control-regex
-const CONTROL_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]/g;
+const CONTROL_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]/g; // oxlint-disable-line no-control-regex
 
 /** The cast's whole output stream as plain text, one string. */
 async function castTranscript(): Promise<string> {

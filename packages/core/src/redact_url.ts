@@ -64,7 +64,7 @@ const LEADING_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
  * `https:/u:p@host`), which the URL parser still reads as an authority — at a
  * scheme boundary, not inside a word.
  */
-const BARE_WEB_SCHEME = /(?<![a-z])(?:https?|wss?|ftp):(?![\/\\]{2})/gi;
+const BARE_WEB_SCHEME = /(?<![a-z])(?:https?|wss?|ftp):(?![/\\]{2})/gi;
 
 /** Punctuation that ends a sentence around a URL rather than belonging to it. */
 const CLOSING = ")].,;:!?'\">";

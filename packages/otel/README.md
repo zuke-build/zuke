@@ -79,9 +79,9 @@ so it is safe to register unconditionally.
 - **Export is best-effort.** A collector that is down, slow, or rejecting is
   never allowed to fail (or stall, beyond the timeout) the build — telemetry
   failures are swallowed, the OpenTelemetry-SDK convention.
-- **The record is secret-free.** It is the same redacted projection
-  `zuke runs show` prints — `secret()` parameters are omitted and errors/state
-  are run through the redactor — so it is safe to export.
+- **The record is secret-free.** It is the same redacted projection `zuke runs
+  show` prints — `secret()` parameters are omitted and errors/state are run
+  through the redactor — so it is safe to export.
 
 <!-- ZUKE:API:START -->
 

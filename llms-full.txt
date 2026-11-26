@@ -11803,7 +11803,7 @@ class DockerComposeCanary
 
   constructor(configure: Configure<DockerComposeCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Compose runs replicas, so exposure is a share of instances.
   describe(): string
     `"Compose service app"`, for the build summary.
@@ -12864,7 +12864,7 @@ class KubectlCanary
 
   constructor(configure: Configure<KubectlCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Traffic follows ready pods, so exposure is a share of replicas.
   describe(): string
     `"Kubernetes deployment api (canary api-canary)"`, for the summary.
@@ -13902,7 +13902,7 @@ class HelmCanary
 
   constructor(configure: Configure<HelmCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Exposure is a share of replicas, quantised to whole pods.
   describe(): string
     `"Helm release api in prod"`, for the build summary.
@@ -17261,7 +17261,7 @@ class CloudRunCanary
 
   constructor(configure: Configure<CloudRunCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     Cloud Run splits requests, so exposure is a traffic share.
   describe(): string
     `"Cloud Run service api"`, for the build summary.
@@ -18923,7 +18923,7 @@ class AwsLambdaCanary
 
   constructor(configure: Configure<AwsLambdaCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     The alias splits invocations, so exposure is a traffic share.
   describe(): string
     `"Lambda alias api:live"`, for the build summary.
@@ -20144,7 +20144,7 @@ class AzContainerAppCanary
 
   constructor(configure: Configure<AzContainerAppCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     Container Apps splits requests, so exposure is a traffic share.
   describe(): string
     `"container app api"`, for the build summary.

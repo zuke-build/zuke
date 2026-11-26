@@ -96,30 +96,33 @@ export function bodyStream(incoming: Readable): ReadableStream<Uint8Array> {
   // arriving and then ends, and a stream told twice that it is over throws,
   // out of reach of any handler.
   let open = true;
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      incoming.on("data", (chunk: Uint8Array) => {
-        controller.enqueue(new Uint8Array(chunk));
-        if ((controller.desiredSize ?? 0) <= 0) incoming.pause();
-      });
-      incoming.once("end", () => {
-        if (open) controller.close();
+  return new ReadableStream<Uint8Array>(
+    {
+      start(controller) {
+        incoming.on("data", (chunk: Uint8Array) => {
+          controller.enqueue(new Uint8Array(chunk));
+          if ((controller.desiredSize ?? 0) <= 0) incoming.pause();
+        });
+        incoming.once("end", () => {
+          if (open) controller.close();
+          open = false;
+        });
+        incoming.once("error", (error) => {
+          if (open) controller.error(error);
+          open = false;
+        });
+        incoming.pause();
+      },
+      pull() {
+        incoming.resume();
+      },
+      cancel() {
         open = false;
-      });
-      incoming.once("error", (error) => {
-        if (open) controller.error(error);
-        open = false;
-      });
-      incoming.pause();
+        discard(incoming);
+      },
     },
-    pull() {
-      incoming.resume();
-    },
-    cancel() {
-      open = false;
-      discard(incoming);
-    },
-  }, { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength });
+    { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength },
+  );
 }
 
 /** The origin of a server bound to `hostname` and `port`. */

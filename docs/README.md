@@ -75,6 +75,6 @@
   [`SECURITY.md`](../SECURITY.md) are met.
 - [Security review](./security-review.md) — the performed security reviews:
   scope, method, findings, and outcomes.
-- [How Zuke compares](./comparison.md) — a capability matrix against
-  `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities
-  Zuke provides.
+- [How Zuke compares](./comparison.md) — a capability matrix against `deno
+  task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities Zuke
+  provides.

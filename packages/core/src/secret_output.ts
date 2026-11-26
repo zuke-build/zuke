@@ -314,7 +314,7 @@ function decodedBase64(value: string): string | undefined {
     return undefined;
   }
   // deno-lint-ignore no-control-regex
-  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text) // oxlint-disable-line no-control-regex
     ? undefined
     : text;
 }

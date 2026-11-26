@@ -72,12 +72,12 @@ deno run -A scripts/release.ts 1.1.0
   error names the command and its code. `.noThrow()` is the explicit opt-out,
   and `.code()` gives you the exit code as a number when that is what you want.
 - **Typed output.** `.text()` is trimmed stdout, `.lines()` is a `string[]`, and
-  both replace `$(...)`, `IFS` tricks and `$?`. `.quiet()` replaces
-  `> /dev/null 2>&1`.
-- **The rest of TypeScript.** Arrays expand to multiple arguments
-  (`` $`deno fmt ${files}` ``), a value can be validated before it is used, and
-  the editor knows what `$` returns. See the [shell guide](../shell.md) for
-  `.env()`, `.cwd()`, `.killAfter()` and `.spawn()`.
+  both replace `$(...)`, `IFS` tricks and `$?`. `.quiet()` replaces `> /dev/null
+  2>&1`.
+- **The rest of TypeScript.** Arrays expand to multiple arguments (`` $`deno fmt
+  ${files}` ``), a value can be validated before it is used, and the editor
+  knows what `$` returns. See the [shell guide](../shell.md) for `.env()`,
+  `.cwd()`, `.killAfter()` and `.spawn()`.
 
 ## When to take the next step
 

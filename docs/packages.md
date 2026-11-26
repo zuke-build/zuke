@@ -9,8 +9,8 @@ guidance.
 > **Looking for the exact API (humans and agents)?** Don't guess and don't shell
 > out — every tool is a typed wrapper. The complete, typed surface of every
 > package is in [`llms-full.txt`](../llms-full.txt) (one file), summarised in
-> [`llms.txt`](../llms.txt); for a single package run
-> `deno doc jsr:@zuke/<package>`. See also [`AGENTS.md`](../AGENTS.md).
+> [`llms.txt`](../llms.txt); for a single package run `deno doc
+> jsr:@zuke/<package>`. See also [`AGENTS.md`](../AGENTS.md).
 
 ## Core, CLI, and plugins
 

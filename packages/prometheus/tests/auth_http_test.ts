@@ -237,10 +237,10 @@ test("an answer over the cap is refused", async () => {
 test("a refusal reports the useful part of the answer, secrets masked", async () => {
   const cases: Array<[Response, string]> = [
     [
-      Response.json({
-        error: "invalid_grant",
-        error_description: "bad secret-value-1234",
-      }, { status: 400 }),
+      Response.json(
+        { error: "invalid_grant", error_description: "bad secret-value-1234" },
+        { status: 400 },
+      ),
       "HTTP 400: invalid_grant: bad [redacted]",
     ],
     [
@@ -248,9 +248,10 @@ test("a refusal reports the useful part of the answer, secrets masked", async ()
       "HTTP 401: invalid_client",
     ],
     [
-      Response.json({ error: { code: 403, message: "denied" } }, {
-        status: 403,
-      }),
+      Response.json(
+        { error: { code: 403, message: "denied" } },
+        { status: 403 },
+      ),
       "HTTP 403: denied",
     ],
     [

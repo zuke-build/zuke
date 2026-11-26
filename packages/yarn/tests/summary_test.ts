@@ -44,8 +44,8 @@ test("yarn: the hook reports onto the running target", async () => {
     );
     return Promise.resolve();
   });
-  assertEquals(summary.entries(), [{ key: "Added", value: "5" }, {
-    key: "Removed",
-    value: "0",
-  }]);
+  assertEquals(summary.entries(), [
+    { key: "Added", value: "5" },
+    { key: "Removed", value: "0" },
+  ]);
 });

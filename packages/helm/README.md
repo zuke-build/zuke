@@ -93,23 +93,23 @@ revision its history does not hold. The kube context still cannot be recorded,
 but one that now points at another cluster refuses rather than act, because that
 cluster's release will not have been first deployed at the same nanosecond — a
 strong check, not a proof. The refusal names both times and changes nothing, but
-the run is left cancelled with the canary release in place, so a resume or
-`zuke cancel` will not roll it back. To recover, point the kube context back at
-the cluster the rollout started on, check with `helm status <stable>` that it
+the run is left cancelled with the canary release in place, so a resume or `zuke
+cancel` will not roll it back. To recover, point the kube context back at the
+cluster the rollout started on, check with `helm status <stable>` that it
 reaches the release that was staged (a rollback run by hand has no record to
 check it against), then run the rollout's `<field>.abort` target by hand with
 `.stableRevision(n)` — the refusal names the revision `stage` recorded. If the
-release really was reinstalled, that revision is not in its history: check
-`helm history <stable>` and clean up by hand, uninstalling the canary release
-once the stable one is as it should be.
+release really was reinstalled, that revision is not in its history: check `helm
+history <stable>` and clean up by hand, uninstalling the canary release once the
+stable one is as it should be.
 
 What it relies on, and cannot check:
 
 - **The stable release's Service must select the canary release's pods too.** A
-  chart scaffolded by `helm create` selects on
-  `app.kubernetes.io/instance: <release>`, so its canary pods would take no
-  requests at all and every analysis would pass on the stable version alone. Use
-  a chart whose selector spans both releases.
+  chart scaffolded by `helm create` selects on `app.kubernetes.io/instance:
+  <release>`, so its canary pods would take no requests at all and every
+  analysis would pass on the stable version alone. Use a chart whose selector
+  spans both releases.
 - **The canary release inherits nothing from the stable one.** It is the chart's
   defaults plus `.values(...)`, so those files must reproduce the stable
   release's whole configuration — values only ever set by hand on the stable
@@ -214,7 +214,7 @@ class HelmCanary
 
   constructor(configure: Configure<HelmCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Exposure is a share of replicas, quantised to whole pods.
   describe(): string
     `"Helm release api in prod"`, for the build summary.

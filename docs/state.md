@@ -212,8 +212,7 @@ force was written. `zuke runs show` prints every override, and over
 
 A record also carries an append-only `events` array — the **audit trail** of
 [MCP](./mcp.md) tool calls against the run (time, tool, actor, outcome, redacted
-args). It is empty for a plain run and populated by the MCP server;
-`zuke runs
+args). It is empty for a plain run and populated by the MCP server; `zuke runs
 show` prints it.
 
 ## Per-target state — `ctx.state`
@@ -301,9 +300,9 @@ Talks to an HTTP service you host, using ETags for optimistic concurrency. This
 is the production path: point several machines (CI, developers) at one service
 and they share run state. The one-page contract is in
 [the state HTTP API](./state-api.md), and the
-[conformance kit](./state-api.md#notes-for-implementers)
-(`deno run -A jsr:@zuke/core/conformance --url …`) verifies your backend against
-it — don't re-derive correctness from the prose.
+[conformance kit](./state-api.md#notes-for-implementers) (`deno run -A
+jsr:@zuke/core/conformance --url …`) verifies your backend against it — don't
+re-derive correctness from the prose.
 
 ```ts
 import { HttpStateStore } from "@zuke/core";
@@ -370,11 +369,10 @@ exhaust the writer's retry budget, the last attempt's mutation is discarded
 along with the base it was applied to. And a mutation that was merely _held_ in
 memory is lost the moment a conflict replaces the record it was waiting in: the
 write that was going to carry it is the one that just conflicted, and the
-freshly read base has never seen it. Either way the writer sets
-**`degraded: true`** on the record, and the next write that _does_ land persists
-the flag (the failing write, by definition, could not carry it).
-`zuke runs show` prints it. So `degraded` means exactly one thing: **a mutation
-was permanently lost.**
+freshly read base has never seen it. Either way the writer sets **`degraded:
+true`** on the record, and the next write that _does_ land persists the flag
+(the failing write, by definition, could not carry it). `zuke runs show` prints
+it. So `degraded` means exactly one thing: **a mutation was permanently lost.**
 
 The concrete consequence is a target that succeeded but is still recorded
 `running` or `pending`. A resume trusts the record as written and re-runs every
@@ -463,10 +461,10 @@ so an accidental bare `prune` never wipes the store.
 
 Who owns retention depends on the backend. The **filesystem** store is dev-grade
 and single-host, so it owns its pruning through this CLI. For the **HTTP**
-backend, retention is the **server's** job (a TTL or scheduled sweep) —
-`GET /runs` takes a `limit` so large stores stay listable, and
-`DELETE /runs/:id` (which `prune` drives) is an optional endpoint a hosted store
-implements only if it wants the CLI to prune it too. See
+backend, retention is the **server's** job (a TTL or scheduled sweep) — `GET
+/runs` takes a `limit` so large stores stay listable, and `DELETE /runs/:id`
+(which `prune` drives) is an optional endpoint a hosted store implements only if
+it wants the CLI to prune it too. See
 [the state HTTP API](./state-api.md#notes-for-implementers).
 
 ## API stability

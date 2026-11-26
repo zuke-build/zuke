@@ -127,11 +127,10 @@ class Release extends Build {
   instead of eating the whole `.timeout()` — so a workflow that silently never
   echoes the marker surfaces in ~a minute. The deadline is measured from the
   persisted dispatch time, so it holds across a suspend/resume.
-- **Result.** On completion the per-job conclusions
-  (`{ passed, jobs: [{ name,
-  conclusion, url }] }`) are written to the gate
-  target's state; a dependent reads them with
-  `readWorkflowResult(ctx.stateOf("<gate>"))` and branches on a failed suite.
+- **Result.** On completion the per-job conclusions (`{ passed, jobs: [{ name,
+  conclusion, url }] }`) are written to the gate target's state; a dependent
+  reads them with `readWorkflowResult(ctx.stateOf("<gate>"))` and branches on a
+  failed suite.
 - **Auth** uses `GH_TOKEN` / `GITHUB_TOKEN`; the GitHub API is an injectable
   transport, so it is testable without a real GitHub.
 
@@ -164,11 +163,11 @@ run-name: ${{ inputs.zuke_marker }} # the ENTIRE run-name; equality, not substri
   defined and has **no access to run state** (`ctx.state`) — it can read params
   but not a value an earlier target recorded in run state, so an input whose
   value is produced at run time needs a custom `WaitTrigger`.
-- **Strict run-name equality.** Marker correlation matches
-  `display_title === marker` — **exact equality, not substring**. A decorated
-  run-name like `run-name: E2E [${{ inputs.zuke_marker }}]` dispatches fine and
-  then never correlates, so the gate just times out. Echo the marker as the
-  workflow's _entire_ `run-name:`, or switch to `.correlate("created-window")`.
+- **Strict run-name equality.** Marker correlation matches `display_title ===
+  marker` — **exact equality, not substring**. A decorated run-name like
+  `run-name: E2E [${{ inputs.zuke_marker }}]` dispatches fine and then never
+  correlates, so the gate just times out. Echo the marker as the workflow's
+  _entire_ `run-name:`, or switch to `.correlate("created-window")`.
 
 ## What suspend does
 
@@ -213,10 +212,9 @@ Resuming:
 
 1. **Delivers the signal** (if any) into the record and transitions the run
    `suspended → running` with a **compare-and-swap, so exactly one resumer
-   wins**. A loser gets a clean `AlreadyResumedError`
-   (`run X was already
-   resumed by …`) and exits non-zero — safe to run the
-   same resume from a retrying cron.
+   wins**. A loser gets a clean `AlreadyResumedError` (`run X was already
+   resumed by …`) and exits non-zero — safe to run the same resume from a
+   retrying cron.
 2. **Re-instantiates the build**, re-resolves parameters from the record (CLI
    may override non-secret ones; secrets re-resolve from the environment, and a
    record's value for a secret parameter is ignored), and **verifies the graph
@@ -582,9 +580,9 @@ What it guarantees:
 - **It works across a resume.** A check that fails after `zuke resume` rolls
   back targets an earlier process ran, from the state they recorded.
 - **A dry run never cancels.** It has no record, so there is nothing to undo.
-- **The audit trail names the cause.** The run's `cancel` event reads
-  `…; cancelled because verify failed`, so it is never mistaken for an
-  operator's cancel.
+- **The audit trail names the cause.** The run's `cancel` event reads `…;
+  cancelled because verify failed`, so it is never mistaken for an operator's
+  cancel.
 - **Every failure counts.** A `LockConflictError`, an `onlyWhen` or `cacheKey`
   that throws, and a failed validation are all the target failing. On a
   cancelling target, losing a lock race therefore rolls back what ran before it.

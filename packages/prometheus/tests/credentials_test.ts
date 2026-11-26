@@ -203,11 +203,14 @@ test("a basic-auth password echoed back decoded is masked", async () => {
   const echo = fakeFetch((request) => {
     const header = request.headers.get("authorization") ?? "";
     const decoded = atob(header.replace("Basic ", ""));
-    return Response.json({
-      status: "error",
-      errorType: "unauthorized",
-      error: `bad credentials ${decoded}`,
-    }, { status: 401 });
+    return Response.json(
+      {
+        status: "error",
+        errorType: "unauthorized",
+        error: `bad credentials ${decoded}`,
+      },
+      { status: 401 },
+    );
   });
   for (
     const configure of [

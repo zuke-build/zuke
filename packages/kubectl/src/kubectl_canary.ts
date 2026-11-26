@@ -347,7 +347,7 @@ const IDENTITY: readonly {
  */
 export class KubectlCanary {
   /** Traffic follows ready pods, so exposure is a share of replicas. */
-  readonly exposure: "replicas" = "replicas";
+  readonly exposure = "replicas";
   readonly #configure: Configure<KubectlCanarySettings>;
 
   /** A platform whose settings `configure` produces, afresh on every call. */

@@ -88,7 +88,7 @@ test("banner: with colour the text survives intact under the codes", () => {
   const painted = bannerLines(facts({ ci: true, host: "github" }), true);
   assertEquals(painted.length, plain.length);
   // deno-lint-ignore no-control-regex
-  const stripped = painted.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+  const stripped = painted.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "")); // oxlint-disable-line no-control-regex
   assertEquals(stripped, plain);
   assertEquals(painted[0].includes("\x1b["), true);
 });

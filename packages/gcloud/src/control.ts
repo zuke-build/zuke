@@ -12,5 +12,5 @@
 /** Whether `value` holds a C0 control character (a line break among them) or DEL. */
 export function hasControl(value: string): boolean {
   // deno-lint-ignore no-control-regex
-  return /[\u0000-\u001f\u007f]/.test(value);
+  return /[\u0000-\u001f\u007f]/.test(value); // oxlint-disable-line no-control-regex
 }

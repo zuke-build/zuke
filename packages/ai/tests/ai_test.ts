@@ -969,7 +969,7 @@ test("the start line echoes provider, model, gate, and comment settings", async 
   assertEquals(
     lines.some((l) =>
       l ===
-        '[security review] reviewing "deploy" — claude/claude-x · gate score>8'
+      '[security review] reviewing "deploy" — claude/claude-x · gate score>8'
     ),
     true,
   );
@@ -991,10 +991,10 @@ test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediately", a
 
 test("token usage from the provider is shown in the output", async () => {
   const { fetch } = recordFetch(
-    claudeWithUsage({ score: 1, findings: [] }, {
-      input_tokens: 1000,
-      output_tokens: 200,
-    }),
+    claudeWithUsage(
+      { score: 1, findings: [] },
+      { input_tokens: 1000, output_tokens: 200 },
+    ),
   );
   const lines = await captured(() =>
     securityReviewer((r) =>
@@ -1063,10 +1063,10 @@ test("token usage is included in the job-summary markdown", async () => {
   console.log = () => {};
   try {
     const { fetch } = recordFetch(
-      claudeWithUsage({ score: 0, findings: [] }, {
-        input_tokens: 100,
-        output_tokens: 20,
-      }),
+      claudeWithUsage(
+        { score: 0, findings: [] },
+        { input_tokens: 100, output_tokens: 20 },
+      ),
     );
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)

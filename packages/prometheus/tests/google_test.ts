@@ -248,10 +248,13 @@ test("a failed exchange names the step, never the assertion it sent", async () =
   const fetcher = routes({
     [`POST ${TOKEN_URL}`]: (request) => {
       assertion = form(request.body).assertion;
-      return Response.json({
-        error: "invalid_grant",
-        error_description: `Invalid JWT ${assertion}`,
-      }, { status: 400 });
+      return Response.json(
+        {
+          error: "invalid_grant",
+          error_description: `Invalid JWT ${assertion}`,
+        },
+        { status: 400 },
+      );
     },
   });
   const error = await assertRejects(

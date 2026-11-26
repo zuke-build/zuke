@@ -102,11 +102,11 @@ The **location** is one of two forms:
 > program string, so matching `make` against `/tmp/anywhere/make` would point a
 > trusted name at a file of the writer's own. A refusal names the exact string
 > to add. Listing a program does not license it to fetch: an argument naming a
-> remote specifier still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so
-> `deno run -A https://…` is refused by origin just as the module form is. What
-> remains is inherent to allow-listing — an approved program with local
-> arguments the writer chose — so prefer absolute programs, and know that
-> listing a shell hands over anything reachable locally. A refusal is an audited
+> remote specifier still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run
+> -A https://…` is refused by origin just as the module form is. What remains is
+> inherent to allow-listing — an approved program with local arguments the
+> writer chose — so prefer absolute programs, and know that listing a shell
+> hands over anything reachable locally. A refusal is an audited
 > `launch_command_not_allowed` (or `launch_origin_not_allowed`) event.
 
 ## Backends
@@ -115,8 +115,8 @@ Two dependency-free backends ship, mirroring the state layer.
 
 ### `FileSystemBuildRegistry` — dev default
 
-Writes one `<id>.json` file per build under a directory (default
-`<repo root>/.zuke/builds`, a sibling of `.zuke/runs` — never colliding).
+Writes one `<id>.json` file per build under a directory (default `<repo
+root>/.zuke/builds`, a sibling of `.zuke/runs` — never colliding).
 Compare-and-swap uses an `O_EXCL` lock marker plus an atomic temp-file rename,
 so two processes registering at once cannot tear a write. Single-host by design.
 Whoever can write the directory chooses what `zuke mcp --registry` launches, so
@@ -125,11 +125,10 @@ it must not be writable by other users.
 ### `HttpBuildRegistry` — hosted service
 
 Talks to a hosted service over the
-[`/builds` REST contract](./state-api.md#build-catalog-builds):
-`GET/PUT/DELETE /builds/:id` and `GET /builds`, with `ETag`/`If-Match`
-compare-and-swap and bearer auth. Its options mirror the state client —
-`{ url, token?, fetch? }` — and it is the production path. Point it only at a
-service you control.
+[`/builds` REST contract](./state-api.md#build-catalog-builds): `GET/PUT/DELETE
+/builds/:id` and `GET /builds`, with `ETag`/`If-Match` compare-and-swap and
+bearer auth. Its options mirror the state client — `{ url, token?, fetch? }` —
+and it is the production path. Point it only at a service you control.
 
 ## Configuration
 

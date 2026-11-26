@@ -36,8 +36,8 @@ codex plugin add zuke@zuke
 ```
 
 A single skill can also be pulled straight from the repo with Codex's built-in
-installer skill, e.g.
-`$skill-installer install https://github.com/zuke-build/zuke/tree/master/skills/zuke-write-build`.
+installer skill, e.g. `$skill-installer install
+https://github.com/zuke-build/zuke/tree/master/skills/zuke-write-build`.
 
 ## Gemini CLI
 

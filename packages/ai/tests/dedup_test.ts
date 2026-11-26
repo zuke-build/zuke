@@ -472,9 +472,10 @@ test("refuted and fixed identities keep the same-file rule and the ceiling", () 
     const earned = prior("e1", { status, severity: "low" });
     assertEquals(decidedByMaintainer(earned, new Set()), false);
     assertEquals(
-      planDedup([candidate("c1", { file: "src/other.ts", severity: "low" })], [
-        earned,
-      ]).pairs.length,
+      planDedup(
+        [candidate("c1", { file: "src/other.ts", severity: "low" })],
+        [earned],
+      ).pairs.length,
       0,
       `${status}: across files`,
     );

@@ -28,11 +28,11 @@ zuke                                        # run the build
 ```
 
 On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
-same CLI as a signed standalone binary instead, and on Windows
-`choco install zuke` installs it through Chocolatey (not Authenticode-signed
-yet); the `./zuke` launcher that `zuke setup` writes then installs Deno the
-first time `zuke` runs the build. Every route is covered, with how to verify a
-download, in [installing](./install.md).
+same CLI as a signed standalone binary instead, and on Windows `choco install
+zuke` installs it through Chocolatey (not Authenticode-signed yet); the `./zuke`
+launcher that `zuke setup` writes then installs Deno the first time `zuke` runs
+the build. Every route is covered, with how to verify a download, in
+[installing](./install.md).
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
 (flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,
@@ -89,9 +89,9 @@ zuke setup --sdk python                     # in your project
 zuke                                        # run the build
 ```
 
-It writes a starter `build.py` (with inline script metadata, so
-`uv run build.py` installs the SDK by itself), a `zuke.json` naming the worker
-command and the exact `@zuke/engine` release to run it on, the launchers and a
+It writes a starter `build.py` (with inline script metadata, so `uv run
+build.py` installs the SDK by itself), a `zuke.json` naming the worker command
+and the exact `@zuke/engine` release to run it on, the launchers and a
 `.gitignore`, and no `deno.json`. A Python project needs **no Deno, anywhere**:
 only Python, uv and the standalone `zuke` binary, which carries the engine and
 every tool wrapper.
@@ -107,13 +107,12 @@ The other `setup` flags apply as they do for a TypeScript build. `--mcp`
 registers the build's MCP server as `zuke mcp`, which needs no Deno either.
 
 With the `zuke` command installed, a Python build is driven exactly as a
-TypeScript one, from anywhere inside the project and with no launcher:
-`zuke <target>`, `zuke --list`, `zuke graph`, `zuke generate-ci`, `zuke mcp`,
-and `zuke --version`, which names the `zuke.json` and the engine release it
-runs. The launchers are for a machine without the CLI, such as a CI runner.
-`zuke add`, `remove`, `cache` and `relock` work on a project's own Deno code, so
-they refuse a Python build: its tool wrappers come with the SDK, as
-`zuke.tools`.
+TypeScript one, from anywhere inside the project and with no launcher: `zuke
+<target>`, `zuke --list`, `zuke graph`, `zuke generate-ci`, `zuke mcp`, and
+`zuke --version`, which names the `zuke.json` and the engine release it runs.
+The launchers are for a machine without the CLI, such as a CI runner. `zuke
+add`, `remove`, `cache` and `relock` work on a project's own Deno code, so they
+refuse a Python build: its tool wrappers come with the SDK, as `zuke.tools`.
 
 ## Migrate an existing project with `zuke import`
 
@@ -178,9 +177,9 @@ the `zuke` task in `deno.json`) does the same thing.
 Day to day you don't call the launcher yourself: `zuke <target>`, from anywhere
 inside the project, forwards to it (the [CLI reference](./cli.md) has the
 rules). Shell completions (`zuke completions install <shell>`) register the
-words `zuke` and `./zuke`, so both forms complete targets;
-`deno task zuke <target>` does not, because the shell matches the completion on
-the first word of the line.
+words `zuke` and `./zuke`, so both forms complete targets; `deno task zuke
+<target>` does not, because the shell matches the completion on the first word
+of the line.
 
 ## Quick start
 

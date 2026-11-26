@@ -1,6 +1,13 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/logo-white.png" />
-  <img width="400px" alt="Zuke" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://github.com/zuke-build/zuke/raw/master/assets/logo-white.png"
+  />
+  <img
+    width="400px"
+    alt="Zuke"
+    src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png"
+  />
 </picture>
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
@@ -87,7 +94,11 @@ the workflow file is regenerated on every run and verified on CI, so the YAML
 can never drift from the build.
 
 <p align="center">
-  <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
+  <img
+    src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg"
+    alt="Zuke in action: scaffold a build, list targets, run the gate"
+    width="760"
+  />
 </p>
 
 Already have `package.json` scripts, a `Makefile` or `pyproject.toml` tasks?
@@ -111,18 +122,18 @@ Three short recipes cover what a small project wants first:
 - **Typed, refactor-safe dependencies.** You wire targets together with
   `this.clean`, not `"clean"`. Rename a target and every reference moves with
   it; a typo is a compile error, not a runtime surprise.
-- **Never write CI YAML again.** Declare the pipeline in the build with
-  `cicd({ provider: "github" })` — the provider is the only required field — and
-  Zuke generates GitHub Actions, GitLab CI, Azure Pipelines, or Bitbucket YAML.
+- **Never write CI YAML again.** Declare the pipeline in the build with `cicd({
+  provider: "github" })` — the provider is the only required field — and Zuke
+  generates GitHub Actions, GitLab CI, Azure Pipelines, or Bitbucket YAML.
   `fanOut: true` turns every target into its own job wired by `needs:` edges
-  that mirror `dependsOn`. It is regenerated on every run, and
-  `generate-ci --check` fails CI when the committed file has drifted. You run
-  the exact same targets locally with `zuke ci` before you push.
+  that mirror `dependsOn`. It is regenerated on every run, and `generate-ci
+  --check` fails CI when the committed file has drifted. You run the exact same
+  targets locally with `zuke ci` before you push.
 - **Let your agent run the build.** `zuke mcp` serves the build over the
   [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads the
-  graph, and runs one with typed parameters, instead of guessing
-  `npm run what?`. `zuke setup --mcp` writes the client registration on day one.
-  `zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the static
+  graph, and runs one with typed parameters, instead of guessing `npm run
+  what?`. `zuke setup --mcp` writes the client registration on day one. `zuke
+  --list --json` and the generated [`llms.txt`](./llms.txt) are the static
   counterparts, and the [agent skills](./docs/agent-skills.md) teach Claude
   Code, Codex, and Gemini CLI to write a `build.ts` the right way.
 - **Just TypeScript.** Build logic is ordinary async functions with full editor
@@ -146,8 +157,15 @@ Teams running Zuke in production:
 
 <a href="https://payhawk.com">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk-white.svg" />
-    <img width="170px" alt="Payhawk" src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg" />
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk-white.svg"
+    />
+    <img
+      width="170px"
+      alt="Payhawk"
+      src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg"
+    />
   </picture>
 </a>
 
@@ -281,8 +299,8 @@ a typed wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.
 The complete typed surface of every package is in
 [`llms-full.txt`](./llms-full.txt) (one file), summarised in
-[`llms.txt`](./llms.txt); for a single package run
-`deno doc jsr:@zuke/<package>`.
+[`llms.txt`](./llms.txt); for a single package run `deno doc
+jsr:@zuke/<package>`.
 
 ## AI in your pipeline
 
@@ -416,8 +434,8 @@ Zuke stands on the shoulders of giants:
   library whose markup, themes, and rich widgets (rules, panels, tables)
   inspired the output model of `@zuke/console`.
 - **[Deno](https://deno.com/)** — the runtime and toolchain (test runner,
-  formatter, linter, type-checker, coverage) that makes a zero-dependency,
-  hermetic build tool possible.
+  linter, type-checker, coverage) that makes a zero-dependency, hermetic build
+  tool possible.
 - **[JSR](https://jsr.io/)** — modern, TypeScript-native package distribution.
 - Every author of the tools Zuke wraps — Docker, Kubernetes, Terraform, Vite,
   Playwright, and the rest of the matrix.
@@ -467,7 +485,10 @@ the project. ⭐
 ### Contributors
 
 <a href="https://github.com/zuke-build/zuke/graphs/contributors">
-  <img alt="Contributors" src="https://contrib.rocks/image?repo=zuke-build/zuke" />
+  <img
+    alt="Contributors"
+    src="https://contrib.rocks/image?repo=zuke-build/zuke"
+  />
 </a>
 
 </details>

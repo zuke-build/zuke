@@ -365,12 +365,15 @@ test("a missing or malformed setting is named", async () => {
 test("a refused token request names the step, never the secret or header", async () => {
   const echo = routes({
     [`POST ${TOKEN_URL}`]: (request) =>
-      Response.json({
-        error: "invalid_client",
-        error_description: `AADSTS7000215: Invalid client secret ${
-          form(request.body).client_secret
-        }`,
-      }, { status: 401 }),
+      Response.json(
+        {
+          error: "invalid_client",
+          error_description: `AADSTS7000215: Invalid client secret ${
+            form(request.body).client_secret
+          }`,
+        },
+        { status: 401 },
+      ),
   });
   const error = await assertRejects(
     () => headers({ env: SECRET_ENV, fetch: echo }),

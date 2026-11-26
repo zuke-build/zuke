@@ -274,7 +274,7 @@ class Reader {
   /** `ch` unchanged, unless it is a control character TOML forbids in a string. */
   private plain(ch: string): string {
     // deno-lint-ignore no-control-regex -- matching control characters is the point
-    if (/[\x00-\x08\x0a-\x1f\x7f]/.test(ch)) {
+    if (/[\x00-\x08\x0a-\x1f\x7f]/.test(ch)) { // oxlint-disable-line no-control-regex
       this.fail("control character in string");
     }
     return ch;

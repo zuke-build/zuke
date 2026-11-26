@@ -360,10 +360,11 @@ test("checkEdits enforces the allowlist, exclusions, traversal, and the cap", ()
   threw = false;
   try {
     checkEdits(
-      [{ path: "src/a.ts", content: "" }, { path: "src/b.ts", content: "" }, {
-        path: "src/c.ts",
-        content: "",
-      }],
+      [
+        { path: "src/a.ts", content: "" },
+        { path: "src/b.ts", content: "" },
+        { path: "src/c.ts", content: "" },
+      ],
       guards,
     );
   } catch {

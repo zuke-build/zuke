@@ -51,9 +51,11 @@ class Cancelable extends Build {
     // rather than a process that has to be killed.
     await new Promise<void>((resolve) => {
       if (ctx.signal.aborted) resolve();
-      else {ctx.signal.addEventListener("abort", () => resolve(), {
+      else {
+        ctx.signal.addEventListener("abort", () => resolve(), {
           once: true,
-        });}
+        });
+      }
     });
   });
   /** Prints a marker; a cancelled run must never reach this. */

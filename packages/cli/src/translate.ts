@@ -139,7 +139,7 @@ export function literal(value: string): string {
  */
 export function oneLine(text: string): string {
   // deno-lint-ignore no-control-regex -- matching control characters is the point
-  return text.replace(/[\s\x00-\x1f\x7f]+/g, " ").trim();
+  return text.replace(/[\s\x00-\x1f\x7f]+/g, " ").trim(); // oxlint-disable-line no-control-regex
 }
 
 // --- identifiers and order ----------------------------------------------

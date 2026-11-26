@@ -60,7 +60,7 @@ export interface SummaryEntry {
 export function singleLine(text: string): string {
   return stripAnsi(text)
     // deno-lint-ignore no-control-regex
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "") // oxlint-disable-line no-control-regex
     .replace(/\s+/g, " ")
     .trim();
 }

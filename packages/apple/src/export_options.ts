@@ -42,7 +42,7 @@ export type ExportOptionValue = string | boolean | Record<string, string>;
 function plistText(key: string, value: string): string {
   if (
     // deno-lint-ignore no-control-regex
-    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/.test(value) ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/.test(value) || // oxlint-disable-line no-control-regex
     !value.isWellFormed()
   ) {
     throw new Error(

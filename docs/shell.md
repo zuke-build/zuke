@@ -29,20 +29,18 @@ await $`build`.env({ NODE_ENV: "prod" }).cwd("./app").quiet();
 | `.signal(sig)`   | The signal used to terminate it (default `SIGTERM`); composes with `.killAfter()` and run cancellation.        |
 | `.spawn()`       | Start the process **without** awaiting it, returning a handle — how [services](./services.md) stay running.    |
 
-Awaiting a command resolves to a `CommandOutput`
-(`{ code, stdout, stderr, truncated }`, plus a `.text()` helper for trimmed
-stdout).
+Awaiting a command resolves to a `CommandOutput` (`{ code, stdout, stderr,
+truncated }`, plus a `.text()` helper for trimmed stdout).
 
 **Bounded capture:** each captured stream keeps at most 8 MiB, so a runaway
 child cannot grow the buffer until the run dies. Past the cap the **newest**
-bytes are kept, `truncated` is `true`, and `.text()` prefixes
-`[output truncated to last 8 MiB]`. Raise or lower it per command with
-`.maxCapturedBytes(bytes)` — the same setting exists on every tool wrapper's
-settings lambda, so `SomeTasks.run((s) => s.maxCapturedBytes(64 * 1024 * 1024))`
-raises it for a tool whose whole output must be parsed. The cap must be a
-positive whole number of bytes; there is no unlimited value, so pass a cap
-larger than the output you expect. Live streaming to the terminal is never
-capped.
+bytes are kept, `truncated` is `true`, and `.text()` prefixes `[output truncated
+to last 8 MiB]`. Raise or lower it per command with `.maxCapturedBytes(bytes)` —
+the same setting exists on every tool wrapper's settings lambda, so
+`SomeTasks.run((s) => s.maxCapturedBytes(64 * 1024 * 1024))` raises it for a
+tool whose whole output must be parsed. The cap must be a positive whole number
+of bytes; there is no unlimited value, so pass a cap larger than the output you
+expect. Live streaming to the terminal is never capped.
 
 **Safety:** interpolated values become **discrete argv entries** — they are
 never spliced into a shell string, and no shell is involved at all — so there is

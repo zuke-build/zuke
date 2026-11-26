@@ -18,7 +18,7 @@
  */
 
 import { FileTasks } from "@zuke/core";
-import { formatText } from "./fmt_text.ts";
+import { dprint, type Formatter } from "./fmt_text.ts";
 
 /** One generated wrapper: its names, binary, output path, and module-doc source. */
 export interface HclTarget {
@@ -70,22 +70,29 @@ export function renderHcl(
 /**
  * Render one target's canonical, formatted source. The two tools' differing name
  * lengths wrap near the 80-column margin differently, so each output is run
- * through `deno fmt` independently rather than assumed identical after
+ * through the formatter independently rather than assumed identical after
  * substitution.
  */
-async function canonicalSource(target: HclTarget): Promise<string> {
+async function canonicalSource(
+  target: HclTarget,
+  format: Formatter,
+): Promise<string> {
   const template = await FileTasks.readText(HCL_TEMPLATE);
   const moduleDoc = await FileTasks.readText(target.docPath);
-  return await formatText(renderHcl(template, moduleDoc, target), "ts");
+  return await format(renderHcl(template, moduleDoc, target), "ts");
 }
 
 /** Regenerate every wrapper source from the template; returns the paths written. */
 export async function generateHclWrappers(
   targets: HclTarget[] = HCL_TARGETS,
+  format: Formatter = dprint,
 ): Promise<string[]> {
   const written: string[] = [];
   for (const target of targets) {
-    await FileTasks.writeText(target.path, await canonicalSource(target));
+    await FileTasks.writeText(
+      target.path,
+      await canonicalSource(target, format),
+    );
     written.push(target.path);
   }
   return written;
@@ -94,10 +101,11 @@ export async function generateHclWrappers(
 /** The wrapper files whose committed content has drifted from the template. */
 export async function checkHclWrappers(
   targets: HclTarget[] = HCL_TARGETS,
+  format: Formatter = dprint,
 ): Promise<string[]> {
   const stale: string[] = [];
   for (const target of targets) {
-    const expected = await canonicalSource(target);
+    const expected = await canonicalSource(target, format);
     const actual = await FileTasks.readText(target.path);
     if (expected !== actual) stale.push(target.path);
   }

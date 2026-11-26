@@ -109,10 +109,11 @@ export async function readTimeSeries(
   const maxPages = settings.maxPages_ ?? DEFAULT_MAX_PAGES;
   for (let page = 0; page < maxPages; page++) {
     signal?.throwIfAborted();
-    const body = await gcpJson(url.href, { method: "GET", signal }, {
-      token,
-      fetch: settings.fetch_,
-    });
+    const body = await gcpJson(
+      url.href,
+      { method: "GET", signal },
+      { token, fetch: settings.fetch_ },
+    );
     const parsed = timeSeriesPageOf(body, task);
     // Pushed one at a time: spreading a large page into push() is one
     // argument per series, and enough of them overflow the call stack.

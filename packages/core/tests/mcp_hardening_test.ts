@@ -475,9 +475,12 @@ test("an identity hook overrides --actor and the client label", async () => {
       req("initialize", { clientInfo: { name: "spoofed" } }),
       { headers: new Headers({ "x-user": "engineer-a" }) },
     );
-    await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
-      environment: "dev",
-    });
+    await callWith(
+      server,
+      "run:deploy",
+      { "x-user": "engineer-a" },
+      { environment: "dev" },
+    );
     const deploy = (await auditEvents(store)).find((e) =>
       e.tool === "run:deploy"
     );
@@ -490,15 +493,20 @@ test("a run and a later signal are attributed to their own callers", async () =>
     { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
       // Engineer A runs deploy…
-      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
-        environment: "dev",
-      });
+      await callWith(
+        server,
+        "run:deploy",
+        { "x-user": "engineer-a" },
+        { environment: "dev" },
+      );
       // …and engineer B signals a suspended run.
       const id = await seedSuspended(store, "deploy");
-      await callWith(server, "signal_run", { "x-user": "engineer-b" }, {
-        runId: id,
-        signal: "go",
-      });
+      await callWith(
+        server,
+        "signal_run",
+        { "x-user": "engineer-b" },
+        { runId: id, signal: "go" },
+      );
       const events = await auditEvents(store);
       assertEquals(
         events.find((e) => e.tool === "run:deploy")?.actor,
@@ -517,9 +525,12 @@ test("a throwing identity hook rejects the request and writes nothing", async ()
     { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
       // No `x-user` header → the hook throws → a JSON-RPC auth error.
-      const res = await callWith(server, "run:deploy", {}, {
-        environment: "dev",
-      });
+      const res = await callWith(
+        server,
+        "run:deploy",
+        {},
+        { environment: "dev" },
+      );
       assertEquals(res?.result, undefined);
       assertEquals(res?.error?.message, "Unauthorized");
       // Nothing was audited.
@@ -541,9 +552,12 @@ test("a hook yielding an empty actor is rejected, never the static fallback", as
       ),
     },
     async (server, store) => {
-      const res = await callWith(server, "run:deploy", {}, {
-        environment: "dev",
-      });
+      const res = await callWith(
+        server,
+        "run:deploy",
+        {},
+        { environment: "dev" },
+      );
       assertEquals(res?.error?.message, "Unauthorized");
       // Neither audited nor attributed to the untrusted static actor.
       assertEquals((await auditEvents(store)).length, 0);
@@ -781,9 +795,12 @@ test("an async authenticator attributes the run to its resolved actor", async ()
   await withServer(
     { allowRun: true, actor: "ci-bot", authenticator: asyncProxy },
     async (server, store) => {
-      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
-        environment: "dev",
-      });
+      await callWith(
+        server,
+        "run:deploy",
+        { "x-user": "engineer-a" },
+        { environment: "dev" },
+      );
       const deploy = (await auditEvents(store)).find((e) =>
         e.tool === "run:deploy"
       );
@@ -934,9 +951,12 @@ test("the audit row carries the roles, but not the kind or via", async () => {
   await withServer(
     { allowRun: true, authenticator: asyncProxy },
     async (server, store) => {
-      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
-        environment: "dev",
-      });
+      await callWith(
+        server,
+        "run:deploy",
+        { "x-user": "engineer-a" },
+        { environment: "dev" },
+      );
       const deploy = (await auditEvents(store)).find((e) =>
         e.tool === "run:deploy"
       );

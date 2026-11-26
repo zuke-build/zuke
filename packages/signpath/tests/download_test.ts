@@ -171,9 +171,10 @@ test("download: unsafe or endless redirects are refused", async () => {
 test("download: a refusal is an API error and writes nothing", async () => {
   const { dir, output } = await target();
   const net = fakeFetch(() =>
-    Response.json({ error: "The signing request is not completed" }, {
-      status: 409,
-    })
+    Response.json(
+      { error: "The signing request is not completed" },
+      { status: 409 },
+    )
   );
   await assertRejects(
     () => download(net, output),

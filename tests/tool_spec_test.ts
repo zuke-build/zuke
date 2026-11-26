@@ -73,44 +73,50 @@ test("specType: keywords, literals, unions, arrays, records and references", () 
     [keyword("void"), { kind: "null" }],
     [keyword("object"), { kind: "unknown" }],
     [literal("x"), { kind: "literal", value: "x" }],
-    [{ kind: "literal", value: { kind: "number", number: 2 } }, {
-      kind: "literal",
-      value: 2,
-    }],
-    [{ kind: "literal", value: { kind: "boolean", boolean: true } }, {
-      kind: "literal",
-      value: true,
-    }],
+    [
+      { kind: "literal", value: { kind: "number", number: 2 } },
+      { kind: "literal", value: 2 },
+    ],
+    [
+      { kind: "literal", value: { kind: "boolean", boolean: true } },
+      { kind: "literal", value: true },
+    ],
     [{ kind: "literal", value: { kind: "bigint" } }, { kind: "unknown" }],
-    [{ kind: "union", value: [keyword("string"), keyword("string")] }, {
-      kind: "string",
-    }],
-    [{ kind: "union", value: [literal("a"), keyword("undefined")] }, {
-      kind: "union",
-      members: [{ kind: "literal", value: "a" }, { kind: "null" }],
-    }],
+    [
+      { kind: "union", value: [keyword("string"), keyword("string")] },
+      { kind: "string" },
+    ],
+    [
+      { kind: "union", value: [literal("a"), keyword("undefined")] },
+      {
+        kind: "union",
+        members: [{ kind: "literal", value: "a" }, { kind: "null" }],
+      },
+    ],
     // A member the spec cannot name is dropped beside ones it can.
-    [{ kind: "union", value: [keyword("string"), keyword("object")] }, {
-      kind: "string",
-    }],
-    [{ kind: "union", value: [keyword("object"), ref("Elsewhere")] }, {
-      kind: "unknown",
-    }],
+    [
+      { kind: "union", value: [keyword("string"), keyword("object")] },
+      { kind: "string" },
+    ],
+    [
+      { kind: "union", value: [keyword("object"), ref("Elsewhere")] },
+      { kind: "unknown" },
+    ],
     // A member JSON cannot carry is left out; a union of none is unknown.
-    [{ kind: "union", value: [ref("Host"), keyword("string")] }, {
-      kind: "string",
-    }],
-    [{ kind: "union", value: [ref("Host"), { kind: "fnOrConstructor" }] }, {
-      kind: "unknown",
-    }],
+    [
+      { kind: "union", value: [ref("Host"), keyword("string")] },
+      { kind: "string" },
+    ],
+    [
+      { kind: "union", value: [ref("Host"), { kind: "fnOrConstructor" }] },
+      { kind: "unknown" },
+    ],
     [{ kind: "union", value: undefined }, { kind: "unknown" }],
-    [{ kind: "parenthesized", value: keyword("boolean") }, {
-      kind: "boolean",
-    }],
-    [{ kind: "array", value: keyword("number") }, {
-      kind: "array",
-      element: { kind: "number" },
-    }],
+    [{ kind: "parenthesized", value: keyword("boolean") }, { kind: "boolean" }],
+    [
+      { kind: "array", value: keyword("number") },
+      { kind: "array", element: { kind: "number" } },
+    ],
     [{ kind: "this" }, { kind: "self" }],
     [ref("Promise", keyword("void")), { kind: "null" }],
     [ref("Readonly", ref("Array", keyword("string"))), {

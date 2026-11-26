@@ -47,6 +47,8 @@ import {
 } from "@zuke/ai";
 import { DenoTasks } from "@zuke/deno";
 import { NpmTasks } from "@zuke/npm";
+import { DprintTasks } from "@zuke/dprint";
+import { OxlintTasks } from "@zuke/oxlint";
 import { $ } from "@zuke/core/shell";
 import { delay } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
@@ -285,10 +287,20 @@ class ZukeBuild extends Build {
       await DenoTasks.cache((s) => s.frozen().paths(...mods));
     });
 
-  format = target()
-    .description("Check formatting (deno fmt --check)")
+  // The npm workspace from its lock: the Node toolchain the gate runs (dprint,
+  // Oxlint, Vitest). One target, which the rest depend on, because `npm ci`
+  // starts by removing node_modules, and targets run in parallel.
+  npmInstall = target()
+    .description("Install the npm workspace from its lock")
     .executes(async () => {
-      await DenoTasks.fmt((s) => s.check());
+      await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
+    });
+
+  format = target()
+    .description("Check formatting (dprint check)")
+    .dependsOn(this.npmInstall)
+    .executes(async () => {
+      await DprintTasks.check();
     });
 
   // The OpenAI key (org secret OPENAI_API_KEY) is shared by the AI security
@@ -371,6 +383,15 @@ class ZukeBuild extends Build {
       await DenoTasks.lint();
     });
 
+  // Oxlint, the Node gate's linter (#993), alongside deno lint until the gate
+  // moves to Node; `.oxlintrc.json` holds its rules.
+  oxlint = target()
+    .description("Lint the workspace with Oxlint")
+    .dependsOn(this.npmInstall)
+    .executes(async () => {
+      await OxlintTasks.lint();
+    });
+
   spell = target()
     .description("Spell-check the repository (cspell)")
     .executes(async () => {
@@ -427,8 +448,8 @@ class ZukeBuild extends Build {
   // runs it so a file that passes on Node keeps passing.
   nodeTest = target()
     .description("Run the test suite on Node with Vitest")
+    .dependsOn(this.npmInstall)
     .executes(async () => {
-      await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
       // A `deno` that only fails goes first on PATH, so a test that quietly
       // needs Deno fails here rather than passing because the build runs on it.
       // A shell-free spawn on Windows looks for deno.exe, which this stub is
@@ -741,6 +762,7 @@ class ZukeBuild extends Build {
 
   hclGen = target()
     .description("Regenerate the Terraform/OpenTofu wrappers from one template")
+    .dependsOn(this.npmInstall)
     .executes(async () => {
       const written = await generateHclWrappers();
       ConsoleTasks.info(
@@ -750,6 +772,7 @@ class ZukeBuild extends Build {
 
   hclSyncCheck = target()
     .description("Verify the Terraform/OpenTofu wrappers match their template")
+    .dependsOn(this.npmInstall)
     .executes(async () => {
       const stale = await checkHclWrappers();
       if (stale.length > 0) {
@@ -866,6 +889,7 @@ class ZukeBuild extends Build {
     .description(
       "Regenerate docs/graph.md — this build's graph as a Mermaid page",
     )
+    .dependsOn(this.npmInstall)
     .executes(async () => {
       const changed = await writeGraphDoc(discoverTargets(this));
       ConsoleTasks.info(
@@ -877,6 +901,7 @@ class ZukeBuild extends Build {
 
   graphDocCheck = target()
     .description("Verify docs/graph.md matches the current build graph")
+    .dependsOn(this.npmInstall)
     .executes(async () => {
       const stale = await checkGraphDoc(discoverTargets(this));
       if (stale.length > 0) {
@@ -1254,6 +1279,7 @@ class ZukeBuild extends Build {
     .dependsOn(
       this.format,
       this.lint,
+      this.oxlint,
       this.spell,
       this.coverage,
       this.coverageUpload,
@@ -2379,9 +2405,8 @@ class ZukeBuild extends Build {
             }`,
           );
         }
-        const verified = [...results.values()].filter((r) =>
-          r.status === "match"
-        ).length;
+        const verified =
+          [...results.values()].filter((r) => r.status === "match").length;
         if (verified > 0) await auditSignatures(project);
         ConsoleTasks.success(
           `Verified ${verified} npm package(s) against a rebuild of their commits.`,

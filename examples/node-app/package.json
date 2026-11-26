@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "A Node project whose build is driven by Zuke — see build.ts.",
+  "license": "MIT",
   "type": "module",
   "main": "greet.mjs",
   "scripts": {
     "test": "node --test",
     "build": "node build.mjs",
     "zuke": "zuke"
-  },
-  "license": "MIT"
+  }
 }

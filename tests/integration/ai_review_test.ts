@@ -302,20 +302,27 @@ test("verify narrows but an uncertain finding still gates via the CLI", async ()
     severity: "high",
     file: "src/app.ts",
   });
-  const { fetch, calls } = fakeFetch([], [
-    claude({
-      score: 9,
-      severity: "high",
-      summary: "an eval and a race",
-      findings: [FINDING, race],
-    }),
-    claude({
-      verdicts: [
-        { id: ID, verdict: "refuted", reason: "the input is a literal" },
-        { id: idRace, verdict: "uncertain", reason: "cannot trace either way" },
-      ],
-    }),
-  ]);
+  const { fetch, calls } = fakeFetch(
+    [],
+    [
+      claude({
+        score: 9,
+        severity: "high",
+        summary: "an eval and a race",
+        findings: [FINDING, race],
+      }),
+      claude({
+        verdicts: [
+          { id: ID, verdict: "refuted", reason: "the input is a literal" },
+          {
+            id: idRace,
+            verdict: "uncertain",
+            reason: "cannot trace either way",
+          },
+        ],
+      }),
+    ],
+  );
   const executed: string[] = [];
   class Pipeline extends Build {
     review = securityReviewer((r) =>
@@ -365,9 +372,10 @@ test("verify narrows but an uncertain finding still gates via the CLI", async ()
 test("an open high finding still fails the build through the CLI", async () => {
   // Same pipeline, but no prior discussion: the finding gates, the target
   // never runs, and the failure names the review.
-  const { fetch } = fakeFetch([], [
-    claude({ score: 9, severity: "high", findings: [FINDING] }),
-  ]);
+  const { fetch } = fakeFetch(
+    [],
+    [claude({ score: 9, severity: "high", findings: [FINDING] })],
+  );
   const executed: string[] = [];
   class Pipeline extends Build {
     review = securityReviewer((r) =>
@@ -588,9 +596,7 @@ test("a maintainer's comment reviews a pull request that is not checked out", as
   // pull request's merge and review it as data — reading the rules from the
   // base side and the changed file from the merge — and post to it with the
   // token the build minted, never with the env token.
-  const { fetch, calls } = fakeFetch([], [
-    claude({ score: 0, findings: [] }),
-  ]);
+  const { fetch, calls } = fakeFetch([], [claude({ score: 0, findings: [] })]);
   const gitCalls: string[][] = [];
   const exec = (argv: string[]) => {
     gitCalls.push(argv);

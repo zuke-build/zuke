@@ -15,8 +15,8 @@ If you are wiring Zuke into a project, **do not guess the API and do not fall
 back to `Deno.Command`/shell.** Every operation has a typed wrapper, and the
 exact signatures are published — read them:
 
-- **Check the package catalogue before writing any command.** `llms.txt`'s
-  `## Packages` catalogue (raw:
+- **Check the package catalogue before writing any command.** `llms.txt`'s `##
+  Packages` catalogue (raw:
   <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
   grouped table in
   [`skills/zuke-write-build/references/cheatsheet.md`](./skills/zuke-write-build/references/cheatsheet.md)
@@ -34,16 +34,16 @@ exact signatures are published — read them:
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
   `./zuke --help` (or `deno run -A build.ts --help`). It prints the usage
-  grammar, every reserved command (`graph`, `generate-ci`,
-  `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
-  `register`, `doc`) and flag, **plus the current build's targets — with
-  descriptions and dependencies — and its parameters.** So an agent asked to set
-  up or run a build discovers the real command surface live instead of guessing;
-  `zuke --list` is the targets-only view and `zuke --list --json` emits the
-  whole surface (commands, flags, targets, parameters) as JSON for tools. The
-  written reference is [`docs/cli.md`](./docs/cli.md), and
-  [`llms.txt`](./llms.txt) carries a generated `## CLI` section; the same data
-  is available in code via the exported `describeCli(build)`.
+  grammar, every reserved command (`graph`, `generate-ci`, `completions
+  <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`, `register`,
+  `doc`) and flag, **plus the current build's targets — with descriptions and
+  dependencies — and its parameters.** So an agent asked to set up or run a
+  build discovers the real command surface live instead of guessing; `zuke
+  --list` is the targets-only view and `zuke --list --json` emits the whole
+  surface (commands, flags, targets, parameters) as JSON for tools. The written
+  reference is [`docs/cli.md`](./docs/cli.md), and [`llms.txt`](./llms.txt)
+  carries a generated `## CLI` section; the same data is available in code via
+  the exported `describeCli(build)`.
 
 The mental model:
 
@@ -54,18 +54,17 @@ The mental model:
   `dependsOn(this.lint)`, never `dependsOn("lint")` — so renames and typos are
   compile-time errors. A target may only depend on siblings **declared above
   it** (fields initialise top-to-bottom).
-- Make the file runnable with **`await run(MyBuild)`** at the bottom — no
-  `if (import.meta.main)` guard; `run` no-ops when the module is imported.
-- **Import `@zuke/*` by bare specifier, declaring it in `deno.json`** —
-  `import { DenoTasks } from "@zuke/deno";` with
-  `"@zuke/deno": "jsr:@zuke/deno@^1"` in the `imports` block, which is what
-  `deno add jsr:@zuke/deno` writes for you. Never inline the `jsr:` specifier in
-  the import statement: Deno's default lint set (the one that applies when
-  `deno.json` configures no `lint.rules`, which is what `zuke setup` scaffolds)
-  rejects it under `no-import-prefix`, so an inlined one fails the project's own
-  `deno task lint`. The caret major is pinned in the map instead, so a future
-  `@zuke` major cannot land unannounced. A subpath such as `@zuke/core/shell`
-  resolves through the same entry.
+- Make the file runnable with **`await run(MyBuild)`** at the bottom — no `if
+  (import.meta.main)` guard; `run` no-ops when the module is imported.
+- **Import `@zuke/*` by bare specifier, declaring it in `deno.json`** — `import
+  { DenoTasks } from "@zuke/deno";` with `"@zuke/deno": "jsr:@zuke/deno@^1"` in
+  the `imports` block, which is what `deno add jsr:@zuke/deno` writes for you.
+  Never inline the `jsr:` specifier in the import statement: Deno's default lint
+  set (the one that applies when `deno.json` configures no `lint.rules`, which
+  is what `zuke setup` scaffolds) rejects it under `no-import-prefix`, so an
+  inlined one fails the project's own `deno task lint`. The caret major is
+  pinned in the map instead, so a future `@zuke` major cannot land unannounced.
+  A subpath such as `@zuke/core/shell` resolves through the same entry.
 - **Every external tool is a namespaced `*Tasks` object** (`DenoTasks`,
   `NpmTasks`, `DockerTasks`, `GitTasks`, …) configured with a **settings
   lambda** that mirrors the real CLI's flags:
@@ -94,10 +93,13 @@ regenerate them in the same PR.
 
 ## Tech stack
 
-- **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). All tooling — test
-  runner, formatter, linter, type-checker, coverage — is the built-in `deno`
-  CLI. No Node, npm, or external build tools — except `npmBuild`, which installs
-  `tsc` with npm to compile the packages for npm.
+- **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). The test runner,
+  linter, type-checker and coverage are the built-in `deno` CLI. Formatting is
+  [dprint](https://dprint.dev/) (`dprint.json`), and the gate also lints with
+  [Oxlint](https://oxc.rs/) (`.oxlintrc.json`); both are pinned in the npm
+  workspace (`package.json`), which the gate's `npmInstall` target installs, so
+  they need Node. `npmBuild` also uses npm, to install `tsc` and compile the
+  packages for npm.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 72 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
@@ -174,10 +176,10 @@ every SDK, and every change must keep it:
    committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
    the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
-   the lcov report and fails the build), wired up in the `cov` task /
-   `zuke coverage` target and in CI. New code needs new tests in the same change
-   — see [**Testing**](#testing) for the required layers (always unit +
-   integration; e2e for bigger features).
+   the lcov report and fails the build), wired up in the `cov` task / `zuke
+   coverage` target and in CI. New code needs new tests in the same change — see
+   [**Testing**](#testing) for the required layers (always unit + integration;
+   e2e for bigger features).
 4. **Document every public symbol — JSDoc on ALL of it.** A JSDoc comment is
    required on every exported symbol **and on every public member of an exported
    class or interface**: methods, fields (including the trailing-underscore
@@ -211,11 +213,9 @@ every SDK, and every change must keep it:
    internal helpers unexported. (The framework primitives a build is defined
    with — `Build`, `target`, `group`, `run` — are the deliberate exception.)
 7. **Mirror the real CLI.** Name a wrapper's task methods and settings after the
-   actual subcommands and flags they invoke — `CspellTasks.lint` runs
-   `cspell
-   lint`, not a prettier alias like `check`. Staying close to the
-   tool's own vocabulary keeps the wrapper predictable for anyone who knows the
-   CLI.
+   actual subcommands and flags they invoke — `CspellTasks.lint` runs `cspell
+   lint`, not a prettier alias like `check`. Staying close to the tool's own
+   vocabulary keeps the wrapper predictable for anyone who knows the CLI.
 8. **One domain per file — never the whole implementation in one module.** Split
    a package's source into small, cohesive files by class and concern (types,
    errors, each fluent settings class, the transport/provider layer, parsing,
@@ -258,18 +258,18 @@ every SDK, and every change must keep it:
 
 11. **Configuration is a fluent settings lambda, not an options object.** When
     an API takes more than a trivial amount of configuration, expose it as a
-    chainable settings class configured through a lambda — the
-    `Configure<S> = (s: S) => S` shape the tool wrappers use — not a positional
-    options bag. Prefer
-    `.lock((s) => s.lockKey("deploy", repo).withTtl("4h").onConflict(...))` over
-    `.lock(key, { ttl, onConflict })`. Each setter returns `this`, the fields
-    use the trailing-underscore internal convention (and are still JSDoc'd), and
-    the lambda defers evaluation until call time — so a value derived from
-    `this.<param>.value` sees the resolved value. This keeps the whole authoring
-    surface consistent with `DenoTasks.test((s) => …)`, `service()`, and the CI
-    builder, and lets options grow without churning call sites. A single
-    required scalar (a path, a name) can still be a direct argument; reach for
-    the lambda once there are options to set.
+    chainable settings class configured through a lambda — the `Configure<S> =
+    (s: S) => S` shape the tool wrappers use — not a positional options bag.
+    Prefer `.lock((s) => s.lockKey("deploy",
+    repo).withTtl("4h").onConflict(...))` over `.lock(key, { ttl, onConflict
+    })`. Each setter returns `this`, the fields use the trailing-underscore
+    internal convention (and are still JSDoc'd), and the lambda defers
+    evaluation until call time — so a value derived from `this.<param>.value`
+    sees the resolved value. This keeps the whole authoring surface consistent
+    with `DenoTasks.test((s) => …)`, `service()`, and the CI builder, and lets
+    options grow without churning call sites. A single required scalar (a path,
+    a name) can still be a direct argument; reach for the lambda once there are
+    options to set.
 
 12. **Reuse the helper; never paste a second copy.** Before writing a helper,
     look for the one that exists. The shared surface to check first:
@@ -300,9 +300,9 @@ every SDK, and every change must keep it:
       the default, and what keeps a dedup free of release consequences;
     - an existing `@zuke/core` export, if one already covers it;
     - a **new** `@zuke/core` export only when the need is genuinely
-      cross-package — it brings JSDoc on every symbol, a clean
-      `deno doc --lint`, and regenerated `llms.txt`/`llms-full.txt`/README API
-      blocks in the same change.
+      cross-package — it brings JSDoc on every symbol, a clean `deno doc
+      --lint`, and regenerated `llms.txt`/`llms-full.txt`/README API blocks in
+      the same change.
 
     Two constraints shape the choice. A wrapper package may depend only on
     `@zuke/core` — never on another wrapper, never on `@std/*` — so "share it
@@ -406,8 +406,8 @@ Mark the test, not its file: the rest of the file still runs on both runtimes.
 
 2. **Integration — `tests/integration/*_test.ts`.** Drive a _real_ build
    end-to-end through the CLI `main()` entry point using the harness in
-   `tests/integration/_harness.ts`: `runCli(BuildClass, args)` returns
-   `{ code, out, err }`, and `withStateDir(fn)` provides an isolated temporary
+   `tests/integration/_harness.ts`: `runCli(BuildClass, args)` returns `{ code,
+   out, err }`, and `withStateDir(fn)` provides an isolated temporary
    `ZUKE_STATE_DIR` for durable-state features (`waitsFor`, `lock`, run
    records). Fixtures are small `Build` subclasses defined inside the test,
    recording execution into a local array. Prove the executor / graph / params /
@@ -466,8 +466,8 @@ the three test layers above and the "read every reviewer comment" rule below.
 
 `deno task ci` is `deno run -A --frozen build.ts ci` — the exact gate the `ci`
 job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
-can drift from it. `build.ts`'s `ci` target depends on: `format`
-(`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
+can drift from it. `build.ts`'s `ci` target depends on: `format` (`dprint
+check`), `lint` (`deno lint`), `oxlint`, `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
@@ -559,10 +559,10 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   a new capability, `bug_report.yml` (`bug: …`) for something not working as
   documented, and `chore.yml` (`chore: …`) for docs, tests, refactoring, and
   repository work. Blank issues are disabled on purpose, so pick the closest
-  template rather than skipping the step. The PR body then links it with
-  `Closes #<n>`. This applies to agent-authored work exactly as it does to a
-  human's: an agent that is asked to implement something files the issue as its
-  first step, and never opens a PR that closes nothing.
+  template rather than skipping the step. The PR body then links it with `Closes
+  #<n>`. This applies to agent-authored work exactly as it does to a human's: an
+  agent that is asked to implement something files the issue as its first step,
+  and never opens a PR that closes nothing.
 - **Small, focused changes** with clear, descriptive commit messages (imperative
   mood; explain the _why_). Keep PRs reviewable.
 - **Conventional, semantic versioning** for releases; keep a changelog as the

@@ -108,23 +108,22 @@ release = cicd({
 Current Homebrew refuses to install a formula from a file path ("Homebrew
 requires formulae to be in a tap"; `HOMEBREW_FORBID_PACKAGES_FROM_PATHS` is on
 unless `HOMEBREW_DEVELOPER` is set). So `verify` installs it the way a user
-would, from a tap: it creates a throwaway local tap with
-`brew tap-new --no-git`, trusts it with `brew trust --tap` (current Homebrew
-loads a non-official tap's formulae only once the tap is trusted; an older brew
-without the command is let refuse), copies the file into its `Formula/`
-directory (found with `brew --repository <tap>`), then runs
-`brew install --formula <tap>/<name>` and `brew test <tap>/<name>`. The
-uninstall and `brew untap --force` always run — whether or not the install and
-test passed — and an error in the cleanup is raised alongside the one that
-caused it, never instead of it. Every call runs with
-`HOMEBREW_NO_AUTO_UPDATE=1`.
+would, from a tap: it creates a throwaway local tap with `brew tap-new
+--no-git`, trusts it with `brew trust --tap` (current Homebrew loads a
+non-official tap's formulae only once the tap is trusted; an older brew without
+the command is let refuse), copies the file into its `Formula/` directory (found
+with `brew --repository <tap>`), then runs `brew install --formula <tap>/<name>`
+and `brew test <tap>/<name>`. The uninstall and `brew untap --force` always run
+— whether or not the install and test passed — and an error in the cleanup is
+raised alongside the one that caused it, never instead of it. Every call runs
+with `HOMEBREW_NO_AUTO_UPDATE=1`.
 
 `verifyJob` returns a plain `CiInvocation` for `cicd({ invokes: [...] })`: a
 `macos-latest` + `ubuntu-latest` matrix (`.runners(...)` to change it) that lets
 every platform finish, with a step that puts Homebrew on `PATH` on Linux
 runners, where it is installed but not on `PATH`. Spread it to add anything the
-pipeline decides, such as
-`{ ...HomebrewTasks.verifyJob(…), timeoutMinutes: 20 }`.
+pipeline decides, such as `{ ...HomebrewTasks.verifyJob(…), timeoutMinutes: 20
+}`.
 
 ## The brew CLI
 

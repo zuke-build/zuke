@@ -111,19 +111,19 @@ usual `CommandError`.
 
 ## Secrets
 
-The commands that print a credential — `sts assume-role`,
-`ecr get-login-password`, `secretsmanager get-secret-value`,
-`ssm get-parameter`, and `configure get` of `aws_secret_access_key` or
-`aws_session_token` — always run quietly, and what they return is registered
-with the run's redactor, so the value is masked if the build later prints it.
-The output is searched by core's shared rules (`markSecretsInOutput` in
-`@zuke/core/tooling`): the value under its usual key, any credential-named field
-(`password`, `apiKey`, `client_secret`, …), and — when a `--query` may have
-moved it — the answer whole and every value eight or more characters long. A
-secret's own parts are masked on their own too: the fields of a secret that is a
-JSON object, the password in a connection string or a `scheme://user:pass@host`
-URL, and the decoded text of a base64 credential — so a password parsed out of a
-database secret stays masked by itself.
+The commands that print a credential — `sts assume-role`, `ecr
+get-login-password`, `secretsmanager get-secret-value`, `ssm get-parameter`, and
+`configure get` of `aws_secret_access_key` or `aws_session_token` — always run
+quietly, and what they return is registered with the run's redactor, so the
+value is masked if the build later prints it. The output is searched by core's
+shared rules (`markSecretsInOutput` in `@zuke/core/tooling`): the value under
+its usual key, any credential-named field (`password`, `apiKey`,
+`client_secret`, …), and — when a `--query` may have moved it — the answer whole
+and every value eight or more characters long. A secret's own parts are masked
+on their own too: the fields of a secret that is a JSON object, the password in
+a connection string or a `scheme://user:pass@host` URL, and the decoded text of
+a base64 credential — so a password parsed out of a database secret stays masked
+by itself.
 
 Where the CLI offers a way to keep a secret off the command line, the wrapper
 uses it: `ssmPutParameter((s) => s.valueFile(path))` sends
@@ -131,8 +131,8 @@ uses it: `ssmPutParameter((s) => s.valueFile(path))` sends
 process table. A literal `.value(...)` for a `SecureString` is registered with
 the redactor, which masks Zuke's output but not the process table, and a value
 starting with `file://` or `fileb://` is refused, because the CLI would read
-that file instead of storing the text. Hand `ecrLoginPassword()` to
-`docker login --password-stdin`, never to `-p`.
+that file instead of storing the text. Hand `ecrLoginPassword()` to `docker
+login --password-stdin`, never to `-p`.
 
 ## Lambda canary platform
 
@@ -177,13 +177,15 @@ import { cloudwatch } from "@zuke/aws";
 
 rollout = canary((c) =>
   c.platform(platform).steps(10, 50)
-    .analysis(cloudwatch((m) =>
-      m.name("canary 5xx").namespace("AWS/ApplicationELB")
-        .metricName("HTTPCode_Target_5XX_Count")
-        .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
-        .stat("Sum").window("5m").max(5).missingDataAs(0)
-        .aws((a) => a.region("eu-west-1"))
-    ))
+    .analysis(
+      cloudwatch((m) =>
+        m.name("canary 5xx").namespace("AWS/ApplicationELB")
+          .metricName("HTTPCode_Target_5XX_Count")
+          .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
+          .stat("Sum").window("5m").max(5).missingDataAs(0)
+          .aws((a) => a.region("eu-west-1"))
+      ),
+    )
 );
 ```
 
@@ -775,7 +777,7 @@ class AwsLambdaCanary
 
   constructor(configure: Configure<AwsLambdaCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     The alias splits invocations, so exposure is a traffic share.
   describe(): string
     `"Lambda alias api:live"`, for the build summary.

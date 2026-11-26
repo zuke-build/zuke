@@ -29,16 +29,19 @@ export function streamOf<T>(
   const iterator = Symbol.asyncIterator in source
     ? source[Symbol.asyncIterator]()
     : source[Symbol.iterator]();
-  return new ReadableStream<T>({
-    async pull(controller) {
-      const next = await iterator.next();
-      if (next.done === true) controller.close();
-      else controller.enqueue(next.value);
+  return new ReadableStream<T>(
+    {
+      async pull(controller) {
+        const next = await iterator.next();
+        if (next.done === true) controller.close();
+        else controller.enqueue(next.value);
+      },
+      async cancel(reason) {
+        await iterator.return?.(reason);
+      },
     },
-    async cancel(reason) {
-      await iterator.return?.(reason);
-    },
-  }, { highWaterMark: 0 });
+    { highWaterMark: 0 },
+  );
 }
 
 /** `readable` as a web stream of its bytes, by `Readable.toWeb`. */

@@ -194,8 +194,8 @@ try {
       print,
       `import { writeFileSync } from "node:fs";
        writeFileSync(${
-        JSON.stringify(received)
-      }, JSON.stringify(process.argv.slice(2)));
+         JSON.stringify(received)
+       }, JSON.stringify(process.argv.slice(2)));
        process.exit(7);`,
     );
     await writeFile(batch, `@echo off\r\n"${node}" "${print}" %*\r\n`);
@@ -371,8 +371,8 @@ try {
       join(tool, "cli.js"),
       `#!/usr/bin/env node
        require("node:fs").writeFileSync(${
-        JSON.stringify(received)
-      }, String(process.pid));
+         JSON.stringify(received)
+       }, String(process.pid));
        setInterval(() => {}, 1000);`,
     );
     const running = spawnProcess(shim, { args: [], ...quiet });

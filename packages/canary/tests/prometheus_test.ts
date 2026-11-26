@@ -84,9 +84,10 @@ test("an unreadable answer fails with the reason, redacted", async () => {
       "query failed: bad query",
     ],
     [
-      Response.json({ status: "error", error: "unauthorised" }, {
-        status: 401,
-      }),
+      Response.json(
+        { status: "error", error: "unauthorised" },
+        { status: 401 },
+      ),
       "HTTP 401: unauthorised",
     ],
     [Response.json({}, { status: 500 }), "HTTP 500"],

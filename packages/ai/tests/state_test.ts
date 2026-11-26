@@ -228,7 +228,7 @@ test("a malformed alias list is dropped, never the record", () => {
   for (const aliases of cases) {
     const encoded = encodeState(
       // deno-lint-ignore no-explicit-any -- a hand-edited/corrupt state block
-      { findings: [{ ...entry, aliases }] } as any,
+      { findings: [{ ...entry, aliases }] } as any, // oxlint-disable-line no-explicit-any
     );
     const decoded = decodeState(encoded);
     assertEquals(decoded?.findings.length, 1); // the finding survives
@@ -238,7 +238,7 @@ test("a malformed alias list is dropped, never the record", () => {
   // A well-formed entry among the junk is still kept.
   const mixed = encodeState(
     // deno-lint-ignore no-explicit-any -- a partially corrupt alias list
-    { findings: [{ ...entry, aliases: ["0c12", 42] }] } as any,
+    { findings: [{ ...entry, aliases: ["0c12", 42] }] } as any, // oxlint-disable-line no-explicit-any
   );
   assertEquals(decodeState(mixed)?.findings[0].aliases, ["0c12"]);
 });

@@ -54,11 +54,10 @@ if (target) {
 }
 ```
 
-`BuildResult` is
-`{ ok: boolean; executed: string[]; error?: unknown; suspended?: boolean; cancelled?: boolean; runId?: string }`
-— `runId` is what a follow-up `zuke runs show` or
-[`cancelRun`](./orchestration.md) is pointed at, and `suspended` marks a run
-parked at a gate rather than finished.
+`BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown;
+suspended?: boolean; cancelled?: boolean; runId?: string }` — `runId` is what a
+follow-up `zuke runs show` or [`cancelRun`](./orchestration.md) is pointed at,
+and `suspended` marks a run parked at a gate rather than finished.
 
 ## Inspecting the CLI shape — `describeCli`
 

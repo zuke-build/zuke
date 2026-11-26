@@ -1,10 +1,9 @@
 # @zuke/argo-rollouts
 
 Typed [Argo Rollouts](https://argo-rollouts.readthedocs.io) task wrappers for
-[Zuke](https://github.com/zuke-build/zuke#readme) builds — the
-`kubectl argo rollouts` plugin's `set image`, `promote`, `abort`, `status`,
-`undo`, `get`, `list`, `create` and the rest, through an injection-free
-settings-lambda API.
+[Zuke](https://github.com/zuke-build/zuke#readme) builds — the `kubectl argo
+rollouts` plugin's `set image`, `promote`, `abort`, `status`, `undo`, `get`,
+`list`, `create` and the rest, through an injection-free settings-lambda API.
 
 ```ts
 import { ArgoRolloutsTasks } from "@zuke/argo-rollouts";

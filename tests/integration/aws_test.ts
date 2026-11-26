@@ -147,13 +147,15 @@ class Deploy extends Build {
       abort: (ctx) => platform.abort(ctx),
     })
       .steps(10)
-      .analysis(cloudwatch((m) =>
-        m.name("canary 5xx").namespace("AWS/ApplicationELB")
-          .metricName("HTTPCode_Target_5XX_Count")
-          .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
-          .stat("Sum").window("5m").max(5).missingDataAs(0)
-          .aws((a) => a.region("eu-west-1").runner(fakeAws))
-      ))
+      .analysis(
+        cloudwatch((m) =>
+          m.name("canary 5xx").namespace("AWS/ApplicationELB")
+            .metricName("HTTPCode_Target_5XX_Count")
+            .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
+            .stat("Sum").window("5m").max(5).missingDataAs(0)
+            .aws((a) => a.region("eu-west-1").runner(fakeAws))
+        ),
+      )
   );
 }
 

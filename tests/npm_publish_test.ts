@@ -272,11 +272,16 @@ test("npmRegistry holds a package changed since its tag, and its dependents, ref
   };
   await assertRejects(
     () =>
-      publishAllTo(["core", "gh", "ai", "deno"], { ai: ["gh"] }, {
-        versionOf: () => Promise.resolve("1.0.0"),
-        info: (m) => said.push(m),
-        failed: (m) => said.push(m),
-      }, registry),
+      publishAllTo(
+        ["core", "gh", "ai", "deno"],
+        { ai: ["gh"] },
+        {
+          versionOf: () => Promise.resolve("1.0.0"),
+          info: (m) => said.push(m),
+          failed: (m) => said.push(m),
+        },
+        registry,
+      ),
     Error,
     "1 package version(s) did not reach npm: @zuke-build/deno@1.0.0",
   );

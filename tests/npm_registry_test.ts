@@ -36,10 +36,13 @@ test("distOf reads a version's integrity and attestations, null when absent, and
     assertEquals(distOf(absent, "2.0.0"), null);
   }
   for (
-    const broken of [1, {}, { tarball: "u" }, { integrity: "i" }, {
-      tarball: "u",
-      integrity: "",
-    }]
+    const broken of [
+      1,
+      {},
+      { tarball: "u" },
+      { integrity: "i" },
+      { tarball: "u", integrity: "" },
+    ]
   ) {
     const bad = distOf.bind(null, doc(broken), "1.0.0");
     try {

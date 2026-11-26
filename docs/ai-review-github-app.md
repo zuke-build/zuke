@@ -19,9 +19,9 @@ An App adds two things:
 
 - **Resolved threads.** GitHub allows the mutation that resolves a review thread
   to repository _write_ access only, and refuses it to the Actions token on the
-  same scope that lets it post the reply. An App token minted with
-  `contents: write` may resolve, so a finding the reviewer dismisses or marks
-  fixed is closed, not left open for a human to tidy.
+  same scope that lets it post the reply. An App token minted with `contents:
+  write` may resolve, so a finding the reviewer dismisses or marks fixed is
+  closed, not left open for a human to tidy.
 - **A name of its own.** The reviews come from `acme-bot[bot]` rather than the
   generic Actions account, which is also the mention maintainers address
   commands to (`@acme-bot review`, `@acme-bot accept …`), so the thread reads as
@@ -194,10 +194,10 @@ await run(CI);
 
 Four things to adapt: the App's name in `commands(...)`, the repository in
 `.repository(...)`, the base branch, and the model key. The command job needs no
-declaring — a reviewer that takes commands is what generates it, with
-`@acme-bot review` and `@acme-bot accept` as its commands and push access as the
-default for who may start one (`command: (c) => c.role("triage")` or
-`.users("alice")` on the spec widen that).
+declaring — a reviewer that takes commands is what generates it, with `@acme-bot
+review` and `@acme-bot accept` as its commands and push access as the default
+for who may start one (`command: (c) => c.role("triage")` or `.users("alice")`
+on the spec widen that).
 
 Generate the workflow and commit it:
 
@@ -213,10 +213,9 @@ credentials, so:
 
 - each finding arrives as a review thread from `acme-bot[bot]` on the line it is
   about, with the summary comment carrying the Commands panel;
-- a maintainer who replies in a thread, or comments
-  `@acme-bot accept <id>
-  reason`, gets the answer on the next run — a push, or
-  `@acme-bot review`, which the App reacts 👍 to before it starts;
+- a maintainer who replies in a thread, or comments `@acme-bot accept <id>
+  reason`, gets the answer on the next run — a push, or `@acme-bot review`,
+  which the App reacts 👍 to before it starts;
 - a finding the reviewer dismisses, accepts or marks fixed gets its thread
   **resolved**, which is the part `GITHUB_TOKEN` cannot do.
 

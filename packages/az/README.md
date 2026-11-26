@@ -81,12 +81,12 @@ option.
 The Azure CLI replaces any argument that starts with `@` — or, in a `key=value`
 token, whose value after the first `=` does — with the contents of the file it
 names, and `@-` with standard input, before the command is even parsed. Every
-typed setter refuses such a value, so
-`tag("k", "@~/.azure/msal_token_cache.json")` cannot send the CLI's token cache
-to Azure. The one deliberate exception is `keyVaultReference(name, uri)` on app
-settings, which writes the `@Microsoft.KeyVault(SecretUri=…)` form App Service
-resolves. `.flag(...)`, `.args(...)` and `.command(...)` are the escape hatches
-and guard neither, so never give them an untrusted value.
+typed setter refuses such a value, so `tag("k",
+"@~/.azure/msal_token_cache.json")` cannot send the CLI's token cache to Azure.
+The one deliberate exception is `keyVaultReference(name, uri)` on app settings,
+which writes the `@Microsoft.KeyVault(SecretUri=…)` form App Service resolves.
+`.flag(...)`, `.args(...)` and `.command(...)` are the escape hatches and guard
+neither, so never give them an untrusted value.
 
 ## Readers
 
@@ -149,23 +149,22 @@ The CLI strips trailing line breaks from what it reads that way — use
 token's `sig` is registered on its own too, as written and URL-encoded, since
 the debug log prints the token inside a request URL.
 
-The commands that print a credential — `account get-access-token`,
-`acr login --expose-token`, `keyvault secret show` and `keyvault secret set` —
-always run quietly with `--output json` pinned, and what they return is
-registered with the redactor by core's shared rules (`markSecretsInOutput` in
-`@zuke/core/tooling`): the value under its usual key, any credential-named field
-(`password`, `db_pwd`, `apiKey`, `accountKey`, `SharedAccessKey`, `sas`,
-`connectionString`, `privateKeyPem`, …), and — when a `--query` may have moved
-it — the answer whole and every value eight or more characters long. A secret's
-own parts are masked on their own too: the fields of a Key Vault secret that is
-a JSON object, the password in a connection string or a
-`scheme://user:pass@host` URL, and the decoded text of a base64 credential.
-`.debug()` registers the credentials the CLI reads from the environment
-(`AZURE_STORAGE_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
-`AZURE_STORAGE_SAS_TOKEN`, `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`) — from
-the build's environment or set with `.env(...)`, in either order — but its log
-can still carry what the CLI holds in its own token cache — keep it out of
-shared CI logs.
+The commands that print a credential — `account get-access-token`, `acr login
+--expose-token`, `keyvault secret show` and `keyvault secret set` — always run
+quietly with `--output json` pinned, and what they return is registered with the
+redactor by core's shared rules (`markSecretsInOutput` in `@zuke/core/tooling`):
+the value under its usual key, any credential-named field (`password`, `db_pwd`,
+`apiKey`, `accountKey`, `SharedAccessKey`, `sas`, `connectionString`,
+`privateKeyPem`, …), and — when a `--query` may have moved it — the answer whole
+and every value eight or more characters long. A secret's own parts are masked
+on their own too: the fields of a Key Vault secret that is a JSON object, the
+password in a connection string or a `scheme://user:pass@host` URL, and the
+decoded text of a base64 credential. `.debug()` registers the credentials the
+CLI reads from the environment (`AZURE_STORAGE_KEY`,
+`AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_SAS_TOKEN`,
+`AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`) — from the build's environment or
+set with `.env(...)`, in either order — but its log can still carry what the CLI
+holds in its own token cache — keep it out of shared CI logs.
 
 ## Container Apps canary platform
 
@@ -211,13 +210,15 @@ import { azureMonitor } from "@zuke/az";
 
 rollout = canary((c) =>
   c.platform(platform).steps(10, 50)
-    .analysis(azureMonitor((m) =>
-      m.name("canary failures").resource(appInsightsId)
-        .metric("requests/failed").aggregation("Count")
-        .dimension("cloud/roleName", "api-canary")
-        .window("5m").max(5).missingDataAs(0)
-        .az((a) => a.subscription("prod"))
-    ))
+    .analysis(
+      azureMonitor((m) =>
+        m.name("canary failures").resource(appInsightsId)
+          .metric("requests/failed").aggregation("Count")
+          .dimension("cloud/roleName", "api-canary")
+          .window("5m").max(5).missingDataAs(0)
+          .az((a) => a.subscription("prod"))
+      ),
+    )
 );
 ```
 
@@ -504,7 +505,7 @@ class AzContainerAppCanary
 
   constructor(configure: Configure<AzContainerAppCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     Container Apps splits requests, so exposure is a traffic share.
   describe(): string
     `"container app api"`, for the build summary.

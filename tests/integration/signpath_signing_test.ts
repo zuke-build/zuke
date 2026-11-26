@@ -151,9 +151,10 @@ test("a SignPath answer echoing the token never gets it printed", async () => {
       await SignPathTasks.status((s) =>
         s.fetch(() =>
           Promise.resolve(
-            Response.json({ error: `token ${TOKEN} has expired` }, {
-              status: 401,
-            }),
+            Response.json(
+              { error: `token ${TOKEN} has expired` },
+              { status: 401 },
+            ),
           )
         ).organizationId(ORG).apiToken(TOKEN).signingRequestId(REQUEST)
       );

@@ -36,13 +36,16 @@ test("query POSTs a form with every parameter it was given", async () => {
   assertEquals(sent.headers.get("accept"), "application/json");
   assertEquals(sent.redirect, "manual");
   const form = new URLSearchParams(sent.body);
-  assertEquals([...form], [
-    ["query", 'sum(rate(http_requests_total{code=~"5.."}[5m]))'],
-    ["time", "2026-01-02T03:04:05.000Z"],
-    ["timeout", "30s"],
-    ["limit", "10"],
-    ["lookback_delta", "120"],
-  ]);
+  assertEquals(
+    [...form],
+    [
+      ["query", 'sum(rate(http_requests_total{code=~"5.."}[5m]))'],
+      ["time", "2026-01-02T03:04:05.000Z"],
+      ["timeout", "30s"],
+      ["limit", "10"],
+      ["lookback_delta", "120"],
+    ],
+  );
 });
 
 test("query with httpMethod GET puts the parameters in the URL, encoded", async () => {
@@ -61,25 +64,31 @@ test("query with httpMethod GET puts the parameters in the URL, encoded", async 
 
 test("query_range sends its range and answers a typed matrix", async () => {
   const fetcher = fakeFetch(() =>
-    queryResult("matrix", [{
-      metric: { job: "api" },
-      values: [[1, "1"], [2, "NaN"]],
-      histograms: [[2, { count: "3", sum: "4.5" }]],
-    }, { metric: {}, values: [[1, "+Inf"]] }])
+    queryResult("matrix", [
+      {
+        metric: { job: "api" },
+        values: [[1, "1"], [2, "NaN"]],
+        histograms: [[2, { count: "3", sum: "4.5" }]],
+      },
+      { metric: {}, values: [[1, "+Inf"]] },
+    ])
   );
   const response = await PrometheusTasks.queryRange((s) =>
     s.url(BASE).fetch(fetcher).query("up").start("2026-01-01T00:00:00Z")
       .end(1767225660).step("15s").timeout(5).limit(0).lookbackDelta("1m")
   );
-  assertEquals([...new URLSearchParams(fetcher.sent[0].body)], [
-    ["query", "up"],
-    ["start", "2026-01-01T00:00:00Z"],
-    ["end", "1767225660"],
-    ["step", "15s"],
-    ["timeout", "5"],
-    ["limit", "0"],
-    ["lookback_delta", "1m"],
-  ]);
+  assertEquals(
+    [...new URLSearchParams(fetcher.sent[0].body)],
+    [
+      ["query", "up"],
+      ["start", "2026-01-01T00:00:00Z"],
+      ["end", "1767225660"],
+      ["step", "15s"],
+      ["timeout", "5"],
+      ["limit", "0"],
+      ["lookback_delta", "1m"],
+    ],
+  );
   assertEquals(fetcher.sent[0].url.pathname, "/api/v1/query_range");
   const [first, second] = response.data.result;
   assertEquals(first.metric, { job: "api" });
@@ -190,10 +199,10 @@ test("warnings and infos come back with the result; absent ones are empty", asyn
   const annotated = await PrometheusTasks.query((s) =>
     s.url(BASE).query("q").fetch(
       fakeFetch(() =>
-        success({ resultType: "scalar", result: [1, "1"] }, {
-          warnings: ["PromQL warning: x"],
-          infos: ["PromQL info: y"],
-        })
+        success(
+          { resultType: "scalar", result: [1, "1"] },
+          { warnings: ["PromQL warning: x"], infos: ["PromQL info: y"] },
+        )
       ),
     )
   );

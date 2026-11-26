@@ -18,7 +18,11 @@ import {
 } from "../../packages/core/mod.ts";
 import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { checkGraphDoc, writeGraphDoc } from "../../build/graph_doc.ts";
+import type { Formatter } from "../../build/fmt_text.ts";
 import { runCli } from "./_harness.ts";
+
+/** A formatter that changes nothing; the gate runs the real one. */
+const unchanged: Formatter = (source) => Promise.resolve(source);
 
 /** A fixture mirroring build.ts's graphDoc/graphDocCheck wiring. */
 function fixture(path: string): new () => Build {
@@ -30,12 +34,16 @@ function fixture(path: string): new () => Build {
     graphDoc = target()
       .description("Regenerate the graph page")
       .executes(async () => {
-        await writeGraphDoc(discoverTargets(this), path);
+        await writeGraphDoc(discoverTargets(this), path, unchanged);
       });
     graphDocCheck = target()
       .description("Verify the graph page is current")
       .executes(async () => {
-        const stale = await checkGraphDoc(discoverTargets(this), path);
+        const stale = await checkGraphDoc(
+          discoverTargets(this),
+          path,
+          unchanged,
+        );
         if (stale.length > 0) {
           throw new Error(
             `The build-graph page is out of date:\n  ${stale.join("\n  ")}`,
@@ -45,69 +53,61 @@ function fixture(path: string): new () => Build {
   };
 }
 
-test({
-  name: "graphDoc target writes the page and graphDocCheck then passes",
-  denoOnly: "formats through deno fmt",
-  fn: async () => {
-    const dir = await FileTasks.makeTempDirectory((s) =>
-      s.prefix("zuke-it-graph-doc-")
+test("graphDoc target writes the page and graphDocCheck then passes", async () => {
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-graph-doc-")
+  );
+  const path = `${dir}/graph.md`;
+  try {
+    const Demo = fixture(path);
+
+    // The check fails before the page exists…
+    const before = await runCli(Demo, ["graphDocCheck"]);
+    assertEquals(before.code, 1);
+    assertStringIncludes(before.err, "out of date");
+    assertStringIncludes(before.err, "(missing)");
+
+    // …the generator target writes it…
+    const generate = await runCli(Demo, ["graphDoc"]);
+    assertEquals(generate.code, 0);
+    const page = await FileTasks.readText(path);
+    assertStringIncludes(page, "```mermaid");
+    assertStringIncludes(page, '"graphDocCheck"');
+    // The formatter pads the table's columns into alignment. That is layout,
+    // not content, and it shifts whenever a target's name changes length — so
+    // collapse runs of spaces and assert the row is present, rather than how
+    // wide its neighbours made it.
+    assertStringIncludes(
+      page.replaceAll(/ +/g, " "),
+      "| `test` | Test | `lint` |",
     );
-    const path = `${dir}/graph.md`;
-    try {
-      const Demo = fixture(path);
 
-      // The check fails before the page exists…
-      const before = await runCli(Demo, ["graphDocCheck"]);
-      assertEquals(before.code, 1);
-      assertStringIncludes(before.err, "out of date");
-      assertStringIncludes(before.err, "(missing)");
-
-      // …the generator target writes it…
-      const generate = await runCli(Demo, ["graphDoc"]);
-      assertEquals(generate.code, 0);
-      const page = await FileTasks.readText(path);
-      assertStringIncludes(page, "```mermaid");
-      assertStringIncludes(page, '"graphDocCheck"');
-      // The page is written through `deno fmt`, which pads the table's columns
-      // into alignment. That is layout, not content, and it shifts whenever a
-      // fixture target's name changes length — so collapse runs of spaces and
-      // assert the row is present, rather than how wide its neighbours made it.
-      assertStringIncludes(
-        page.replaceAll(/ +/g, " "),
-        "| `test` | Test | `lint` |",
-      );
-
-      // …and the check passes against the written page.
-      const after = await runCli(Demo, ["graphDocCheck"]);
-      assertEquals(after.code, 0);
-    } finally {
-      await FileTasks.remove(dir, { recursive: true });
-    }
-  },
+    // …and the check passes against the written page.
+    const after = await runCli(Demo, ["graphDocCheck"]);
+    assertEquals(after.code, 0);
+  } finally {
+    await FileTasks.remove(dir, { recursive: true });
+  }
 });
 
-test({
-  name: "graphDocCheck fails when the build gains a target after generation",
-  denoOnly: "formats through deno fmt",
-  fn: async () => {
-    const dir = await FileTasks.makeTempDirectory((s) =>
-      s.prefix("zuke-it-graph-drift-")
-    );
-    const path = `${dir}/graph.md`;
-    try {
-      const generate = await runCli(fixture(path), ["graphDoc"]);
-      assertEquals(generate.code, 0);
+test("graphDocCheck fails when the build gains a target after generation", async () => {
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-graph-drift-")
+  );
+  const path = `${dir}/graph.md`;
+  try {
+    const generate = await runCli(fixture(path), ["graphDoc"]);
+    assertEquals(generate.code, 0);
 
-      // The same build plus one target: the committed page is now stale.
-      const Base = fixture(path);
-      class Grown extends Base {
-        extra = target().description("New work").executes(() => {});
-      }
-      const check = await runCli(Grown, ["graphDocCheck"]);
-      assertEquals(check.code, 1);
-      assertStringIncludes(check.err, "(stale)");
-    } finally {
-      await FileTasks.remove(dir, { recursive: true });
+    // The same build plus one target: the committed page is now stale.
+    const Base = fixture(path);
+    class Grown extends Base {
+      extra = target().description("New work").executes(() => {});
     }
-  },
+    const check = await runCli(Grown, ["graphDocCheck"]);
+    assertEquals(check.code, 1);
+    assertStringIncludes(check.err, "(stale)");
+  } finally {
+    await FileTasks.remove(dir, { recursive: true });
+  }
 });

@@ -5,7 +5,11 @@ import { test } from "../../../tests/_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
-import { METHOD_NOT_FOUND, serveStdio } from "../src/mcp/jsonrpc.ts";
+import {
+  type JsonRpcResponse,
+  METHOD_NOT_FOUND,
+  serveStdio,
+} from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import {
   negotiateInitialize,
@@ -41,6 +45,12 @@ function callText(result: unknown): { text: string; isError: boolean } {
   return { text: content[0].text, isError };
 }
 
+/** The result of `res`, failing the test plainly when there is no response. */
+function resultOf(res: JsonRpcResponse | null): unknown {
+  if (res === null) throw new Error("the server sent no response");
+  return res.result;
+}
+
 test("initialize echoes the client's protocol version and names the server", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(
@@ -53,7 +63,7 @@ test("initialize echoes the client's protocol version and names the server", asy
   // With no version supplied, it answers with the server's newest.
   const res2 = await server.handleMessage(req("initialize", {}));
   assertEquals(
-    (res2?.result as Record<string, unknown>).protocolVersion,
+    (resultOf(res2) as Record<string, unknown>).protocolVersion,
     PROTOCOL_VERSION,
   );
   // An unsupported version is NOT reflected back; the server offers its newest.
@@ -61,7 +71,7 @@ test("initialize echoes the client's protocol version and names the server", asy
     req("initialize", { protocolVersion: "1999-01-01" }),
   );
   assertEquals(
-    (res3?.result as Record<string, unknown>).protocolVersion,
+    (resultOf(res3) as Record<string, unknown>).protocolVersion,
     PROTOCOL_VERSION,
   );
 });
@@ -75,7 +85,7 @@ test("ping returns an empty result", async () => {
 test("tools/list is read-only until running is allowed", async () => {
   const readOnly = new McpServer(new Demo());
   const res = await readOnly.handleMessage(req("tools/list"));
-  const tools = (res?.result as { tools: Array<{ name: string }> }).tools;
+  const tools = (resultOf(res) as { tools: Array<{ name: string }> }).tools;
   assertEquals(tools.map((t) => t.name), [
     "list_targets",
     "describe_build",
@@ -84,9 +94,10 @@ test("tools/list is read-only until running is allowed", async () => {
 
   const withRun = new McpServer(new Demo(), { allowRun: true });
   const res2 = await withRun.handleMessage(req("tools/list"));
-  const names = (res2?.result as { tools: Array<{ name: string }> }).tools.map((
-    t,
-  ) => t.name);
+  const names = (resultOf(res2) as { tools: Array<{ name: string }> }).tools
+    .map((
+      t,
+    ) => t.name);
   assertEquals(names.includes("run:lint"), true);
   assertEquals(names.includes("run:build"), true);
 });
@@ -94,7 +105,7 @@ test("tools/list is read-only until running is allowed", async () => {
 test("a run tool's schema is built from the build's parameters", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   const res = await server.handleMessage(req("tools/list"));
-  const tools = (res?.result as {
+  const tools = (resultOf(res) as {
     tools: Array<
       {
         name: string;

@@ -115,11 +115,10 @@ test("--version is a reserved flag, so a parameter may not render as one", () =>
 
 test("parseArgs recognises the graph command and its output formats", () => {
   const text = parseArgs(["graph"]);
-  assertEquals([text.graph, text.output, text.target], [
-    true,
-    "text",
-    undefined,
-  ]);
+  assertEquals(
+    [text.graph, text.output, text.target],
+    [true, "text", undefined],
+  );
 
   const eq = parseArgs(["graph", "--output=html", "--no-open"]);
   assertEquals([eq.graph, eq.output, eq.open], [true, "html", false]);
@@ -133,11 +132,10 @@ test("parseArgs recognises the graph command and its output formats", () => {
 
 test("parseArgs defaults graph to false, output to text, open to true", () => {
   const parsed = parseArgs(["build"]);
-  assertEquals([parsed.graph, parsed.output, parsed.open], [
-    false,
-    "text",
-    true,
-  ]);
+  assertEquals(
+    [parsed.graph, parsed.output, parsed.open],
+    [false, "text", true],
+  );
 });
 
 test("parseArgs reads the --json flag, defaulting to false", () => {
@@ -171,10 +169,10 @@ test("parseArgs reads the completions sub-action and shell", () => {
   // The first positional is always the sub-action, so a bare shell lands there
   // (an invalid action) and main() reports the misuse.
   const bareShell = parseArgs(["completions", "bash"]);
-  assertEquals([bareShell.completionsAction, bareShell.shell], [
-    "bash",
-    undefined,
-  ]);
+  assertEquals(
+    [bareShell.completionsAction, bareShell.shell],
+    ["bash", undefined],
+  );
 
   // No sub-action at all.
   const bare = parseArgs(["completions"]);
@@ -548,11 +546,10 @@ test("parseArgs reads the runs command, sub-action, id, and filters", () => {
     "--keep-last",
     "50",
   ]);
-  assertEquals([prune.runsAction, prune.keep, prune.keepLast], [
-    "prune",
-    "90d",
-    "50",
-  ]);
+  assertEquals(
+    [prune.runsAction, prune.keep, prune.keepLast],
+    ["prune", "90d", "50"],
+  );
 
   // Inline `=` forms of the filters and prune flags.
   const eq = parseArgs([
@@ -563,12 +560,10 @@ test("parseArgs reads the runs command, sub-action, id, and filters", () => {
     "--since=x",
     "--limit=3",
   ]);
-  assertEquals([eq.runStatus, eq.runTarget, eq.since, eq.runLimit], [
-    "succeeded",
-    "t",
-    "x",
-    "3",
-  ]);
+  assertEquals(
+    [eq.runStatus, eq.runTarget, eq.since, eq.runLimit],
+    ["succeeded", "t", "x", "3"],
+  );
   const eqPrune = parseArgs(["runs", "prune", "--keep=30d", "--keep-last=10"]);
   assertEquals([eqPrune.keep, eqPrune.keepLast], ["30d", "10"]);
 

@@ -511,12 +511,16 @@ test("fanOutPipeline drops needs edges to excluded targets", () => {
 
 test("fanOutPipeline applies command, runsOn, env, and setup overrides", () => {
   const targets = discoverTargets(new FanBuild());
-  const pipeline = fanOutPipeline(targets, {}, {
-    command: (t) => `make ${t}`,
-    runsOn: "self-hosted",
-    env: { KEY: "v" },
-    setupSteps: [{ name: "Prep", run: "echo prep" }],
-  });
+  const pipeline = fanOutPipeline(
+    targets,
+    {},
+    {
+      command: (t) => `make ${t}`,
+      runsOn: "self-hosted",
+      env: { KEY: "v" },
+      setupSteps: [{ name: "Prep", run: "echo prep" }],
+    },
+  );
   const lint = (pipeline.jobs ?? []).find((j) => j.id === "lint");
   assertEquals(lint?.runsOn, "self-hosted");
   assertEquals(lint?.env, { KEY: "v" });

@@ -52,15 +52,15 @@ boundaries, and the design-principle arguments behind the list below:
   OIDC token (`id-token: write`); no long-lived registry tokens or secrets are
   stored. JSR records build **provenance** for each published version.
 - **Least-privilege CI.** The default workflow token is `contents: read`. The
-  release pipeline is split so the `release` job (`contents` /
-  `pull-requests: write`) and the `publishJsr` job (`id-token: write`) never
-  hold each other's privileges.
+  release pipeline is split so the `release` job (`contents` / `pull-requests:
+  write`) and the `publishJsr` job (`id-token: write`) never hold each other's
+  privileges.
 - **Pinned, monitored Actions.** Every GitHub Action is pinned to a full commit
   SHA, with a version comment kept current by Dependabot. Every job that holds a
-  write-scoped token runs `step-security/harden-runner` with an
-  `egress-policy: block` allowlist, so outbound access is enforced rather than
-  merely audited. The `test` job in `ci.yml` is the exception: it holds no token
-  and only runs the test suite.
+  write-scoped token runs `step-security/harden-runner` with an `egress-policy:
+  block` allowlist, so outbound access is enforced rather than merely audited.
+  The `test` job in `ci.yml` is the exception: it holds no token and only runs
+  the test suite.
 - **Pinned toolchain.** The `./zuke` launcher bootstraps a **pinned** Deno
   version, so CI and local builds install a known version rather than a moving
   `latest`. Dependencies are resolved against a committed `deno.lock`, enforced
@@ -102,29 +102,28 @@ boundaries, and the design-principle arguments behind the list below:
   `step-security/harden-runner`.
 - **The comment-started AI review runs with secrets on any pull request.** The
   `commandReview` job in `ai-review.yml` runs on `issue_comment` when a human
-  account with push access comments `@zuke-build review` or
-  `@zuke-build accept …` on a pull request — a fork's included, which the
-  `pull_request` job must skip. It holds `OPENAI_API_KEY` and the `zuke-build`
-  App's credentials, and it is safe for a fork because **the pull request's code
-  never runs there**: the job checks out `master`, and the reviewers fetch the
-  pull request's merge ref as data and diff it. The App's credentials are used
-  only to mint a token narrowed to `pull_requests`, `issues` and `contents`
-  write, so the review posts as `zuke-build[bot]` and can resolve the review
-  threads it answers — GitHub allows that mutation only to repository write
-  access, which for an installation token is `contents: write`; nothing touching
-  workflows or Actions is minted. The `pull_request` job holds the same
-  credentials, so a push-started review can close its threads too; that job
-  executes the pull request's own build, which is acceptable because only
-  maintainers can push a branch and every repository secret is already readable
-  from one, a fork's run receives no secrets from GitHub, and the job blocks
-  egress to the launcher's endpoints, GitHub and the model provider. The
-  maintainer's comment is the command's human gate, and the gate is the job's
-  `if:`, every clause of which reads metadata GitHub asserts. The event's
-  `author_association` is not among them: GitHub reports a private organisation
-  member as `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only
-  accounts, so the job's first step asks the collaborators API for the
-  commenter's permission and skips the review unless it is `admin` or `write`,
-  before any key is spent.
+  account with push access comments `@zuke-build review` or `@zuke-build accept
+  …` on a pull request — a fork's included, which the `pull_request` job must
+  skip. It holds `OPENAI_API_KEY` and the `zuke-build` App's credentials, and it
+  is safe for a fork because **the pull request's code never runs there**: the
+  job checks out `master`, and the reviewers fetch the pull request's merge ref
+  as data and diff it. The App's credentials are used only to mint a token
+  narrowed to `pull_requests`, `issues` and `contents` write, so the review
+  posts as `zuke-build[bot]` and can resolve the review threads it answers —
+  GitHub allows that mutation only to repository write access, which for an
+  installation token is `contents: write`; nothing touching workflows or Actions
+  is minted. The `pull_request` job holds the same credentials, so a
+  push-started review can close its threads too; that job executes the pull
+  request's own build, which is acceptable because only maintainers can push a
+  branch and every repository secret is already readable from one, a fork's run
+  receives no secrets from GitHub, and the job blocks egress to the launcher's
+  endpoints, GitHub and the model provider. The maintainer's comment is the
+  command's human gate, and the gate is the job's `if:`, every clause of which
+  reads metadata GitHub asserts. The event's `author_association` is not among
+  them: GitHub reports a private organisation member as `CONTRIBUTOR`, and
+  `MEMBER` and `COLLABORATOR` admit read-only accounts, so the job's first step
+  asks the collaborators API for the commenter's permission and skips the review
+  unless it is `admin` or `write`, before any key is spent.
 
 ## Verifying a release
 
@@ -159,24 +158,24 @@ source itself is free of bugs.
   the workflow run. _Proves_ which workflow and commit built it. _Does not
   prove_ the files are what that commit compiles to, only that the workflow
   produced them.
-- **`npm audit signatures`.** In your own project, after installing, run
-  `npm audit signatures`: it checks the registry's signature of every installed
+- **`npm audit signatures`.** In your own project, after installing, run `npm
+  audit signatures`: it checks the registry's signature of every installed
   package, and the provenance attestation of those that have one. _Proves_ the
   tarball carries npm's registry signature, and that some Sigstore identity
   signed its provenance; it applies no policy to which identity, so it does not
   prove the identity is ours (`npmVerify`, below, checks that). _Does not prove_
   what the tarball contains; a package without an attestation is reported, not
   failed.
-- **Rebuild it.** From any clone with full history (`git clone`, then
-  `./zuke npmVerify`; no tag needs checking out) run `./zuke npmVerify`. For
-  each published version it reads the commit X named by that version's own
-  signed provenance, requires X to be on `master`, and rebuilds the package from
-  X: a git worktree at X, built by X's own build scripts and pinned compiler
-  (not this checkout's), once per distinct X. It installs the published versions
-  from the registry with `npm install --ignore-scripts` (so what is compared is
-  what npm unpacks, not what a tar reader of ours sees), and compares every
-  installed file with the rebuild byte for byte; `package.json` is compared as
-  parsed JSON, since a newer npm may re-serialise it. npm acts on the registry's
+- **Rebuild it.** From any clone with full history (`git clone`, then `./zuke
+  npmVerify`; no tag needs checking out) run `./zuke npmVerify`. For each
+  published version it reads the commit X named by that version's own signed
+  provenance, requires X to be on `master`, and rebuilds the package from X: a
+  git worktree at X, built by X's own build scripts and pinned compiler (not
+  this checkout's), once per distinct X. It installs the published versions from
+  the registry with `npm install --ignore-scripts` (so what is compared is what
+  npm unpacks, not what a tar reader of ours sees), and compares every installed
+  file with the rebuild byte for byte; `package.json` is compared as parsed
+  JSON, since a newer npm may re-serialise it. npm acts on the registry's
   metadata for a version, not on the tarball's `package.json`, so it also
   compares that metadata's scripts, dependencies, bin, os and the other fields
   npm acts on with the rebuild, and checks that npm's lockfile holds only our

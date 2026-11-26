@@ -38,12 +38,12 @@ with a message naming the fix.
 
 ## Readers
 
-Two tasks return a value instead of an exit code, parsed from
-`deno info --json`: `moduleGraph` hands back the graph rooted at an entrypoint,
-so a build can assert on what it actually pulls in, and `cacheInfo` reports the
-toolchain's cache directories. `deno info` reports one or the other depending on
-whether it was given a module, so each reader refuses the other's shape rather
-than returning a confidently empty result.
+Two tasks return a value instead of an exit code, parsed from `deno info
+--json`: `moduleGraph` hands back the graph rooted at an entrypoint, so a build
+can assert on what it actually pulls in, and `cacheInfo` reports the toolchain's
+cache directories. `deno info` reports one or the other depending on whether it
+was given a module, so each reader refuses the other's shape rather than
+returning a confidently empty result.
 
 ## Paths
 

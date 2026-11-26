@@ -131,20 +131,28 @@ const STRANGER = comment(
 );
 
 test("a rebuttal the adjudicator accepts gets 👀 and ❤️; a stranger's comment gets nothing", async () => {
-  const on = await discuss([OWN, REBUTTAL, STRANGER], [
-    claude({ score: 9, severity: "high", findings: [FINDING] }),
-    claude({ verdicts: [{ id: ID, verdict: "dismissed", reason: "holds" }] }),
-  ]);
+  const on = await discuss(
+    [OWN, REBUTTAL, STRANGER],
+    [
+      claude({ score: 9, severity: "high", findings: [FINDING] }),
+      claude({ verdicts: [{ id: ID, verdict: "dismissed", reason: "holds" }] }),
+    ],
+  );
   assertEquals(on(2), ["eyes", "heart"]);
   assertEquals(on(3), []);
   assertEquals(on(1), []);
 });
 
 test("a rebuttal the adjudicator upholds is read, not loved", async () => {
-  const on = await discuss([OWN, REBUTTAL], [
-    claude({ score: 9, severity: "high", findings: [FINDING] }),
-    claude({ verdicts: [{ id: ID, verdict: "upheld", reason: "it is not" }] }),
-  ]);
+  const on = await discuss(
+    [OWN, REBUTTAL],
+    [
+      claude({ score: 9, severity: "high", findings: [FINDING] }),
+      claude({
+        verdicts: [{ id: ID, verdict: "upheld", reason: "it is not" }],
+      }),
+    ],
+  );
   assertEquals(on(2), ["eyes"]);
 });
 
@@ -155,9 +163,10 @@ test("an accept command that decides a finding gets ❤️", async () => {
     "maintainer",
     "MEMBER",
   );
-  const on = await discuss([OWN, accept], [
-    claude({ score: 9, severity: "high", findings: [FINDING] }),
-  ]);
+  const on = await discuss(
+    [OWN, accept],
+    [claude({ score: 9, severity: "high", findings: [FINDING] })],
+  );
   // The command quotes the id, so it is also a reply the reviewer read.
   assertEquals(on(4), ["eyes", "heart"]);
 });

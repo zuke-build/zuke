@@ -202,11 +202,10 @@ export function materialize(
           }
           return builder;
         });
-        const builder = (t.kind === "service"
+        const base = t.kind === "service"
           ? serviceOf(t, runner)
-          : target().executes((ctx) =>
-            runner.runTarget(t.name, ctx)
-          ))
+          : target().executes((ctx) => runner.runTarget(t.name, ctx));
+        const builder = base
           .description(t.description).dependsOn(...deps)
           .inputs(...t.inputs).outputs(...t.outputs).produces(...t.produces)
           .retry(t.retry.times, t.retry.delayMs);

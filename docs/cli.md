@@ -2,21 +2,20 @@
 
 "zuke" names **two different programs**, and this reference is split to match:
 
-- **The global `zuke` CLI** (`jsr:@zuke/cli`, installed once with
-  `deno install -A -g -n zuke jsr:@zuke/cli`, or as a standalone binary with
-  `brew install zuke-build/tap/zuke` or `choco install zuke` — see
-  [installing](./install.md)) owns the commands that scaffold and inspect
-  projects — `setup`, `import`, `doc`, `upgrade`, the project commands `add`,
-  `remove`, `cache` and `relock`, `--help` and `--version` — and **forwards
-  everything else to your build**: inside a project (a `zuke.json` in the
-  current directory or any parent), `zuke ci` runs the project's `build.ts`
-  exactly as its `./zuke` launcher would.
-- **Your build's own CLI** — the `build.ts` in your repo, reached as
-  `zuke <command>` through that forwarding (or, on a machine without the CLI
-  such as a CI runner, through the `./zuke` launcher that `zuke setup` or
-  `zuke import` drops into it) — is what runs targets and everything else:
-  `graph`, `--list`, `generate-ci`, `completions`, `mcp`, `resume`, `runs`,
-  `cancel`, `register`, its own `doc`.
+- **The global `zuke` CLI** (`jsr:@zuke/cli`, installed once with `deno install
+  -A -g -n zuke jsr:@zuke/cli`, or as a standalone binary with `brew install
+  zuke-build/tap/zuke` or `choco install zuke` — see [installing](./install.md))
+  owns the commands that scaffold and inspect projects — `setup`, `import`,
+  `doc`, `upgrade`, the project commands `add`, `remove`, `cache` and `relock`,
+  `--help` and `--version` — and **forwards everything else to your build**:
+  inside a project (a `zuke.json` in the current directory or any parent), `zuke
+  ci` runs the project's `build.ts` exactly as its `./zuke` launcher would.
+- **Your build's own CLI** — the `build.ts` in your repo, reached as `zuke
+  <command>` through that forwarding (or, on a machine without the CLI such as a
+  CI runner, through the `./zuke` launcher that `zuke setup` or `zuke import`
+  drops into it) — is what runs targets and everything else: `graph`, `--list`,
+  `generate-ci`, `completions`, `mcp`, `resume`, `runs`, `cancel`, `register`,
+  its own `doc`.
 
 If a command isn't in the first table, it belongs to the second one: run it as
 `zuke <command>` from anywhere inside the project. The forwarding runs the
@@ -24,18 +23,18 @@ project's own executable `./zuke <command>` from the directory holding
 `zuke.json`, so whatever that launcher does (a pinned Deno, an exported
 environment variable, a lockfile kept outside the repository) applies to `zuke`
 as well. A root with no executable `zuke` launcher — and every root on Windows,
-which reports no file mode — gets the launcher's own invocation instead:
-`deno run -A build.ts <command>`, with `--frozen` once a `deno.lock` exists
-beside it. Either way stdio is inherited so `zuke mcp` and prompts work, and the
-command exits with the build's code. The build file is the one `zuke.json` names
-in its `build` field (`{ "build": "build.ts" }`, which is what `zuke setup`
-writes); a `zuke.json` with no `build` field means `zuke.ts`, so a project
-scaffolded before the field existed keeps working. The forwarding, `zuke relock`
-and `zuke cache` run the file it names, and `zuke setup` re-run in such a
-project writes launchers, the `deno.json` task and the `.mcp.json` entry for it.
-The name must be a plain file name of letters, digits, dots, dashes and
-underscores, ending in `.ts` and not starting with a dash; anything else is
-refused. A bare `zuke` inside a project runs the default target.
+which reports no file mode — gets the launcher's own invocation instead: `deno
+run -A build.ts <command>`, with `--frozen` once a `deno.lock` exists beside it.
+Either way stdio is inherited so `zuke mcp` and prompts work, and the command
+exits with the build's code. The build file is the one `zuke.json` names in its
+`build` field (`{ "build": "build.ts" }`, which is what `zuke setup` writes); a
+`zuke.json` with no `build` field means `zuke.ts`, so a project scaffolded
+before the field existed keeps working. The forwarding, `zuke relock` and `zuke
+cache` run the file it names, and `zuke setup` re-run in such a project writes
+launchers, the `deno.json` task and the `.mcp.json` entry for it. The name must
+be a plain file name of letters, digits, dots, dashes and underscores, ending in
+`.ts` and not starting with a dash; anything else is refused. A bare `zuke`
+inside a project runs the default target.
 
 A `runtime` field picks what runs the build file: `"deno"`, the default when the
 field is absent, or `"node"` (`{ "build": "build.ts", "runtime": "node" }`). A
@@ -46,8 +45,8 @@ launcher, and a build another SDK hosts (below) ignores the field. Any other
 value is refused, naming the field.
 
 A root with no TypeScript build file holds a build another SDK hosts, a Python
-build say: its `zuke.json` names the worker to start under `sdk`
-(`{ "command": ["uv", "run", "build.py"] }`) and, under `engine`, the exact
+build say: its `zuke.json` names the worker to start under `sdk` (`{ "command":
+["uv", "run", "build.py"] }`) and, under `engine`, the exact
 [`@zuke/engine`](https://jsr.io/@zuke/engine) release that runs it (`"1.2.3"`,
 never a range). Such a project needs nothing from Deno's stack, on a laptop or a
 CI runner. Each SDK runs on its own stack only: a Python user never needs Deno,
@@ -138,8 +137,8 @@ including one too old, or too broken, to update itself.
 A target named `setup`, `import`, `upgrade`, `add`, `remove`, `cache` or
 `relock` is therefore shadowed from the global command, and is reached as
 `zuke -- setup`. That shadowing is silent: the CLI answers before it knows what
-the build declares, and finding out would mean running the build on every
-`zuke setup`.
+the build declares, and finding out would mean running the build on every `zuke
+setup`.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
@@ -157,57 +156,57 @@ the build declares, and finding out would mean running the build on every
 | `zuke --help` / `-h`                      | Usage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `zuke --version` / `-V`                   | Print the installed `@zuke/cli` version on the first line, then — inside a project — the Zuke version the build runs on, labelled. That version is read from the project's lockfile (the `@zuke/core` it resolves): `deno.lock`, or the file its `deno.json` `lock` setting names. So it answers for a build on any core and runs nothing. Only a project with no lock, one that disables its lock (`"lock": false`), or one whose lock names no core, has its build asked instead, and a build on core older than 1.60.0 cannot answer that. On a terminal it prints one panel: CLI, install, core (or a hosted project's engine), project, the engine a standalone binary carries (`built-in`), the Deno a JSR install runs on, and platform. A binary has no Deno row, since its runtime is compiled in. The `install` row names how this `zuke` was installed — JSR, Homebrew, a standalone binary, or source — and where it lives, since one machine can hold more than one. The plain form — piped, on CI, or under `--plain` / `ZUKE_PLAIN` — keeps the first line bare, so a script can read it. Exits 0 even when the build cannot answer: the reason goes to stderr. It reports versions, not health — use a build command for that.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
-`setup` and `import` share `--dir <path>`, `--name <Class>`,
-`--build-file <name>`, `--force`/`-f`, `--yes`/`-y`, and `--mcp`. A new
-TypeScript project's build file is `build.ts`: the wizard asks, `--build-file`
-answers up front, and `zuke.json` records the name. A project that already has a
-`zuke.json` or a `zuke.ts` keeps its build file, and `--build-file` naming
-another is refused: to rename one, rename the file, set `build` in `zuke.json`,
-and re-run `zuke setup --force`, which rewrites the launchers and moves the
-`zuke` task setup wrote in `deno.json`. A file of the chosen name that is
-already there and is not a Zuke build is never taken over: the wizard asks for
-another name, and `--yes` fails saying to pass `--build-file`. `--mcp` which
-also writes a `.mcp.json` registering the build's own [MCP server](./mcp.md)
-(`deno run -A build.ts mcp`) so an agent client picks the build up from the
-first commit; `--allow-run` registers it with execution enabled and implies
-`--mcp`. An existing `.mcp.json` is merged around its other servers, and an
-existing `zuke` entry is kept unless `--force` is set. Both also ask which
-launchers to write — `--bootstrap` (the default, and what `--yes` takes)
-scaffolds launchers that download their pinned, checksum-verified runtime when
-it is missing: Deno for a `build.ts` build, the `zuke` binary for a Python one.
-A checkout needs nothing installed up front. `--no-bootstrap` scaffolds
-launchers that require that runtime on `PATH` and fail closed without it, for a
-project that must never download a tool from its build entry point.
-`--bootstrap-deno` and `--no-bootstrap-deno` are the older spellings of the same
-two flags. `--sdk python` scaffolds a `build.py`, a `zuke.json` and launchers
-that run the `zuke` binary. `--zuke <version>` names the release those launchers
-pin (default: the running `zuke`'s own), and `zuke.json` pins the engine inside
-it. `--launcher-name <name>` (for when a `zuke/` directory already occupies the
-launcher's name) and `--sdk python` apply to `setup` only; `import` additionally
-takes `--from <package.json|makefile|pyproject>` to pin the source instead of
-auto-detecting it (in that order: `package.json`, then a `Makefile`, then
-`pyproject.toml`). Both finish by scaffolding the launchers (and, for a
-`build.ts` build, `deno.json`), so the very next command you run can be your
-build's own CLI: `zuke`.
+`setup` and `import` share `--dir <path>`, `--name <Class>`, `--build-file
+<name>`, `--force`/`-f`, `--yes`/`-y`, and `--mcp`. A new TypeScript project's
+build file is `build.ts`: the wizard asks, `--build-file` answers up front, and
+`zuke.json` records the name. A project that already has a `zuke.json` or a
+`zuke.ts` keeps its build file, and `--build-file` naming another is refused: to
+rename one, rename the file, set `build` in `zuke.json`, and re-run `zuke setup
+--force`, which rewrites the launchers and moves the `zuke` task setup wrote in
+`deno.json`. A file of the chosen name that is already there and is not a Zuke
+build is never taken over: the wizard asks for another name, and `--yes` fails
+saying to pass `--build-file`. `--mcp` which also writes a `.mcp.json`
+registering the build's own [MCP server](./mcp.md) (`deno run -A build.ts mcp`)
+so an agent client picks the build up from the first commit; `--allow-run`
+registers it with execution enabled and implies `--mcp`. An existing `.mcp.json`
+is merged around its other servers, and an existing `zuke` entry is kept unless
+`--force` is set. Both also ask which launchers to write — `--bootstrap` (the
+default, and what `--yes` takes) scaffolds launchers that download their pinned,
+checksum-verified runtime when it is missing: Deno for a `build.ts` build, the
+`zuke` binary for a Python one. A checkout needs nothing installed up front.
+`--no-bootstrap` scaffolds launchers that require that runtime on `PATH` and
+fail closed without it, for a project that must never download a tool from its
+build entry point. `--bootstrap-deno` and `--no-bootstrap-deno` are the older
+spellings of the same two flags. `--sdk python` scaffolds a `build.py`, a
+`zuke.json` and launchers that run the `zuke` binary. `--zuke <version>` names
+the release those launchers pin (default: the running `zuke`'s own), and
+`zuke.json` pins the engine inside it. `--launcher-name <name>` (for when a
+`zuke/` directory already occupies the launcher's name) and `--sdk python` apply
+to `setup` only; `import` additionally takes `--from
+<package.json|makefile|pyproject>` to pin the source instead of auto-detecting
+it (in that order: `package.json`, then a `Makefile`, then `pyproject.toml`).
+Both finish by scaffolding the launchers (and, for a `build.ts` build,
+`deno.json`), so the very next command you run can be your build's own CLI:
+`zuke`.
 
 A `pyproject.toml` import reads the first task table the file carries —
 `[tool.poe.tasks]`, `[tool.pdm.scripts]`, `[tool.hatch.envs.default.scripts]`,
 `[tool.taskipy.tasks]` or `[tool.rye.scripts]` — and scaffolds a Python build
 instead: the project `zuke setup --sdk python` makes (a `zuke.json` naming
 `sdk.command` and the pinned `engine`, the `zuke` binary launchers, no
-`deno.json`), with a `build.py` whose targets run each command through
-`await ctx.sh(...)`. `--zuke <version>` pins the release, as it does for
-`setup --sdk python` (default: the running `zuke`'s own). A step naming another
-task (a poe `sequence`, a pdm `composite`, a rye `chain`, a hatch script list,
-poe `deps`) becomes a `depends_on` when nothing runs before it; one that follows
-a command stays a `# TODO` in its place, since a dependency would run it first.
-A Python `call`/`script`, an `expr`, a runner placeholder such as `{args}`, and
-any command too shell-specific to split is kept as a `# TODO`.
+`deno.json`), with a `build.py` whose targets run each command through `await
+ctx.sh(...)`. `--zuke <version>` pins the release, as it does for `setup --sdk
+python` (default: the running `zuke`'s own). A step naming another task (a poe
+`sequence`, a pdm `composite`, a rye `chain`, a hatch script list, poe `deps`)
+becomes a `depends_on` when nothing runs before it; one that follows a command
+stays a `# TODO` in its place, since a dependency would run it first. A Python
+`call`/`script`, an `expr`, a runner placeholder such as `{args}`, and any
+command too shell-specific to split is kept as a `# TODO`.
 
 ## Your build's CLI (`zuke …`)
 
-Everything below runs _your build_ — the `build.ts` in your project — as
-`zuke <command>` from anywhere inside the project, through the global CLI's
+Everything below runs _your build_ — the `build.ts` in your project — as `zuke
+<command>` from anywhere inside the project, through the global CLI's
 forwarding. Shell completions (see [`zuke completions`](#zuke-completions)
 below) attach to whichever launcher word you install them for.
 
@@ -274,8 +273,8 @@ to clear the selection. Cytoscape loads from a pinned CDN, so the first view
 needs internet access.
 
 Targets in a [`group()`](./authoring.md#group-and-partof) are drawn inside a
-labelled box (a Cytoscape compound node); the text listing tags them
-`[group: name]`.
+labelled box (a Cytoscape compound node); the text listing tags them `[group:
+name]`.
 
 | Option          | Behaviour                                                  |
 | --------------- | ---------------------------------------------------------- |
@@ -285,8 +284,8 @@ labelled box (a Cytoscape compound node); the text listing tags them
 `graph` is a reserved command name: a target called `graph` can't be run by
 name.
 
-**Output:** each target prints `▶ name` on start, then `✔ name (1.2s)` or
-`✘ name (0.4s)`. A failure prints the error, aborts the remaining targets, and
+**Output:** each target prints `▶ name` on start, then `✔ name (1.2s)` or `✘
+name (0.4s)`. A failure prints the error, aborts the remaining targets, and
 exits `1`. A final summary lists every target's status and duration plus the
 total. Under GitHub Actions, targets become collapsible log groups, failures
 emit `::error::` annotations, and the summary is written to the job summary.
@@ -350,13 +349,12 @@ instead of guessing shell commands. It exposes read tools (`list_targets`,
 `describe_build`, `graph`, plus `list_runs`/`show_run` when a state store
 resolves) and — only with `--allow-run` — one `run:<target>` tool per target
 (plus `signal_run`, `resume_check` and `cancel_run`). Authorization tiers layer
-on: `--allow-run=<globs>` limits which targets may be **invoked**,
-`--protect
-<globs>` requires a `ZUKE_OPERATOR_TOKEN` for any run whose **plan**
-touches a matching target, and `--confirm-destructive` makes a destructive run
-return its plan until called with `confirm:true`. Every mutating or denied call
-is written to an audit trail, readable on the host with
-`zuke runs show mcp-audit` and deliberately not served over MCP.
+on: `--allow-run=<globs>` limits which targets may be **invoked**, `--protect
+<globs>` requires a `ZUKE_OPERATOR_TOKEN` for any run whose **plan** touches a
+matching target, and `--confirm-destructive` makes a destructive run return its
+plan until called with `confirm:true`. Every mutating or denied call is written
+to an audit trail, readable on the host with `zuke runs show mcp-audit` and
+deliberately not served over MCP.
 
 `--http <host:port>` serves the streamable-HTTP transport instead of stdio
 (loopback by default; a non-loopback bind must authenticate its callers — a
@@ -371,13 +369,13 @@ guide: [MCP server](./mcp.md).
 ## `zuke doc` (the build's own)
 
 The build's `doc <spec>` (reached as `zuke -- doc <spec>`, since the global
-`zuke doc` answers the bare form) prints a package's API by running
-`deno doc <spec>` (e.g. `zuke -- doc jsr:@zuke/deno`) — but from a fresh empty
-directory instead of the current one. Run inside a Node repository, a bare
-`deno doc jsr:@zuke/...` resolves the repo's `node_modules/@types/*` and buries
-the API under dozens of `Failed resolving types …` warnings; the isolated empty
-working directory has nothing to resolve, so the output is just the API. `doc`
-is a reserved command name. (This complements the generated
+`zuke doc` answers the bare form) prints a package's API by running `deno doc
+<spec>` (e.g. `zuke -- doc jsr:@zuke/deno`) — but from a fresh empty directory
+instead of the current one. Run inside a Node repository, a bare `deno doc
+jsr:@zuke/...` resolves the repo's `node_modules/@types/*` and buries the API
+under dozens of `Failed resolving types …` warnings; the isolated empty working
+directory has nothing to resolve, so the output is just the API. `doc` is a
+reserved command name. (This complements the generated
 [`llms-full.txt`](../llms-full.txt) and each package's README `## API` block.)
 
 This is the same command as the global `zuke doc` above, and resolves its
@@ -467,13 +465,13 @@ however often you ask — the specifier pins it, not the lock — so the package
 reported as _held_, naming the specifier responsible. Widening that range is an
 edit to your source, which `--update` does not make for you.
 
-The re-resolution needs both an entrypoint and a registry refresh. A bare
-`deno install` resolves the manifest's dependencies, so it never writes back an
-inline specifier at all; `--entrypoint` is what makes it see the build's module
-graph. And Deno caches the registry's version listing, so without
-`--reload=jsr:` a re-resolution happily picks the newest version it already knew
-about — landing one release behind, silently, which is the failure this command
-exists to prevent.
+The re-resolution needs both an entrypoint and a registry refresh. A bare `deno
+install` resolves the manifest's dependencies, so it never writes back an inline
+specifier at all; `--entrypoint` is what makes it see the build's module graph.
+And Deno caches the registry's version listing, so without `--reload=jsr:` a
+re-resolution happily picks the newest version it already knew about — landing
+one release behind, silently, which is the failure this command exists to
+prevent.
 
 "Latest" means the newest release Deno would actually install. Deno refuses
 releases younger than 24 hours by default (`minimumDependencyAge`), so a version
@@ -514,18 +512,18 @@ whole npm tree and writes an `npm` section a jsr-only lock never had.
 `--help` is a map of the surface, not the manual. It lists what exists in
 labelled groups with one short line each: `Commands:`, then the flags that apply
 to any run sorted by what they do — `Run options:` (how the run executes:
-`--skip <dep>`, `--parallel[=N]`, `--affected[=<base>]`, `--dry-run`, …),
-`Run record:` (`--state`, `--actor <name>`), `Output:` (`--no-banner`,
-`--plain`) and `Info:` (`--list`, `--json`, `--help`, `--version`) — then
-`Targets:` and `Parameters:`. Each flag shows the value it takes. It ends by
-pointing at the per-command pages. Targets are listed alphabetically (in
-`--list` too), so a long build stays scannable; each target's `depends on:` list
-keeps its declared order.
+`--skip <dep>`, `--parallel[=N]`, `--affected[=<base>]`, `--dry-run`, …), `Run
+record:` (`--state`, `--actor <name>`), `Output:` (`--no-banner`, `--plain`) and
+`Info:` (`--list`, `--json`, `--help`, `--version`) — then `Targets:` and
+`Parameters:`. Each flag shows the value it takes. It ends by pointing at the
+per-command pages. Targets are listed alphabetically (in `--list` too), so a
+long build stays scannable; each target's `depends on:` list keeps its declared
+order.
 
 `zuke <command> --help` is where a command's detail lives: its usage lines, its
 full explanation, and the flags that qualify only it. `zuke mcp --help` carries
-the authorization tiers, `zuke resume --help` the resume semantics,
-`zuke outdated --help` what `--update` will and will not touch.
+the authorization tiers, `zuke resume --help` the resume semantics, `zuke
+outdated --help` what `--update` will and will not touch.
 
 The split is why the main help fits on a screen. It used to be one block with
 commands and flags interleaved and every explanation inlined, which made the
@@ -554,8 +552,8 @@ The first failure stops new launches; targets already running finish, and the
 rest are reported as skipped. The build summary stays in declaration order
 regardless.
 
-Programmatic callers get the same behaviour via
-`execute(build, target, { parallel: true })` (or a number) — see the
+Programmatic callers get the same behaviour via `execute(build, target, {
+parallel: true })` (or a number) — see the
 [programmatic API](./programmatic-api.md).
 
 For parallelism scoped to specific targets rather than the whole build, put them
@@ -667,9 +665,9 @@ to `execute`, optionally with a `changedFiles` seam in place of git.
 
 `--dry-run` resolves the plan and reports every target that **would** run —
 honouring `--skip` and each target's `onlyWhen` condition — without executing
-any body or reading/writing the cache. Each planned target prints a
-`(dry run — not executed)` line, and the summary reflects what would have run.
-Programmatic callers pass `{ dryRun: true }` to `execute`.
+any body or reading/writing the cache. Each planned target prints a `(dry run —
+not executed)` line, and the summary reflects what would have run. Programmatic
+callers pass `{ dryRun: true }` to `execute`.
 
 ## Durable run state
 
@@ -742,9 +740,9 @@ run's full status survives the process that produced it.
   (only runs whose graph contains that target), `--since <iso>` (only runs
   created at or after an ISO-8601 timestamp), and `--limit <n>` (at most the
   newest N). The filters compose. Add `--counts` to print aggregate counts (a
-  total and one line per status) instead of rows — with `--json` it emits
-  `{ total, byStatus }` (status keys sorted for stable output), honouring the
-  same filters.
+  total and one line per status) instead of rows — with `--json` it emits `{
+  total, byStatus }` (status keys sorted for stable output), honouring the same
+  filters.
 - `zuke runs show <run-id>` reconstructs one run in full: the header, resolved
   (non-secret) parameters, each target's status with its duration, error, or
   pending wait, and any external signals received.
@@ -783,8 +781,8 @@ coloured headings, names and dimmed detail. The words and their order are the
 same as in the plain form; the rich form only adds colour and a `◆` before each
 section heading.
 
-Output is plain — exactly what these commands print into a pipe, so
-`zuke --version` is a bare number — whenever any of these holds:
+Output is plain — exactly what these commands print into a pipe, so `zuke
+--version` is a bare number — whenever any of these holds:
 
 - stdout is not a terminal (piped or redirected);
 - the run is on CI;

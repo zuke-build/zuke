@@ -101,8 +101,8 @@ function bootstrapEnvDocs(pin: DenoPin, dash: string): string {
 #                  known-good version (see below) for reproducible and more
 #                  predictable installs. An override must name an exact release
 #                  tag (e.g. ${
-    denoReleaseTag(pin)
-  }) ${dash} "latest" is rejected, because a moving
+  denoReleaseTag(pin)
+}) ${dash} "latest" is rejected, because a moving
 #                  target has no checksum to pin ${dash} and is only installed if
 #                  DENO_SHA256 also supplies the matching per-platform checksum
 #                  (see below); this launcher never downloads an unverified
@@ -116,8 +116,8 @@ function bootstrapEnvDocs(pin: DenoPin, dash: string): string {
 function checksumProvenance(pin: DenoPin, versionVar: string): string {
   return `# SHA-256 of each \`deno-<target>.zip\` release asset, from
 # https://github.com/denoland/deno/releases/tag/${
-    denoReleaseTag(pin)
-  } (GitHub's own reported
+  denoReleaseTag(pin)
+} (GitHub's own reported
 # asset \`digest\`, cross-checked by downloading and hashing the artifact).
 # Bump *together* with ${versionVar}: this file is generated from
 # @zuke/cli's deno_pin.ts, so change the pin there and regenerate.`;
@@ -157,8 +157,8 @@ else
       echo "zuke: DENO_VERSION=latest is not supported: this launcher verifies the" >&2
       echo "      download against a pinned SHA-256, and \\"latest\\" has no fixed hash." >&2
       echo "      Set DENO_VERSION to an exact release tag (e.g. ${
-    denoReleaseTag(pin)
-  }) plus DENO_SHA256" >&2
+        denoReleaseTag(pin)
+      }) plus DENO_SHA256" >&2
       echo "      with that release's deno-<target>.zip hash, or unset DENO_VERSION to" >&2
       echo "      install the verified default $DEFAULT_DENO_VERSION." >&2
       exit 1
@@ -328,8 +328,8 @@ if (-not $deno) {
     throw "zuke: DENO_VERSION=latest is not supported: this launcher verifies the " +
       "download against a pinned SHA-256, and ""latest"" has no fixed hash. Set " +
       "DENO_VERSION to an exact release tag (e.g. ${
-    denoReleaseTag(pin)
-  }) plus DENO_SHA256 with that " +
+        denoReleaseTag(pin)
+      }) plus DENO_SHA256 with that " +
       "release's deno-<target>.zip hash, or unset DENO_VERSION to install the " +
       "verified default $DefaultDenoVersion."
   }
