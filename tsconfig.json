@@ -8,8 +8,31 @@
     "strict": true,
     "skipLibCheck": true,
     "erasableSyntaxOnly": true,
-    "lib": ["esnext", "dom", "dom.iterable", "dom.asynciterable"],
-    "types": ["node", "deno"]
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable"
+    ],
+    "types": [
+      "node",
+      "deno"
+    ],
+    "paths": {
+      "jsr:@zuke/core@^1": [
+        "./packages/core/mod.ts"
+      ],
+      "jsr:@zuke/canary@^1": [
+        "./packages/canary/mod.ts"
+      ]
+    }
   },
-  "include": ["packages/*/mod.ts", "packages/*/src/**/*.ts"]
+  "include": [
+    "build.ts",
+    "build/**/*.ts",
+    "tests/**/*.ts",
+    "packages/*/mod.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/tests/**/*.ts"
+  ]
 }

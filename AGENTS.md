@@ -96,10 +96,10 @@ regenerate them in the same PR.
 - **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). The test runner,
   linter, type-checker and coverage are the built-in `deno` CLI. Formatting is
   [dprint](https://dprint.dev/) (`dprint.json`), and the gate also lints with
-  [Oxlint](https://oxc.rs/) (`.oxlintrc.json`); both are pinned in the npm
-  workspace (`package.json`), which the gate's `npmInstall` target installs, so
-  they need Node. `npmBuild` also uses npm, to install `tsc` and compile the
-  packages for npm.
+  [Oxlint](https://oxc.rs/) (`.oxlintrc.json`) and type-checks with `tsc`
+  (`tsconfig.json`); all three are pinned in the npm workspace (`package.json`),
+  which the gate's `npmInstall` target installs, so they need Node. `npmBuild`
+  also uses npm, to install `tsc` and compile the packages for npm.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 72 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
@@ -134,11 +134,18 @@ it.** Status as of 2026-07-30:
   the default checker can report different results — and say "Don't rely on it
   for CI or release builds yet."
 
-**Therefore:** `deno check` (default compiler) stays the authoritative
-type-checker for this repo and for CI. Try `--unstable-tsgo` locally when a
-type-check feels slow, but do not put it in the `check` task or the gate until
-Deno drops the unstable flag. Do not bolt on a parallel `tsc`/`tsgo` pass that
-can't see Deno's module graph.
+**Therefore:** `deno check` (default compiler) stays the type-checker of the
+`check` task and the Deno lane. Try `--unstable-tsgo` locally when a type-check
+feels slow, but do not put it in the `check` task or the gate until Deno drops
+the unstable flag.
+
+The gate also runs TypeScript 7's own `tsc`, pinned in `package.json`, as the
+Node gate's type-checker (#993): the `tsc` target checks what `tsconfig.json`
+includes, the same roots as `deno check` except the examples, which
+`examplesCheck` checks with Deno. It sees the same module graph Deno does. The
+npm workspace links every package into `node_modules` as `@zuke/<name>`, and
+`tsconfig.json`'s `paths` send the `jsr:@zuke/*` specifiers a test reaches
+through an example to the same workspace members.
 
 ## Each SDK runs on its own stack (hard requirement)
 
@@ -467,7 +474,7 @@ the three test layers above and the "read every reviewer comment" rule below.
 `deno task ci` is `deno run -A --frozen build.ts ci` — the exact gate the `ci`
 job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
 can drift from it. `build.ts`'s `ci` target depends on: `format` (`dprint
-check`), `lint` (`deno lint`), `oxlint`, `spell` (cspell), `coverage`
+check`), `lint` (`deno lint`), `oxlint`, `tsc`, `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,

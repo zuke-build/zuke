@@ -49,6 +49,7 @@ import { DenoTasks } from "@zuke/deno";
 import { NpmTasks } from "@zuke/npm";
 import { DprintTasks } from "@zuke/dprint";
 import { OxlintTasks } from "@zuke/oxlint";
+import { TscTasks } from "@zuke/tsc";
 import { $ } from "@zuke/core/shell";
 import { delay } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
@@ -412,6 +413,16 @@ class ZukeBuild extends Build {
       // The same roots the root `check` task names, run through the wrapper
       // rather than `deno task` so the row can say `// Errors: 0`.
       await DenoTasks.check((s) => s.frozen().paths(...CHECK_ROOTS));
+    });
+
+  // tsc, the Node gate's type-checker (#993), alongside deno check until the
+  // gate moves to Node. tsconfig.json covers the same roots, the examples aside,
+  // which examplesCheck type-checks with Deno.
+  tsc = target()
+    .description("Type-check the workspace with tsc")
+    .dependsOn(this.npmInstall)
+    .executes(async () => {
+      await TscTasks.tsc((s) => s.project("tsconfig.json"));
     });
 
   test = target()
@@ -1280,6 +1291,7 @@ class ZukeBuild extends Build {
       this.format,
       this.lint,
       this.oxlint,
+      this.tsc,
       this.spell,
       this.coverage,
       this.coverageUpload,

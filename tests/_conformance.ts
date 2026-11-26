@@ -283,14 +283,15 @@ async function replayRun(
  * given: whether the marker was seen, and the text read.
  */
 async function readUntil(
-  reader: ReadableStreamDefaultReader<string>,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
   marker?: string,
 ): Promise<{ seen: boolean; text: string }> {
+  const decoder = new TextDecoder();
   let text = "";
   while (true) {
     const { value, done } = await reader.read();
-    if (done) return { seen: false, text };
-    text += value;
+    if (done) return { seen: false, text: text + decoder.decode() };
+    text += decoder.decode(value, { stream: true });
     if (marker !== undefined && text.includes(marker)) {
       return { seen: true, text };
     }
@@ -342,7 +343,7 @@ async function replayEngineDeath(
         return s;
       },
     );
-    const log = engine.stderr.pipeThrough(new TextDecoderStream()).getReader();
+    const log = engine.stderr.getReader();
     const marker = `worker: call: ${spec.after}`;
     const { seen, text } = await readUntil(log, marker);
     if (!seen) {
