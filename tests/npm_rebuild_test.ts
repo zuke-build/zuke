@@ -135,14 +135,18 @@ test({
   },
 });
 
-test("rebuildBuild: a build.ts that fails rejects, and the tree is removed", async () => {
-  const work = absolutePath(await FileTasks.makeTempDirectory());
-  const log: string[] = [];
-  try {
-    const rebuild = rebuilder(work, fixtureGit("Deno.exit(3);", log), DENO);
-    await assertRejects(() => rebuild("d".repeat(40), ["x"]));
-    assertEquals(log, ["removed"]);
-  } finally {
-    await FileTasks.remove(String(work), { recursive: true });
-  }
+test({
+  name: "rebuildBuild: a build.ts that fails rejects, and the tree is removed",
+  denoOnly: "runs a build.ts with deno run",
+  fn: async () => {
+    const work = absolutePath(await FileTasks.makeTempDirectory());
+    const log: string[] = [];
+    try {
+      const rebuild = rebuilder(work, fixtureGit("Deno.exit(3);", log), DENO);
+      await assertRejects(() => rebuild("d".repeat(40), ["x"]));
+      assertEquals(log, ["removed"]);
+    } finally {
+      await FileTasks.remove(String(work), { recursive: true });
+    }
+  },
 });

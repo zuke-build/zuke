@@ -153,99 +153,125 @@ test("docOf: links unwrapped, trailing space and blank ends trimmed", () => {
   assertEquals(docOf(undefined), "");
 });
 
-test("packageOf: the fixture wrappers read to their golden parts", async () => {
-  const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
-  for (const name of ["widget", "tally", "relay"]) {
-    const root = await docRootOf([`${FIXTURES}/${name}.ts`]);
-    assertEquals(packageOf(name, root, tooling), await golden(name), name);
-  }
+test({
+  name: "packageOf: the fixture wrappers read to their golden parts",
+  denoOnly: "reads the wrappers through deno doc",
+  fn: async () => {
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    for (const name of ["widget", "tally", "relay"]) {
+      const root = await docRootOf([`${FIXTURES}/${name}.ts`]);
+      assertEquals(packageOf(name, root, tooling), await golden(name), name);
+    }
+  },
 });
 
-test("packageOf: a root without tasks is no part of the spec", async () => {
-  const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
-  assertEquals(
-    packageOf("empty", { version: 1, nodes: {} }, tooling),
-    undefined,
-  );
-  assertEquals(firstSentence({ version: 1, nodes: {} }), "");
+test({
+  name: "packageOf: a root without tasks is no part of the spec",
+  denoOnly: "reads the wrappers through deno doc",
+  fn: async () => {
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    assertEquals(
+      packageOf("empty", { version: 1, nodes: {} }, tooling),
+      undefined,
+    );
+    assertEquals(firstSentence({ version: 1, nodes: {} }), "");
+  },
 });
 
-test("packageOf: an extends entry that names no interface it can read adds nothing", async () => {
-  const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
-  const method = (name: string) => ({
-    name,
-    kind: "method",
-    params: [],
-    returnType: keyword("void"),
-  });
-  const root = {
-    version: 1,
-    nodes: {
-      "file:///odd.ts": {
-        symbols: [
-          {
-            name: "OddApi",
-            declarations: [{
-              kind: "interface",
-              def: {
-                // Not a type node, a type node without a name, and an
-                // interface the root does not declare.
-                extends: ["Text", { kind: "typeRef", value: {} }, ref("Gone")],
-                methods: [method("stop")],
-              },
-            }],
-          },
-          {
-            name: "OddTasks",
-            declarations: [{
-              kind: "variable",
-              def: { tsType: ref("OddApi") },
-            }],
-          },
-        ],
+test({
+  name:
+    "packageOf: an extends entry that names no interface it can read adds nothing",
+  denoOnly: "reads the wrappers through deno doc",
+  fn: async () => {
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    const method = (name: string) => ({
+      name,
+      kind: "method",
+      params: [],
+      returnType: keyword("void"),
+    });
+    const root = {
+      version: 1,
+      nodes: {
+        "file:///odd.ts": {
+          symbols: [
+            {
+              name: "OddApi",
+              declarations: [{
+                kind: "interface",
+                def: {
+                  // Not a type node, a type node without a name, and an
+                  // interface the root does not declare.
+                  extends: [
+                    "Text",
+                    { kind: "typeRef", value: {} },
+                    ref("Gone"),
+                  ],
+                  methods: [method("stop")],
+                },
+              }],
+            },
+            {
+              name: "OddTasks",
+              declarations: [{
+                kind: "variable",
+                def: { tsType: ref("OddApi") },
+              }],
+            },
+          ],
+        },
       },
-    },
-  };
-  const odd = packageOf("odd", root, tooling);
-  assertEquals(odd?.tasks.map((t) => t.tasks.map((m) => m.name)), [["stop"]]);
+    };
+    const odd = packageOf("odd", root, tooling);
+    assertEquals(odd?.tasks.map((t) => t.tasks.map((m) => m.name)), [["stop"]]);
+  },
 });
 
-test("toolingOf: the base settings, their public setters, no reserved member", async () => {
-  const tooling = toolingOf(await docRootOf([TOOLING_ENTRYPOINT]));
-  const names = tooling.map((s) => s.name);
-  assert(names.includes("ToolSettings"), names.join(","));
-  assert(names.includes("DynamicToolSettings"), names.join(","));
-  assert(!names.includes("ToolNotFoundError"), names.join(","));
-  const base = tooling.find((s) => s.name === "ToolSettings");
-  if (base === undefined) throw new Error("ToolSettings is not in the spec");
-  assertEquals(base.extends, null);
-  const setters = base.setters.map((s) => s.name);
-  for (const name of ["env", "cwd", "noThrow", "toolPath"]) {
-    assert(setters.includes(name), setters.join(","));
-  }
-  for (const name of ["run", "buildArgs", "onOutput", "markSecret"]) {
-    assert(!setters.includes(name), setters.join(","));
-  }
-  const env = base.setters.find((s) => s.name === "env");
-  assertEquals(env?.params[0]?.type, {
-    kind: "record",
-    key: { kind: "string" },
-    value: { kind: "string" },
-  });
-  assertEquals(env?.returns, { kind: "self" });
+test({
+  name:
+    "toolingOf: the base settings, their public setters, no reserved member",
+  denoOnly: "reads the wrappers through deno doc",
+  fn: async () => {
+    const tooling = toolingOf(await docRootOf([TOOLING_ENTRYPOINT]));
+    const names = tooling.map((s) => s.name);
+    assert(names.includes("ToolSettings"), names.join(","));
+    assert(names.includes("DynamicToolSettings"), names.join(","));
+    assert(!names.includes("ToolNotFoundError"), names.join(","));
+    const base = tooling.find((s) => s.name === "ToolSettings");
+    if (base === undefined) throw new Error("ToolSettings is not in the spec");
+    assertEquals(base.extends, null);
+    const setters = base.setters.map((s) => s.name);
+    for (const name of ["env", "cwd", "noThrow", "toolPath"]) {
+      assert(setters.includes(name), setters.join(","));
+    }
+    for (const name of ["run", "buildArgs", "onOutput", "markSecret"]) {
+      assert(!setters.includes(name), setters.join(","));
+    }
+    const env = base.setters.find((s) => s.name === "env");
+    assertEquals(env?.params[0]?.type, {
+      kind: "record",
+      key: { kind: "string" },
+      value: { kind: "string" },
+    });
+    assertEquals(env?.returns, { kind: "self" });
+  },
 });
 
-test("toolSpec: the workspace's wrappers, rendered as the committed file is", async () => {
-  const spec = await toolSpec(["deno", "docker"]);
-  assertEquals(spec.spec, TOOL_SPEC_VERSION);
-  assertEquals(spec.packages.map((p) => p.name), ["deno", "docker"]);
-  const deno = spec.packages[0];
-  if (deno === undefined) throw new Error("deno is not in the spec");
-  assert(deno.summary !== "");
-  const tasks = deno.tasks.find((t) => t.name === "DenoTasks");
-  if (tasks === undefined) throw new Error("DenoTasks is not in the spec");
-  assert(tasks.tasks.some((t) => t.name === "eval"));
-  const text = renderToolSpec(spec);
-  assert(text.endsWith("}\n"));
-  assertEquals(JSON.parse(text), spec);
+test({
+  name: "toolSpec: the workspace's wrappers, rendered as the committed file is",
+  denoOnly: "reads the wrappers through deno doc",
+  fn: async () => {
+    const spec = await toolSpec(["deno", "docker"]);
+    assertEquals(spec.spec, TOOL_SPEC_VERSION);
+    assertEquals(spec.packages.map((p) => p.name), ["deno", "docker"]);
+    const deno = spec.packages[0];
+    if (deno === undefined) throw new Error("deno is not in the spec");
+    assert(deno.summary !== "");
+    const tasks = deno.tasks.find((t) => t.name === "DenoTasks");
+    if (tasks === undefined) throw new Error("DenoTasks is not in the spec");
+    assert(tasks.tasks.some((t) => t.name === "eval"));
+    const text = renderToolSpec(spec);
+    assert(text.endsWith("}\n"));
+    assertEquals(JSON.parse(text), spec);
+  },
 });

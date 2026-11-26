@@ -54,20 +54,29 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-test("the test target's row carries the run's counts and the body's own note", async () => {
-  const r = await runCli(CI, ["pack"]);
-  assertEquals(r.code, 0, r.err);
-  assertStringIncludes(
-    row(r.out, "test"),
-    "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1 · Version: 3.6.2",
-  );
-  assertEquals(row(r.out, "pack").includes("//"), false);
+test({
+  name:
+    "the test target's row carries the run's counts and the body's own note",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(CI, ["pack"]);
+    assertEquals(r.code, 0, r.err);
+    assertStringIncludes(
+      row(r.out, "test"),
+      "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1 · Version: 3.6.2",
+    );
+    assertEquals(row(r.out, "pack").includes("//"), false);
+  },
 });
 
-test("a failed test target's row says how many tests failed", async () => {
-  const r = await runCli(Broken, ["test"]);
-  assertEquals(r.code, 1);
-  const line = row(r.out, "test");
-  assertStringIncludes(line, "Failed");
-  assertStringIncludes(line, "// Tests: 2 · Passed: 1 · Failed: 1");
+test({
+  name: "a failed test target's row says how many tests failed",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const r = await runCli(Broken, ["test"]);
+    assertEquals(r.code, 1);
+    const line = row(r.out, "test");
+    assertStringIncludes(line, "Failed");
+    assertStringIncludes(line, "// Tests: 2 · Passed: 1 · Failed: 1");
+  },
 });

@@ -51,19 +51,27 @@ class FrozenBuild extends Build {
     });
 }
 
-test("a build runs `deno run --frozen` end-to-end through the CLI", async () => {
-  const dir = await FileTasks.makeTempDirectory((s) =>
-    s.prefix("zuke-frozen-")
-  );
-  scriptPath = `${dir}/ok.ts`;
-  try {
-    await FileTasks.writeText(scriptPath, 'console.log("ok");\n');
-    const { code, out, err } = await runCli(FrozenBuild, ["frozenRun"]);
-    assertEquals(code, 0, `--frozen must be a flag real deno accepts: ${err}`);
-    assertEquals(out.includes("frozen-run=0"), true, out);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+test({
+  name: "a build runs `deno run --frozen` end-to-end through the CLI",
+  denoOnly: "runs deno run --frozen",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-frozen-")
+    );
+    scriptPath = `${dir}/ok.ts`;
+    try {
+      await FileTasks.writeText(scriptPath, 'console.log("ok");\n');
+      const { code, out, err } = await runCli(FrozenBuild, ["frozenRun"]);
+      assertEquals(
+        code,
+        0,
+        `--frozen must be a flag real deno accepts: ${err}`,
+      );
+      assertEquals(out.includes("frozen-run=0"), true, out);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
 test({

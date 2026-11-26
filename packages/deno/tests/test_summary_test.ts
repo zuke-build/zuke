@@ -88,46 +88,59 @@ test("parseTestSummary reports nothing for output without a result line", () => 
   assertEquals(parseTestSummary("  ok | 1 passed | 0 failed (1ms)"), undefined);
 });
 
-test("DenoTasks.test reports a real run's counts into the ambient summary", async () => {
-  const summary = new TargetSummary();
-  const out = await withAmbientSummary(
-    summary,
-    () => DenoTasks.test((s) => s.paths(PASSING).noCheck().quiet()),
-  );
-  assertEquals(out.code, 0);
-  assertEquals(summary.entries(), [
-    { key: "Tests", value: "3" },
-    { key: "Passed", value: "2" },
-    { key: "Failed", value: "0" },
-    { key: "Skipped", value: "1" },
-  ]);
+test({
+  name: "DenoTasks.test reports a real run's counts into the ambient summary",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const summary = new TargetSummary();
+    const out = await withAmbientSummary(
+      summary,
+      () => DenoTasks.test((s) => s.paths(PASSING).noCheck().quiet()),
+    );
+    assertEquals(out.code, 0);
+    assertEquals(summary.entries(), [
+      { key: "Tests", value: "3" },
+      { key: "Passed", value: "2" },
+      { key: "Failed", value: "0" },
+      { key: "Skipped", value: "1" },
+    ]);
+  },
 });
 
-test("DenoTasks.test reports the counts of a failed run before it throws", async () => {
-  const summary = new TargetSummary();
-  await assertRejects(
-    () =>
-      withAmbientSummary(
-        summary,
-        () => DenoTasks.test((s) => s.paths(FAILING).noCheck().quiet()),
-      ),
-    CommandError,
-  );
-  assertEquals(summary.entries(), [
-    { key: "Tests", value: "2" },
-    { key: "Passed", value: "1" },
-    { key: "Failed", value: "1" },
-  ]);
+test({
+  name: "DenoTasks.test reports the counts of a failed run before it throws",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const summary = new TargetSummary();
+    await assertRejects(
+      () =>
+        withAmbientSummary(
+          summary,
+          () => DenoTasks.test((s) => s.paths(FAILING).noCheck().quiet()),
+        ),
+      CommandError,
+    );
+    assertEquals(summary.entries(), [
+      { key: "Tests", value: "2" },
+      { key: "Passed", value: "1" },
+      { key: "Failed", value: "1" },
+    ]);
+  },
 });
 
-test("DenoTasks.test reports nothing under a reporter that prints no result line", async () => {
-  const summary = new TargetSummary();
-  await withAmbientSummary(
-    summary,
-    () =>
-      DenoTasks.test((s) =>
-        s.paths(PASSING).noCheck().reporter("junit").quiet()
-      ),
-  );
-  assertEquals(summary.entries(), []);
+test({
+  name:
+    "DenoTasks.test reports nothing under a reporter that prints no result line",
+  denoOnly: "runs deno test",
+  fn: async () => {
+    const summary = new TargetSummary();
+    await withAmbientSummary(
+      summary,
+      () =>
+        DenoTasks.test((s) =>
+          s.paths(PASSING).noCheck().reporter("junit").quiet()
+        ),
+    );
+    assertEquals(summary.entries(), []);
+  },
 });

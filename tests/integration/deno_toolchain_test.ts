@@ -75,21 +75,29 @@ class RefusalBuild extends Build {
     });
 }
 
-test("the module-graph reader gives a build data it can gate on", async () => {
-  const result = await runCli(GraphBuild, [
-    "reportGraph",
-    `--entry=${FIXTURE}`,
-  ]);
-  assertEquals(result.code, 0);
-  assertStringIncludes(result.out, "modules=1");
-  assertStringIncludes(result.out, "error=undefined");
-  assertStringIncludes(result.out, "media=TypeScript");
+test({
+  name: "the module-graph reader gives a build data it can gate on",
+  denoOnly: "runs deno info",
+  fn: async () => {
+    const result = await runCli(GraphBuild, [
+      "reportGraph",
+      `--entry=${FIXTURE}`,
+    ]);
+    assertEquals(result.code, 0);
+    assertStringIncludes(result.out, "modules=1");
+    assertStringIncludes(result.out, "error=undefined");
+    assertStringIncludes(result.out, "media=TypeScript");
+  },
 });
 
-test("the cache reader runs without a module operand", async () => {
-  const result = await runCli(GraphBuild, ["caches", `--entry=${FIXTURE}`]);
-  assertEquals(result.code, 0);
-  assertStringIncludes(result.out, "hasDenoDir=true");
+test({
+  name: "the cache reader runs without a module operand",
+  denoOnly: "runs deno info",
+  fn: async () => {
+    const result = await runCli(GraphBuild, ["caches", `--entry=${FIXTURE}`]);
+    assertEquals(result.code, 0);
+    assertStringIncludes(result.out, "hasDenoDir=true");
+  },
 });
 
 test("a settings refusal fails the target, and says how to fix it", async () => {

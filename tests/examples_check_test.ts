@@ -158,23 +158,27 @@ test("formatExampleFailures names the example, the step, and the output", () => 
   assertEquals(text.includes("it is what readers copy"), true);
 });
 
-test("the shipped examples are discovered and pass the real gate", async () => {
-  // Integration: the default runner spawns the real `deno check` and
-  // `deno run … --list` (Deno.execPath() via the wrapper) over every shipped
-  // example, resolving their jsr:@zuke/* imports to this workspace — the same
-  // work `./zuke examplesCheck` does in the gate, so the normal test lane
-  // proves the runner and the examples end to end on every OS the suite runs.
-  const all = await discoverExamples();
-  assertEquals(
-    all.map((e) => e.dir.replace(/^.*[\\/]/, "")),
-    [
-      "canary-release",
-      "ci-only",
-      "deno-library",
-      "node-app",
-      "release-library",
-      "scripts-to-zuke",
-    ],
-  );
-  assertEquals(await checkExamples(all), []);
+test({
+  name: "the shipped examples are discovered and pass the real gate",
+  denoOnly: "runs deno check and deno run over the examples",
+  fn: async () => {
+    // Integration: the default runner spawns the real `deno check` and
+    // `deno run … --list` (Deno.execPath() via the wrapper) over every shipped
+    // example, resolving their jsr:@zuke/* imports to this workspace — the same
+    // work `./zuke examplesCheck` does in the gate, so the normal test lane
+    // proves the runner and the examples end to end on every OS the suite runs.
+    const all = await discoverExamples();
+    assertEquals(
+      all.map((e) => e.dir.replace(/^.*[\\/]/, "")),
+      [
+        "canary-release",
+        "ci-only",
+        "deno-library",
+        "node-app",
+        "release-library",
+        "scripts-to-zuke",
+      ],
+    );
+    assertEquals(await checkExamples(all), []);
+  },
 });

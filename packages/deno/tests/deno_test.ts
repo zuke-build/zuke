@@ -296,29 +296,37 @@ test({
   },
 });
 
-test("DenoTasks.run executes a script for real", async () => {
-  const dir = await FileTasks.makeTempDirectory();
-  const file = `${dir}/hello.ts`;
-  try {
-    await FileTasks.writeText(file, "console.log('zuke-deno-ok');\n");
-    const out = await DenoTasks.run((s) => s.script(file).quiet());
-    assertEquals(out.code, 0);
-    assertEquals(out.stdout.includes("zuke-deno-ok"), true);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+test({
+  name: "DenoTasks.run executes a script for real",
+  denoOnly: "runs deno run",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory();
+    const file = `${dir}/hello.ts`;
+    try {
+      await FileTasks.writeText(file, "console.log('zuke-deno-ok');\n");
+      const out = await DenoTasks.run((s) => s.script(file).quiet());
+      assertEquals(out.code, 0);
+      assertEquals(out.stdout.includes("zuke-deno-ok"), true);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
-test("DenoTasks.check executes against a real file", async () => {
-  const dir = await FileTasks.makeTempDirectory();
-  const file = `${dir}/ok.ts`;
-  try {
-    await FileTasks.writeText(file, "export const n: number = 1;\n");
-    const out = await DenoTasks.check((s) => s.paths(file).quiet());
-    assertEquals(out.code, 0);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+test({
+  name: "DenoTasks.check executes against a real file",
+  denoOnly: "runs deno check",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory();
+    const file = `${dir}/ok.ts`;
+    try {
+      await FileTasks.writeText(file, "export const n: number = 1;\n");
+      const out = await DenoTasks.check((s) => s.paths(file).quiet());
+      assertEquals(out.code, 0);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true });
+    }
+  },
 });
 
 test("install: global executable from an npm module, with perms", () => {
