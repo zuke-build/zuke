@@ -637,7 +637,8 @@ export const DENO_SUPPORT_NOTICE: string = denoSupportNotice("—");
 /**
  * Whether `zuke` prints {@link DENO_SUPPORT_NOTICE} before running the build
  * at `location`: a build on Deno that no launcher runs, or whose launcher
- * was written before the launchers printed it themselves. A build on Node,
+ * was written before the launchers printed it themselves. A custom launcher
+ * that does not print it and calls `zuke` itself hears it twice. A build on Node,
  * or one another SDK hosts, is told nothing.
  */
 export async function owesDenoSupportNotice(
@@ -645,7 +646,9 @@ export async function owesDenoSupportNotice(
   probe: BuildProbe,
 ): Promise<boolean> {
   if (location.engine !== null || location.runtime !== "deno") return false;
-  return location.launcher === null ||
+  // runBuild skips the launcher when this is a launcher's own call, or one
+  // inherited from a build a launcher started: then nothing else says it.
+  return location.launcher === null || !viaLauncher(location) ||
     !(await probe.readText(location.launcher)).includes(DENO_SUPPORT_NOTICE);
 }
 

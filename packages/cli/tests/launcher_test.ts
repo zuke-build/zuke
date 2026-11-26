@@ -195,7 +195,10 @@ test("the unfrozen branch says so, so a deleted lockfile is not silent", () => {
 
     const pwsh = launcherPwsh(options);
     assertStringIncludes(pwsh, "without lockfile verification");
-    assertStringIncludes(pwsh, "Write-Warning");
+    assertStringIncludes(
+      pwsh,
+      '[Console]::Error.WriteLine("zuke: no deno.lock',
+    );
   }
 });
 
@@ -237,7 +240,7 @@ test("every Deno launcher says how long Deno support is confirmed, and a Node on
     );
     assertStringIncludes(
       launcherPwsh({ bootstrapDeno }),
-      `Write-Warning "${denoSupportNotice("-")}"`,
+      `[Console]::Error.WriteLine("${denoSupportNotice("-")}")`,
     );
   }
   // Neither shell may expand anything in it: no backtick, dollar or quote.

@@ -149,11 +149,13 @@ $env:PATH = (Split-Path -Parent $deno) + [IO.Path]::PathSeparator + $env:PATH
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
 $denoArgs = @("run", "-A")
-Write-Warning "zuke: builds on Deno are supported until October 2027 - run zuke setup --runtime node to move this project to Node."
+# Both notices go to stderr: Write-Warning lands on stdout for a caller that
+# ran this with -File, and stdout is the build's (--list --json, mcp).
+[Console]::Error.WriteLine("zuke: builds on Deno are supported until October 2027 - run zuke setup --runtime node to move this project to Node.")
 if (Test-Path (Join-Path $dir "deno.lock")) {
   $denoArgs += "--frozen"
 } else {
-  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
+  [Console]::Error.WriteLine("zuke: no deno.lock here yet - running without lockfile verification so Deno can write one.")
 }
 $denoArgs += (Join-Path $dir "build.ts")
 & $deno @denoArgs @args

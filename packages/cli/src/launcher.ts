@@ -460,11 +460,13 @@ ${pwshResolveDeno(options, pin)}
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
 $denoArgs = @("run", "-A")
-Write-Warning "${denoSupportNotice("-")}"
+# Both notices go to stderr: Write-Warning lands on stdout for a caller that
+# ran this with -File, and stdout is the build's (--list --json, mcp).
+[Console]::Error.WriteLine("${denoSupportNotice("-")}")
 if (Test-Path (Join-Path $dir "deno.lock")) {
   $denoArgs += "--frozen"
 } else {
-  Write-Warning "${noLockNotice("-")}"
+  [Console]::Error.WriteLine("${noLockNotice("-")}")
 }
 $denoArgs += (Join-Path $dir "${build}")
 & $deno @denoArgs @args

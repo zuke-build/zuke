@@ -1118,5 +1118,10 @@ test("zuke tells a Deno build where Deno support stands once, whichever prints i
       (s) => s.mode(0o755),
     );
     assertEquals(await says(), 0);
+    // A call a build inherited ZUKE_FORWARDED from runs Deno bare, past the
+    // launcher, so the CLI says it.
+    await withEnv({ ZUKE_FORWARDED: "1" }, async () => {
+      assertEquals(await says(), 1);
+    });
   }, { prefix: "zuke-global-cli-" });
 });
