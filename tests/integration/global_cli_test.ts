@@ -1076,7 +1076,9 @@ test({
 
 test("zuke tells a Deno build where Deno support stands once, whichever prints it", async () => {
   // The real probe over a real project, with the spawn stubbed: what is
-  // asserted is the CLI's own stderr, before anything runs.
+  // asserted is the CLI's own stderr, before anything runs. The probe is not
+  // confined to the temp path as written: from inside it, the working
+  // directory reads as its real path (/private/var on macOS).
   await withTemp(async (dir) => {
     await FileTasks.writeText(`${dir}/${CONFIG_FILE}`, '{ "name": "S" }\n');
     await FileTasks.writeText(`${dir}/zuke.ts`, scratchBuild());
@@ -1092,10 +1094,9 @@ test("zuke tells a Deno build where Deno support stands once, whichever prints i
             undefined,
             undefined,
             () => Promise.resolve(0),
-            confinedTo(dir),
           )
         );
-        assertEquals(code, 0);
+        assertEquals(code, 0, [...out, ...err].join("\n"));
         lines.push(...out, ...err);
       });
       return lines.filter((l) => l.includes(DENO_SUPPORT_NOTICE)).length;
