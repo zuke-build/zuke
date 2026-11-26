@@ -62,11 +62,16 @@ test("an awaited write to a stream that has gone still resolves", async () => {
   assertEquals(await awaitedWriter(stream).write(bytes("lost")), 4);
 });
 
-test("on Deno the process's streams are Deno's own, and a flush is immediate", async () => {
-  assertEquals(processOutput(), { stdout: Deno.stdout, stderr: Deno.stderr });
-  assertEquals(stdoutWriter(), Deno.stdout);
-  assertEquals(stdinBytes(), Deno.stdin.readable);
-  await flushOutput();
+test({
+  name:
+    "on Deno the process's streams are Deno's own, and a flush is immediate",
+  denoOnly: "compares the streams with Deno's own",
+  fn: async () => {
+    assertEquals(processOutput(), { stdout: Deno.stdout, stderr: Deno.stderr });
+    assertEquals(stdoutWriter(), Deno.stdout);
+    assertEquals(stdinBytes(), Deno.stdin.readable);
+    await flushOutput();
+  },
 });
 
 /** A reader handing out `text` a byte per call, then the end of the input. */
@@ -102,17 +107,21 @@ test("a character whose bytes arrive in separate reads is one character", () => 
   assertEquals(readLine(reader("café → 東京\n")), "café → 東京");
 });
 
-test("on Deno the prompt is Deno's own", () => {
-  const original = globalThis.prompt;
-  const asked: (string | undefined)[] = [];
-  globalThis.prompt = (message) => {
-    asked.push(message);
-    return "typed";
-  };
-  try {
-    assertEquals(promptLine("--env:"), "typed");
-  } finally {
-    globalThis.prompt = original;
-  }
-  assertEquals(asked, ["--env:"]);
+test({
+  name: "on Deno the prompt is Deno's own",
+  denoOnly: "stubs the prompt Deno provides",
+  fn: () => {
+    const original = globalThis.prompt;
+    const asked: (string | undefined)[] = [];
+    globalThis.prompt = (message) => {
+      asked.push(message);
+      return "typed";
+    };
+    try {
+      assertEquals(promptLine("--env:"), "typed");
+    } finally {
+      globalThis.prompt = original;
+    }
+    assertEquals(asked, ["--env:"]);
+  },
 });

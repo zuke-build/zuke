@@ -16,7 +16,7 @@ import {
   assertThrows,
 } from "./_assert.ts";
 import { withTemp } from "./_temp.ts";
-import { gunzip, sha256Hex, untar, unzip } from "@zuke/core";
+import { FileTasks, gunzip, sha256Hex, untar, unzip } from "@zuke/core";
 import {
   archiveName,
   attestationName,
@@ -396,8 +396,8 @@ test("fetchChecksums parses the published manifest and fails on a missing one", 
 /** Write a fake binary for every target, Windows included, under `bin`. */
 async function fakeBinaries(bin: string): Promise<void> {
   for (const triple of [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE]) {
-    await Deno.mkdir(`${bin}/${triple}`, { recursive: true });
-    await Deno.writeTextFile(binaryPath(bin, triple), `binary for ${triple}`);
+    await FileTasks.createDirectory(`${bin}/${triple}`);
+    await FileTasks.writeText(binaryPath(bin, triple), `binary for ${triple}`);
   }
 }
 
@@ -414,10 +414,10 @@ test("packageCliArchives packs each binary executable, with matching checksums",
       ],
     );
     const manifest = parseChecksums(
-      await Deno.readTextFile(`${out}/${CHECKSUMS}`),
+      await FileTasks.readText(`${out}/${CHECKSUMS}`),
     );
     for (const { name, sha256 } of packed.slice(0, CLI_TARGETS.length)) {
-      const bytes = await Deno.readFile(`${out}/${name}`);
+      const bytes = await FileTasks.readBytes(`${out}/${name}`);
       assertEquals(await sha256Hex(bytes), sha256);
       assertEquals(manifest.get(name), sha256);
       const [entry, ...rest] = untar(await gunzip(bytes));
@@ -433,7 +433,7 @@ test("packageCliArchives packs each binary executable, with matching checksums",
     }
     // Windows gets a zip holding zuke.exe, which choco shims as `zuke`.
     const windows = packed[CLI_TARGETS.length];
-    const zipped = await Deno.readFile(`${out}/${windows.name}`);
+    const zipped = await FileTasks.readBytes(`${out}/${windows.name}`);
     assertEquals(await sha256Hex(zipped), windows.sha256);
     assertEquals(manifest.get(windows.name), windows.sha256);
     const entries = await unzip(zipped);
@@ -456,7 +456,7 @@ test("packageCliArchives refuses a release missing a platform", async () => {
     );
     // Windows is no exception.
     await fakeBinaries(`${dir}/bin`);
-    await Deno.remove(binaryPath(`${dir}/bin`, WINDOWS_TRIPLE));
+    await FileTasks.remove(binaryPath(`${dir}/bin`, WINDOWS_TRIPLE));
     await assertRejects(
       () => packageCliArchives(VERSION, `${dir}/bin`, `${dir}/out`),
       Error,
@@ -468,10 +468,10 @@ test("packageCliArchives refuses a release missing a platform", async () => {
 test("writeStepOutputs appends name=value lines, and does nothing off Actions", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/output`;
-    await Deno.writeTextFile(file, "earlier=1\n");
+    await FileTasks.writeText(file, "earlier=1\n");
     await writeStepOutputs({ build: "true", version: VERSION }, file);
     assertEquals(
-      await Deno.readTextFile(file),
+      await FileTasks.readText(file),
       "earlier=1\nbuild=true\nversion=1.14.0\n",
     );
     await writeStepOutputs({ build: "true" }, undefined);
@@ -495,6 +495,6 @@ test("writeStepOutputs refuses a value that could forge another output", async (
         "single line",
       );
     }
-    assertEquals(await Deno.readTextFile(file).catch(() => ""), "");
+    assertEquals(await FileTasks.readText(file).catch(() => ""), "");
   });
 });

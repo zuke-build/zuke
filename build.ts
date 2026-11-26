@@ -24,12 +24,14 @@ import {
   appendJobSummary,
   Build,
   discoverTargets,
+  EnvTasks,
   FileTasks,
   glob,
   isCI,
   parameter,
   repoRoot,
   run,
+  RuntimeTasks,
   target,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
@@ -427,7 +429,13 @@ class ZukeBuild extends Build {
     .description("Run the test suite on Node with Vitest (ported files)")
     .executes(async () => {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
-      await VitestTasks.run((s) => s.reporter("dot"));
+      // Without Deno's directory on PATH, so a test that quietly needs Deno
+      // fails here rather than passing because the build itself runs on it.
+      const deno = absolutePath(RuntimeTasks.execPath()).parent().path;
+      const separator = RuntimeTasks.os() === "windows" ? ";" : ":";
+      const path = (EnvTasks.get("PATH") ?? "").split(separator)
+        .filter((dir) => dir !== deno).join(separator);
+      await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
     });
 
   // The subprocess e2e suite (tests/e2e/), kept OUT of `test`/`ci` so the fast

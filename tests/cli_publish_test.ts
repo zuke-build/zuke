@@ -16,7 +16,7 @@ import {
   assertStringIncludes,
 } from "./_assert.ts";
 import { withTemp } from "./_temp.ts";
-import { gzip, tar } from "@zuke/core";
+import { FileTasks, gzip, type HostOs, tar } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import {
   type CodesignDisplay,
@@ -112,7 +112,7 @@ function recordingGh(
 
 test("uploadCliRelease attaches everything to the draft, then publishes it without moving Latest", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
+    await FileTasks.writeText(`${dir}/bundle.json`, "{}");
     const argvs: string[][] = [];
     await uploadCliRelease({
       version: VERSION,
@@ -142,7 +142,7 @@ test("uploadCliRelease attaches everything to the draft, then publishes it witho
     assertEquals(upload[upload.indexOf("--repo") + 1], "zuke-build/zuke");
     // The bundle is attached under its published name.
     assertEquals(
-      await Deno.readTextFile(`${dir}/zuke-1.14.0.sigstore.json`),
+      await FileTasks.readText(`${dir}/zuke-1.14.0.sigstore.json`),
       "{}",
     );
     assertEquals(edit.slice(0, 3), ["release", "edit", "cli-v1.14.0"]);
@@ -155,7 +155,7 @@ test("uploadCliRelease attaches everything to the draft, then publishes it witho
 
 test("uploadCliRelease leaves the release a draft when the upload fails", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
+    await FileTasks.writeText(`${dir}/bundle.json`, "{}");
     const argvs: string[][] = [];
     await assertRejects(
       () =>
@@ -282,14 +282,14 @@ test("writeCliFormula renders the formula from the published checksums", async (
   await withTemp(async (dir) => {
     const path = `${dir}/zuke.rb`;
     const formula = await writeCliFormula(VERSION, path, serving(manifest()));
-    assertEquals(await Deno.readTextFile(path), formula);
+    assertEquals(await FileTasks.readText(path), formula);
     assertStringIncludes(formula, `sha256 "${"3".repeat(64)}"`);
   });
 });
 
 test("verifyCliFormula installs the published formula, checking signatures only on macOS", async () => {
   await withTemp(async (dir) => {
-    const systems: Array<typeof Deno.build.os> = ["linux", "darwin"];
+    const systems: Array<HostOs> = ["linux", "darwin"];
     for (const os of systems) {
       const verified: string[][] = [];
       const signatures: string[] = [];

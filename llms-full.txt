@@ -3116,6 +3116,8 @@ class WriteSettings
     The permission bits to give the file; see {@link mode}.
   createNew_: boolean
     Whether to refuse a path already taken; see {@link createNew}.
+  append_: boolean
+    Whether to add to the end of the file; see {@link append}.
   mode(bits: number): this
     The file's permission bits, such as `0o600`, applied to a file that
     already exists too. Windows has none and ignores it.
@@ -3123,6 +3125,9 @@ class WriteSettings
     Fail with an `AlreadyExists` when anything is at the path, instead of
     replacing it. The check and the create are one step, so of several
     writers racing for a path exactly one succeeds.
+  append(): this
+    Add to the end of the file instead of replacing what it holds, creating
+    it when it is missing, as a step's `$GITHUB_OUTPUT` is written.
 
 interface AbsolutePath
   An immutable, absolute filesystem path with a fluent API.

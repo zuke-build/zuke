@@ -269,6 +269,11 @@ export function realPathSync(path: string): string {
   return ioSync(() => nodeRealpathSync(path));
 }
 
+/** How a write opens its file: added to or replaced, and whether it must be new. */
+function openFlag(createNew: boolean, append: boolean): string {
+  return `${append ? "a" : "w"}${createNew ? "x" : ""}`;
+}
+
 /** Add `text` to the end of the file `path`, creating it, without waiting. */
 export function appendTextSync(path: string, text: string): void {
   // Not appendFileSync: under Deno it resets the file's mode to 666 on every
@@ -353,9 +358,10 @@ export function writeStream(
   data: ReadableStream<Uint8Array>,
   mode?: number,
   createNew = false,
+  append = false,
 ): Promise<void> {
   return io(async () => {
-    const file = await nodeOpen(path, createNew ? "wx" : "w", mode).catch(
+    const file = await nodeOpen(path, openFlag(createNew, append), mode).catch(
       async (error) => {
         // Nothing will read the stream: release its source, such as a
         // response body still holding its connection.
@@ -506,9 +512,10 @@ export function writeFile(
   data: Uint8Array | string,
   mode?: number,
   createNew = false,
+  append = false,
 ): Promise<void> {
   return io(async () => {
-    const file = await nodeOpen(path, createNew ? "wx" : "w", mode);
+    const file = await nodeOpen(path, openFlag(createNew, append), mode);
     try {
       // Opening applies the mode only to a file it creates, so it is set
       // again on the open file, before anything is written.

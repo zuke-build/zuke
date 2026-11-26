@@ -13,17 +13,21 @@ import {
   runtimeFacts,
 } from "../src/runtime.ts";
 
-test("on Deno the runtime's answers are Deno's own", () => {
-  assertEquals(ON_DENO, true);
-  assertEquals(runtimeFacts(), {
-    name: "deno",
-    version: Deno.version.deno,
-    typescript: Deno.version.typescript,
-    standalone: Deno.build.standalone,
-  });
-  assertEquals(mainModule(), Deno.mainModule);
-  // The tests run under Deno itself, never a compiled binary.
-  assertEquals(denoPath(), Deno.execPath());
+test({
+  name: "on Deno the runtime's answers are Deno's own",
+  denoOnly: "compares the answers with Deno's own",
+  fn: () => {
+    assertEquals(ON_DENO, true);
+    assertEquals(runtimeFacts(), {
+      name: "deno",
+      version: Deno.version.deno,
+      typescript: Deno.version.typescript,
+      standalone: Deno.build.standalone,
+    });
+    assertEquals(mainModule(), Deno.mainModule);
+    // The tests run under Deno itself, never a compiled binary.
+    assertEquals(denoPath(), Deno.execPath());
+  },
 });
 
 test("the option that keeps the entry's symlink is found where Node takes it from", () => {

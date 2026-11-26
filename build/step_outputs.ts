@@ -7,6 +7,8 @@
  * @module
  */
 
+import { EnvTasks, FileTasks } from "@zuke/core";
+
 /**
  * Append `values` to the step's outputs (`$GITHUB_OUTPUT`), so later jobs
  * can read them as `needs.<job>.outputs.<name>`. Outside Actions there is no
@@ -14,7 +16,7 @@
  */
 export async function writeStepOutputs(
   values: Readonly<Record<string, string>>,
-  path: string | undefined = Deno.env.get("GITHUB_OUTPUT"),
+  path: string | undefined = EnvTasks.get("GITHUB_OUTPUT"),
 ): Promise<void> {
   if (path === undefined || path === "") return;
   const lines = Object.entries(values).map(([key, value]) => {
@@ -25,5 +27,5 @@ export async function writeStepOutputs(
     }
     return `${key}=${value}\n`;
   });
-  await Deno.writeTextFile(path, lines.join(""), { append: true });
+  await FileTasks.writeText(path, lines.join(""), (s) => s.append());
 }

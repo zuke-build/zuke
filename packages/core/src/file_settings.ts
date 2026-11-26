@@ -26,6 +26,9 @@ export class WriteSettings {
   /** Whether to refuse a path already taken; see {@link createNew}. */
   createNew_ = false;
 
+  /** Whether to add to the end of the file; see {@link append}. */
+  append_ = false;
+
   /**
    * The file's permission bits, such as `0o600`, applied to a file that
    * already exists too. Windows has none and ignores it.
@@ -42,6 +45,15 @@ export class WriteSettings {
    */
   createNew(): this {
     this.createNew_ = true;
+    return this;
+  }
+
+  /**
+   * Add to the end of the file instead of replacing what it holds, creating
+   * it when it is missing, as a step's `$GITHUB_OUTPUT` is written.
+   */
+  append(): this {
+    this.append_ = true;
     return this;
   }
 }

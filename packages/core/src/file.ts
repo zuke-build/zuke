@@ -147,7 +147,7 @@ async function writeConfigured(
   configure: Configure<WriteSettings> = (s) => s,
 ): Promise<void> {
   const s = configure(new WriteSettings());
-  await writeFile(String(path), data, s.mode_, s.createNew_);
+  await writeFile(String(path), data, s.mode_, s.createNew_, s.append_);
 }
 
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */

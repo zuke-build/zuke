@@ -16,13 +16,18 @@ const statusToDeno = (status: CommandStatus): Deno.CommandStatus => status;
 const osFromDeno = (os: typeof Deno.build.os): HostOs => os;
 const osToDeno = (os: HostOs): typeof Deno.build.os => os;
 
-test("Zuke's signal, status and host OS types are the runtime's, value for value", () => {
-  assertEquals(signalToDeno(signalFromDeno("SIGTERM")), "SIGTERM");
-  const status = {
-    success: false,
-    code: 143,
-    signal: signalFromDeno("SIGTERM"),
-  };
-  assertEquals(statusToDeno(statusFromDeno(status)), status);
-  assertEquals(osToDeno(osFromDeno(Deno.build.os)), Deno.build.os);
+test({
+  name:
+    "Zuke's signal, status and host OS types are the runtime's, value for value",
+  denoOnly: "reads Deno.build.os",
+  fn: () => {
+    assertEquals(signalToDeno(signalFromDeno("SIGTERM")), "SIGTERM");
+    const status = {
+      success: false,
+      code: 143,
+      signal: signalFromDeno("SIGTERM"),
+    };
+    assertEquals(statusToDeno(statusFromDeno(status)), status);
+    assertEquals(osToDeno(osFromDeno(Deno.build.os)), Deno.build.os);
+  },
 });
