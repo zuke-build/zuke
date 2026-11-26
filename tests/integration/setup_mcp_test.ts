@@ -11,6 +11,7 @@
  * `jsr:@zuke/core@^1` import resolves to this workspace, as the examples do.
  */
 
+import { FileTasks, ProcessTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { main } from "../../packages/cli/mod.ts";
@@ -36,49 +37,52 @@ function toolNames(reply: unknown): string[] {
   });
 }
 
-test("setup --mcp registers a server that lists the scaffolded targets", async () => {
-  const dir = await Deno.makeTempDir({
-    dir: Deno.cwd(),
-    prefix: ".setup-mcp-",
-  });
-  try {
-    const code = await main(
-      ["setup", "--yes", "--dir", dir, "--mcp", "--name", "Scaffolded"],
-      undefined,
-      new FakePrompter(false),
+test({
+  name: "setup --mcp registers a server that lists the scaffolded targets",
+  denoOnly: "launches the deno run command .mcp.json names",
+  fn: async () => {
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix(".setup-mcp-").dir(RuntimeTasks.cwd())
     );
-    assertEquals(code, 0);
+    try {
+      const code = await main(
+        ["setup", "--yes", "--dir", dir, "--mcp", "--name", "Scaffolded"],
+        undefined,
+        new FakePrompter(false),
+      );
+      assertEquals(code, 0);
 
-    const config = JSON.parse(await Deno.readTextFile(`${dir}/.mcp.json`));
-    const server = config.mcpServers.zuke;
-    assertEquals(server.command, "deno");
-    assertEquals(server.args, ["run", "-A", "build.ts", "mcp"]);
+      const config = JSON.parse(await FileTasks.readText(`${dir}/.mcp.json`));
+      const server = config.mcpServers.zuke;
+      assertEquals(server.command, "deno");
+      assertEquals(server.args, ["run", "-A", "build.ts", "mcp"]);
 
-    // Launch what the file says, from the project directory, and talk MCP.
-    const child = new Deno.Command(Deno.execPath(), {
-      args: server.args.slice(1),
-      cwd: dir,
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "null",
-    }).spawn();
-    const writer = child.stdin.getWriter();
-    await writer.write(
-      new TextEncoder().encode(
-        request(1, "initialize") + request(2, "tools/list"),
-      ),
-    );
-    await writer.close();
-    const out = new TextDecoder().decode((await child.output()).stdout);
-    const replies = out.split("\n").filter((l) => l.trim() !== "").map((l) =>
-      JSON.parse(l)
-    );
-    const list = replies.find((r) => r.id === 2);
-    const names = toolNames(list);
-    assertEquals(names.includes("list_targets"), true, out);
-    // Read-only registration: no run tool for the scaffolded target.
-    assertEquals(names.some((n) => n.startsWith("run:")), false, out);
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
+      // Launch what the file says, from the project directory, and talk MCP.
+      const child = ProcessTasks.spawn(
+        RuntimeTasks.execPath(),
+        (s) =>
+          s.args(...server.args.slice(1)).cwd(dir).stdin("piped")
+            .stdout("piped").stderr("null"),
+      );
+      const writer = child.stdin.getWriter();
+      await writer.write(
+        new TextEncoder().encode(
+          request(1, "initialize") + request(2, "tools/list"),
+        ),
+      );
+      await writer.close();
+      const out = await new Response(child.stdout).text();
+      await child.status;
+      const replies = out.split("\n").filter((l) => l.trim() !== "").map((l) =>
+        JSON.parse(l)
+      );
+      const list = replies.find((r) => r.id === 2);
+      const names = toolNames(list);
+      assertEquals(names.includes("list_targets"), true, out);
+      // Read-only registration: no run tool for the scaffolded target.
+      assertEquals(names.some((n) => n.startsWith("run:")), false, out);
+    } finally {
+      await FileTasks.remove(dir, { recursive: true }).catch(() => {});
+    }
+  },
 });

@@ -13,17 +13,22 @@
  * @module
  */
 
+import { ProcessTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 
-test("every workspace package passes deno publish --dry-run", async () => {
-  const { code, stderr } = await new Deno.Command(Deno.execPath(), {
-    // `--allow-dirty` so the check runs on a working tree with local edits,
-    // which is the tree a contributor tests.
-    args: ["publish", "--dry-run", "--allow-dirty"],
-    env: { NO_COLOR: "1" },
-    stdout: "null",
-    stderr: "piped",
-  }).output();
-  assertEquals(code, 0, new TextDecoder().decode(stderr));
+test({
+  name: "every workspace package passes deno publish --dry-run",
+  denoOnly: "runs deno publish",
+  fn: async () => {
+    const { code, stderr } = await ProcessTasks.run(
+      RuntimeTasks.execPath(),
+      (s) =>
+        // `--allow-dirty` so the check runs on a working tree with local edits,
+        // which is the tree a contributor tests.
+        s.args("publish", "--dry-run", "--allow-dirty").env("NO_COLOR", "1")
+          .stdout("null").stderr("piped"),
+    );
+    assertEquals(code, 0, new TextDecoder().decode(stderr));
+  },
 });

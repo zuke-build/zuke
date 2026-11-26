@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
@@ -43,18 +44,17 @@ const EXAMPLES: Example[] = [
 ];
 
 test("discoverExamples finds every build file, sorted, with its directory", async () => {
-  const root = await Deno.makeTempDir({
-    dir: Deno.cwd(),
-    prefix: ".examples-",
-  });
+  const root = await FileTasks.makeTempDirectory((s) =>
+    s.prefix(".examples-").dir(RuntimeTasks.cwd())
+  );
   try {
     for (const name of ["zeta", "alpha"]) {
-      await Deno.mkdir(`${root}/${name}`);
-      await Deno.writeTextFile(`${root}/${name}/build.ts`, "");
+      await FileTasks.createDirectory(`${root}/${name}`, { recursive: false });
+      await FileTasks.writeText(`${root}/${name}/build.ts`, "");
     }
     // A directory without a build file is not an example.
-    await Deno.mkdir(`${root}/notes`);
-    await Deno.writeTextFile(`${root}/notes/README.md`, "");
+    await FileTasks.createDirectory(`${root}/notes`, { recursive: false });
+    await FileTasks.writeText(`${root}/notes/README.md`, "");
     const found = await discoverExamples(`${root}/*/build.ts`);
     assertEquals(found.map((e) => e.dir), [`${root}/alpha`, `${root}/zeta`]);
     assertEquals(found.map((e) => e.file), [
@@ -62,7 +62,7 @@ test("discoverExamples finds every build file, sorted, with its directory", asyn
       `${root}/zeta/build.ts`,
     ]);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await FileTasks.remove(root, { recursive: true });
   }
 });
 

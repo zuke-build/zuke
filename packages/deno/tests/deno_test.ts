@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "../../../tests/_assert.ts";
-import { denoExecutable } from "@zuke/core";
+import { denoExecutable, FileTasks, RuntimeTasks } from "@zuke/core";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -283,37 +283,41 @@ test("task: name required, then task args", () => {
   );
 });
 
-test("the default binary is the deno running here, not this process", () => {
-  // Under `deno test` the two are the same, which is the point: the wrapper
-  // spawns the Deno running the build. The distinction that matters is that it
-  // asks `denoExecutable` rather than spawning its own executable — a compiled
-  // build is not Deno, and would run itself with `test` as a target (#587).
-  assertEquals(new DenoTestSettings().argv()[0], denoExecutable());
-  assertEquals(new DenoTestSettings().argv()[0], Deno.execPath());
+test({
+  name: "the default binary is the deno running here, not this process",
+  denoOnly: "names the running deno",
+  fn: () => {
+    // Under `deno test` the two are the same, which is the point: the wrapper
+    // spawns the Deno running the build. The distinction that matters is that it
+    // asks `denoExecutable` rather than spawning its own executable — a compiled
+    // build is not Deno, and would run itself with `test` as a target (#587).
+    assertEquals(new DenoTestSettings().argv()[0], denoExecutable());
+    assertEquals(new DenoTestSettings().argv()[0], RuntimeTasks.execPath());
+  },
 });
 
 test("DenoTasks.run executes a script for real", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const file = `${dir}/hello.ts`;
   try {
-    await Deno.writeTextFile(file, "console.log('zuke-deno-ok');\n");
+    await FileTasks.writeText(file, "console.log('zuke-deno-ok');\n");
     const out = await DenoTasks.run((s) => s.script(file).quiet());
     assertEquals(out.code, 0);
     assertEquals(out.stdout.includes("zuke-deno-ok"), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("DenoTasks.check executes against a real file", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   const file = `${dir}/ok.ts`;
   try {
-    await Deno.writeTextFile(file, "export const n: number = 1;\n");
+    await FileTasks.writeText(file, "export const n: number = 1;\n");
     const out = await DenoTasks.check((s) => s.paths(file).quiet());
     assertEquals(out.code, 0);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
