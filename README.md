@@ -10,8 +10,9 @@
   />
 </picture>
 
-> A code-first, strongly-typed build automation system for Deno & TypeScript.
-> Your build and your CI are one typed file — and your agent can run it.
+> A code-first, strongly-typed build automation system for TypeScript, on Node
+> or Deno. Your build and your CI are one typed file — and your agent can run
+> it.
 
 <p align="center">
   <a href="https://github.com/zuke-build/zuke/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zuke-build/zuke/actions/workflows/ci.yml/badge.svg" /></a>
@@ -23,7 +24,8 @@
   <a href="https://jsr.io/@zuke/core"><img alt="JSR" src="https://jsr.io/badges/@zuke/core" /></a>
   <a href="https://jsr.io/@zuke/core"><img alt="JSR score" src="https://jsr.io/badges/@zuke/core/score" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" /></a>
-  <a href="https://deno.com/"><img alt="Built for Deno" src="https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=white" /></a>
+  <a href="https://nodejs.org/"><img alt="Runs on Node" src="https://img.shields.io/badge/Node-26-5FA04E?logo=nodedotjs&logoColor=white" /></a>
+  <a href="https://deno.com/"><img alt="Runs on Deno" src="https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=white" /></a>
 </p>
 
 Zuke lets you define a build as a **TypeScript class**. Each target is a class
@@ -36,12 +38,12 @@ whole thing to **AI agents** as typed tools. Inspired by
 ## Five minutes to a typed build
 
 **1. Install the CLI** — pick one. Every route is the same CLI and fully
-supported; the binaries need no Deno up front. See [Install](#install).
+supported; the binaries need no Node or Deno up front. See [Install](#install).
 
-From JSR (any OS, with Deno):
+From npm (any OS, with Node):
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli
+npm install -g @zuke-build/cli
 ```
 
 With Homebrew (macOS, Linux):
@@ -59,28 +61,29 @@ choco install zuke
 **2. Set up a project and run it**, whichever way you installed:
 
 ```sh
-zuke setup         # scaffold build.ts + the ./zuke launcher
+zuke setup         # scaffold build.ts, package.json + the ./zuke launcher
 zuke               # run the build
 zuke generate-ci   # write .github/workflows/ci.yml from the build
 ```
 
 `zuke generate-ci` needs one line in the build. Here is the whole file after you
-have replaced the scaffolded sample target with real work:
+have replaced the scaffolded sample target with real work, with `@zuke/npm`
+added by `zuke add npm`:
 
 <!-- check -->
 
 ```ts
 import { Build, cicd, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class MyBuild extends Build {
   ci = cicd({ provider: "github" }); // ← the pipeline, generated and verified
 
-  lint = target().executes(() => DenoTasks.lint());
+  lint = target().executes(() => NpmTasks.run((s) => s.script("lint")));
 
   test = target()
     .dependsOn(this.lint)
-    .executes(() => DenoTasks.test((s) => s.allowAll().coverage("cov")));
+    .executes(() => NpmTasks.test());
 
   default = target().dependsOn(this.test).executes(() => {});
 }
@@ -176,8 +179,17 @@ Teams running Zuke in production:
 ## Install
 
 The `zuke` CLI scaffolds a project, migrates an existing one, and runs its
-build. It ships three ways, built from the same release: pick the one that suits
+build. It ships four ways, built from the same release: pick the one that suits
 the machine. `zuke --version` tells you which one you are running.
+
+### From npm (any OS, with Node)
+
+```sh
+npm install -g @zuke-build/cli
+```
+
+Needs [Node](https://nodejs.org/) 24.12 or newer. Upgrade with `npm install -g
+@zuke-build/cli@latest`.
 
 ### From JSR (any OS, with Deno)
 
@@ -186,7 +198,8 @@ deno install -A -g -n zuke jsr:@zuke/cli
 ```
 
 Needs [Deno](https://deno.com/) 2. Upgrade with `zuke upgrade`, which moves the
-install to the latest release (or to a given one).
+install to the latest release (or to a given one). Builds on Deno are supported
+until October 2027; see [Moving to Node](./docs/moving-to-node.md).
 
 ### With Homebrew (macOS, Linux)
 
@@ -194,7 +207,7 @@ install to the latest release (or to a given one).
 brew install zuke-build/tap/zuke
 ```
 
-A standalone binary: no Deno needed. The macOS builds are signed with a
+A standalone binary: no Node or Deno needed. The macOS builds are signed with a
 Developer ID and notarized by Apple, and every archive carries a
 build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
 See [installing](./docs/install.md) for how to check a download, and for the
@@ -206,11 +219,11 @@ See [installing](./docs/install.md) for how to check a download, and for the
 choco install zuke
 ```
 
-A standalone binary: no Deno needed. The executable is **not Authenticode-signed
-yet**, so SmartScreen may warn on first run; until it is, the archive it is
-installed from carries the same SHA-256 pin and build-provenance attestation as
-the others. Upgrade with `choco upgrade zuke`. See
-[installing](./docs/install.md#with-chocolatey-windows) for how to check a
+A standalone binary: no Node or Deno needed. The executable is **not
+Authenticode-signed yet**, so SmartScreen may warn on first run; until it is,
+the archive it is installed from carries the same SHA-256 pin and
+build-provenance attestation as the others. Upgrade with `choco upgrade zuke`.
+See [installing](./docs/install.md#with-chocolatey-windows) for how to check a
 download.
 
 ### Set up a project
@@ -218,21 +231,26 @@ download.
 The same steps, however you installed the CLI:
 
 ```sh
-zuke setup          # scaffold build.ts, zuke.json and the ./zuke launcher
+zuke setup          # scaffold build.ts, package.json, zuke.json and the ./zuke launcher
 zuke setup --mcp    # …and register the build's MCP server for your agent
 zuke import         # or migrate package.json scripts / a Makefile / pyproject.toml tasks instead
 zuke                # run the default target; any other command runs the build, like zuke ci
 zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
 ```
 
-Zuke runs on Deno and is imported straight from [JSR](https://jsr.io/@zuke) —
-there is nothing else to install. The scaffolded `./zuke` launcher (and
-`zuke.ps1` on Windows) bootstraps a pinned, checksum-verified Deno on first use,
-so a checkout needs **nothing** installed up front — not even the CLI. It is the
-same script this repository runs on, [`zuke`](./zuke) /
-[`zuke.ps1`](./zuke.ps1). `zuke setup` asks; `--no-bootstrap-deno` scaffolds a
-launcher that uses the Deno on your `PATH` and fails closed without one, for a
-project that must never download a tool from its build entry point.
+A new project's build runs on Node, with `@zuke/*` installed from npm as
+`@zuke-build/*`. The scaffolded `./zuke` launcher (and `zuke.ps1` on Windows)
+bootstraps a pinned, checksum-verified Node on first use and installs the
+dependencies, so a checkout needs **nothing** installed up front — not even the
+CLI.
+
+A project on Deno is scaffolded with `zuke setup --runtime deno`, imports
+`@zuke/*` from [JSR](https://jsr.io/@zuke), and its launchers bootstrap a pinned
+Deno instead — the same scripts this repository runs on, [`zuke`](./zuke) /
+[`zuke.ps1`](./zuke.ps1). `--no-bootstrap-deno` scaffolds a launcher that uses
+the Deno on your `PATH` and fails closed without one. Builds on Deno are
+supported until **October 2027**, and every run of one says so;
+[Moving to Node](./docs/moving-to-node.md) converts a project in place.
 
 > [!NOTE]
 > **Maturity.** Every one of the 72 packages is at `1.0` or past it and follows
@@ -240,8 +258,9 @@ project that must never download a tool from its build entry point.
 > wrappers. A minor or patch release never breaks a public symbol; a breaking
 > change bumps the major. See
 > [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke` is
-> not controlled by this project — install from JSR, not npm. The `zuke` command
-> is also on npm as `@zuke-build/cli` (`npx @zuke-build/cli --version`).
+> not controlled by this project: on npm every package is `@zuke-build/<name>`,
+> installed under the alias `@zuke/<name>`, and the `zuke` command is
+> `@zuke-build/cli`. Never install an `@zuke/*` package from npm directly.
 
 > [!NOTE]
 > **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI

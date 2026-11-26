@@ -1,83 +1,45 @@
 # Getting started
 
-You need [Deno](https://deno.com/) installed. There's nothing else to install —
-Zuke is imported straight from JSR.
+A Zuke build is a TypeScript file, and it runs on [Node](https://nodejs.org/) or
+on [Deno](https://deno.com/). Node is the default for a new project. Builds on
+Deno are supported until **October 2027**; to move one, see
+[Moving to Node](./moving-to-node.md).
 
 > [!NOTE]
-> All `@zuke/*` packages — the 72-package workspace: `@zuke/core`, the
+> Every `@zuke/*` package — the 72-package workspace: `@zuke/core`, the
 > `@zuke/cli` command, a generic `@zuke/cmd` fallback, and 50+ typed tool
-> wrappers and plugins (`@zuke/deno`, `@zuke/npm`, `@zuke/docker`, `@zuke/ai`,
-> …) — publish to [JSR](https://jsr.io/@zuke) from CI via release-please and
-> OIDC (see [`RELEASING.md`](../RELEASING.md)). The npm scope `@zuke` is not
-> controlled by this project — install from JSR, not npm.
+> wrappers and plugins (`@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …) — is
+> published from CI via release-please and OIDC (see
+> [`RELEASING.md`](../RELEASING.md)), to npm as `@zuke-build/<name>` and to
+> [JSR](https://jsr.io/@zuke) as `@zuke/<name>`. The `@zuke` scope on npm
+> belongs to someone else, so a Node project installs each package under the
+> alias `@zuke/<name>`, and a build's imports read the same on both runtimes.
 
 ## Scaffold a project with `zuke setup`
 
-A new project's build runs on Node: `zuke setup` scaffolds what
-[the Node section](#scaffold-a-node-project-with-zuke-setup---runtime-node)
-below describes. This section is the Deno project, which `zuke setup --runtime
-deno` scaffolds and which a re-run of `zuke setup` in an existing Deno project
-keeps on Deno.
-
-The fastest start is the `@zuke/cli` tool. Install it once, then scaffold a
-starter `build.ts`, the `./zuke` launchers, a `deno.json` task, and a
-`zuke.json` config (which marks the repo root — see
-[paths](./paths.md#repo-root-reporoot)) into any directory. The build file is
-`build.ts` for a new project; the wizard asks, `--build-file <name>` answers up
-front, and the name is recorded in `zuke.json`. A project that already has a
-`zuke.ts` keeps it:
+Install the CLI once, then scaffold the project:
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # once
+npm install -g @zuke-build/cli              # once (Node 24.12 or newer)
 zuke setup                                  # in your project
-zuke                                        # run the build
-```
-
-On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
-same CLI as a signed standalone binary instead, and on Windows `choco install
-zuke` installs it through Chocolatey (not Authenticode-signed yet); the `./zuke`
-launcher that `zuke setup` writes then installs Deno the first time `zuke` runs
-the build. Every route is covered, with how to verify a download, in
-[installing](./install.md).
-
-Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
-(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,
-`--bootstrap` / `--no-bootstrap`). Pass `--mcp` to also write a `.mcp.json` that
-registers the build's [MCP server](./mcp.md), so Claude Code, Codex or any stdio
-MCP client can list the targets and run one through typed calls from day one
-(`--allow-run` lets the agent execute targets, not just inspect them). The
-wizard asks which launchers you want: by default they bootstrap a pinned,
-checksum-verified Deno when none is on `PATH` — the same scripts this repository
-runs on — so a clone needs nothing installed first; `--no-bootstrap` writes
-launchers that require Deno on `PATH` and fail closed without it. If a `zuke/`
-directory already occupies the launcher's name, setup stops with an actionable
-error — pass `--launcher-name <name>` to write the launcher (and its `.ps1`)
-under a different name.
-
-Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
-(`zuke doc core`, `zuke doc @scope/pkg`), running `deno doc` in an isolated
-directory so a surrounding Node project's `@types/node` resolution doesn't drown
-the output.
-
-## Scaffold a Node project with `zuke setup --runtime node`
-
-A build can run on Node 26 (which strips TypeScript types natively) instead of
-Deno, and a new project's does: `--runtime node` is the default for one.
-
-```sh
-zuke setup                                  # in a new project
-zuke setup --runtime node                   # in a Deno project, to convert it
 ./zuke                                      # run the build
 ```
 
-It writes a starter `build.ts`, a `package.json` (created, or merged: `type` and
-the `@zuke/core` dependency, `npm:@zuke-build/core@^1`, are added only when
-absent), a `zuke.json` with `"runtime": "node"`, Node launchers that bootstrap a
-pinned, checksum-verified Node when none is on `PATH`, and a `.gitignore`
-covering `node_modules/`. No `deno.json`, and no Deno anywhere. With `--mcp`,
-`.mcp.json` registers `node <build file> mcp`, which works on every platform
-once Node 26 or newer is on `PATH` and a first `./zuke` run has installed the
-dependencies.
+On macOS or Linux, `brew install zuke-build/tap/zuke` installs the same CLI as a
+signed standalone binary instead, and on Windows `choco install zuke` installs
+it through Chocolatey (not Authenticode-signed yet). Every route is covered,
+with how to verify a download, in [installing](./install.md).
+
+The build runs on Node 26, which strips TypeScript types natively. Setup writes
+a starter `build.ts` (the wizard asks for the name, `--build-file <name>`
+answers up front), a `package.json` (created, or merged: `type` and the
+`@zuke/core` dependency, `npm:@zuke-build/core@^1`, are added only when absent),
+a `zuke.json` with `"runtime": "node"` (which also marks the repo root — see
+[paths](./paths.md#repo-root-reporoot)), Node launchers that bootstrap a pinned,
+checksum-verified Node when none is on `PATH`, and a `.gitignore` covering
+`node_modules/`. No `deno.json`, and no Deno anywhere. With `--mcp`, `.mcp.json`
+registers `node <build file> mcp`, which works on every platform once Node 26 or
+newer is on `PATH` and a first `./zuke` run has installed the dependencies.
 
 `zuke add docker` then installs `@zuke/docker` from npm (as the alias for
 `npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
@@ -93,6 +55,52 @@ note names what else `deno.json` imports, which the build no longer sees, and
 setup stops with a manual step if the build file still imports a `jsr:`
 specifier, which Node cannot load. Setup does not move a Node project back to
 Deno.
+
+## A Deno project with `zuke setup --runtime deno`
+
+Builds on Deno are supported until **October 2027**, and every run of one says
+so on stderr. A re-run of `zuke setup` in an existing Deno project keeps it on
+Deno; [Moving to Node](./moving-to-node.md) moves it.
+
+`zuke setup --runtime deno` scaffolds a starter `build.ts`, the `./zuke`
+launchers, a `deno.json` task, and a `zuke.json` config (which marks the repo
+root — see [paths](./paths.md#repo-root-reporoot)) into any directory. The build
+file is `build.ts` for a new project; the wizard asks, `--build-file <name>`
+answers up front, and the name is recorded in `zuke.json`. A project that
+already has a `zuke.ts` keeps it:
+
+```sh
+deno install -A -g -n zuke jsr:@zuke/cli   # once, the CLI on Deno
+zuke setup --runtime deno                   # in your project
+zuke                                        # run the build
+```
+
+On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
+same CLI as a signed standalone binary instead, and on Windows `choco install
+zuke` installs it through Chocolatey (not Authenticode-signed yet); the `./zuke`
+launcher that `zuke setup` writes then installs Deno the first time `zuke` runs
+the build. Every route is covered, with how to verify a download, in
+[installing](./install.md).
+
+Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`.
+Its flags are `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp` and
+`--bootstrap` / `--no-bootstrap`, and all but the last two apply to a Node
+project too, whose launchers always bootstrap Node. Pass `--mcp` to also write a
+`.mcp.json` that registers the build's [MCP server](./mcp.md), so Claude Code,
+Codex or any stdio MCP client can list the targets and run one through typed
+calls from day one (`--allow-run` lets the agent execute targets, not just
+inspect them). The wizard asks which launchers you want: by default they
+bootstrap a pinned, checksum-verified Deno when none is on `PATH` — the same
+scripts this repository runs on — so a clone needs nothing installed first;
+`--no-bootstrap` writes launchers that require Deno on `PATH` and fail closed
+without it. If a `zuke/` directory already occupies the launcher's name, setup
+stops with an actionable error — pass `--launcher-name <name>` to write the
+launcher (and its `.ps1`) under a different name.
+
+Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
+(`zuke doc core`, `zuke doc @scope/pkg`), running `deno doc` in an isolated
+directory so a surrounding Node project's `@types/node` resolution doesn't drown
+the output.
 
 ## Scaffold a Python project with `zuke setup --sdk python`
 
