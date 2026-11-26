@@ -4,20 +4,33 @@
 
 The global `zuke` command (`@zuke/cli`) scaffolds projects (`zuke setup`, `zuke
 import`), shows package docs (`zuke doc`), and forwards everything else to the
-build of the project you are in. There are three supported ways to install it.
+build of the project you are in. There are four supported ways to install it.
 All of them install the same program, from the same release.
 
 A machine without the CLI — a CI runner — can still run a project's build: the
 committed `./zuke` launcher (`.\zuke.ps1` on Windows) that `zuke setup` writes
 bootstraps its pinned, checksum-verified runtime on its own. For a `build.ts`
-build that is Deno. For a Python build it is the standalone `zuke` binary below,
-downloaded from its GitHub release, so a Python project needs no Deno anywhere.
-Each SDK runs on its own stack only.
+build that is Node, or Deno for a project still on Deno. For a Python build it
+is the standalone `zuke` binary below, downloaded from its GitHub release, so a
+Python project needs no Deno anywhere. Each SDK runs on its own stack only.
 
 A Python user installs `zuke` with Homebrew or Chocolatey, or lets the project's
-launchers download it. The JSR route is for Deno users.
+launchers download it. The npm route is for Node users, and the JSR route for a
+project still on Deno.
 
-## From JSR (recommended)
+## From npm (recommended)
+
+```sh
+npm install -g @zuke-build/cli
+```
+
+This needs [Node](https://nodejs.org/) 24.12 or newer. The CLI runs on the Node
+you already have. Upgrade with `npm install -g @zuke-build/cli@latest`, which is
+what `zuke upgrade` prints on such an install, running nothing. The `@zuke`
+scope on npm belongs to someone else, so the package is `@zuke-build/cli`; the
+command it installs is `zuke`.
+
+## From JSR (for Deno, supported until October 2027)
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli
@@ -25,6 +38,8 @@ deno install -A -g -n zuke jsr:@zuke/cli
 
 This needs [Deno](https://deno.com/) 2.x. The CLI runs on the Deno you already
 have, and `zuke upgrade` moves it to the latest release, or to a given one.
+Builds on Deno are supported until October 2027; see
+[Moving to Node](./moving-to-node.md).
 
 ## With Homebrew (macOS and Linux)
 
@@ -32,13 +47,13 @@ have, and `zuke upgrade` moves it to the latest release, or to a given one.
 brew install zuke-build/tap/zuke
 ```
 
-This installs a standalone binary, so it needs **no Deno up front**. `zuke
-setup` runs right away. For a `build.ts` build, the `./zuke` launcher it writes
-installs Deno the first time the build runs, and from then on `zuke <target>`
-forwards to that Deno. A Python build never needs Deno: the binary runs it on
-the engine it carries. Upgrade with `brew upgrade zuke`. `zuke upgrade` refuses
-to run from a Homebrew install, because reinstalling from JSR would leave this
-one as it was.
+This installs a standalone binary, so it needs **no Node or Deno up front**.
+`zuke setup` runs right away. For a `build.ts` build, the `./zuke` launcher it
+writes installs Node (or Deno, for a project on Deno) the first time the build
+runs, and from then on `zuke <target>` runs the build on it. A Python build
+never needs Deno: the binary runs it on the engine it carries. Upgrade with
+`brew upgrade zuke`. `zuke upgrade` refuses to run from a Homebrew install,
+because reinstalling from JSR would leave this one as it was.
 
 The binaries are built for Apple silicon and Intel Macs, and for arm64 and
 x86_64 Linux.
@@ -51,9 +66,9 @@ choco install zuke
 
 The same standalone binary for x86_64 Windows, installed from the release's
 `.zip` with its SHA-256 checked against the one the package pins. It needs **no
-Deno up front**, exactly as the Homebrew binary does. Upgrade with `choco
-upgrade zuke`; `zuke upgrade` refuses to run from a Chocolatey install, for the
-same reason as from Homebrew.
+Node or Deno up front**, exactly as the Homebrew binary does. Upgrade with
+`choco upgrade zuke`; `zuke upgrade` refuses to run from a Chocolatey install,
+for the same reason as from Homebrew.
 
 > [!IMPORTANT]
 > `zuke.exe` is **not Authenticode-signed yet**, so Windows SmartScreen may warn
@@ -61,7 +76,7 @@ same reason as from Homebrew.
 > [code signing policy](#code-signing-policy)). Until then, the checksum and the
 > build-provenance attestation in [Verifying a download](#verifying-a-download)
 > are what prove the binary is the one Zuke's release built. If you would rather
-> not run an unsigned executable, install from JSR instead.
+> not run an unsigned executable, install from npm instead.
 
 ## Which one am I running?
 
@@ -77,10 +92,10 @@ install that answered:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The `install` row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`, `Chocolatey
-(…)`, `standalone binary (…)` (a binary installed some other way), or `source
-(…)` (a local checkout). A binary names the `@zuke/engine` it carries as
-`built-in`, and has no `deno` row: its runtime is compiled in, not a Deno you
+The `install` row reads `npm (…)`, `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`,
+`Chocolatey (…)`, `standalone binary (…)` (a binary installed some other way),
+or `source (…)` (a local checkout). A binary names the `@zuke/engine` it carries
+as `built-in`, and has no `deno` row: its runtime is compiled in, not a Deno you
 have or need. A JSR install names the Deno it runs on instead. Piped or under
 `--plain`, `zuke --version` prints only the bare version, for scripts.
 

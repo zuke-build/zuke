@@ -1,8 +1,15 @@
 # Using Zuke in a Node/npm project
 
-Zuke can drive a Node project's build without touching its dependencies — build
-logic in a `build/` folder that lives next to the code. Deno is the only
-prerequisite (it runs the build; your app keeps its Node toolchain):
+The simplest way is a build that runs on Node: `zuke setup` in the project root
+writes `build.ts`, adds `@zuke/core` to `package.json` and scaffolds launchers
+that bootstrap Node (see [Getting started](./getting-started.md)). Your app and
+its build then share one toolchain and one lockfile.
+
+To keep the app's `package.json` free of Zuke instead, the build can live in a
+`build/` folder of its own and run on Deno, while the app keeps its Node
+toolchain. Builds on Deno are supported until **October 2027** (see
+[Moving to Node](./moving-to-node.md)); the rest of this page is that layout,
+for which Deno is the only prerequisite:
 
 ```
 my-app/

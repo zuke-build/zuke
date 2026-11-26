@@ -2,6 +2,8 @@
 
 - [Getting started](./getting-started.md) — install, scaffold, the launcher, and
   a first build.
+- [Moving to Node](./moving-to-node.md) — convert a Deno project's build to
+  Node; builds on Deno are supported until October 2027.
 - [Core concepts](./concepts.md) — the build/target/graph model and execution
   semantics.
 - [Authoring API](./authoring.md) — `target()`, `Build`, `run()`, and gotchas.
