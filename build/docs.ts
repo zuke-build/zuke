@@ -16,6 +16,7 @@ import type {
   ProjectInfo,
 } from "@zuke/docs";
 import { packageEntrypoints, PACKAGES } from "./packages.ts";
+import { provisionedDeno } from "./deno_tool.ts";
 
 /** Project framing for the generated API docs (`@zuke/docs`). */
 const DOCS_PROJECT: ProjectInfo = {
@@ -98,8 +99,12 @@ export function docsOptions(build: Build): ApiDocsOptions {
 /**
  * Produce each package's API documentation text with `deno doc` (from
  * `@zuke/deno`), so `@zuke/docs` can consume it without running `deno` itself.
+ *
+ * @param deno The Deno to run; the provisioned pin unless a test injects one.
  */
-export async function collectPackageDocs(): Promise<PackageDoc[]> {
+export async function collectPackageDocs(
+  deno: () => Promise<string> = provisionedDeno,
+): Promise<PackageDoc[]> {
   const docs: PackageDoc[] = [];
   for (const dir of PACKAGES) {
     // Document every declared entrypoint, not just `mod.ts`, so a package with
@@ -108,8 +113,9 @@ export async function collectPackageDocs(): Promise<PackageDoc[]> {
     // typed surface in `llms-full.txt` and its
     // README — the "whole typed surface" the docs claim to carry.
     const entrypoints = await packageEntrypoints(dir);
+    const path = await deno();
     const { stdout } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
+      s.toolPath(path).paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
     );
     docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
   }
@@ -168,13 +174,19 @@ export async function crossPackageTypesOf(dir: string): Promise<string[]> {
  * Collect a {@link DocLintReport} per package: the `deno doc --lint` output for
  * its entrypoints (captured with `noThrow`, since the linter exits non-zero on
  * any diagnostic) plus the types it imports from other `@zuke/*` packages.
+ *
+ * @param deno The Deno to run; the provisioned pin unless a test injects one.
  */
-export async function collectDocLintReports(): Promise<DocLintReport[]> {
+export async function collectDocLintReports(
+  deno: () => Promise<string> = provisionedDeno,
+): Promise<DocLintReport[]> {
   const reports: DocLintReport[] = [];
   for (const dir of PACKAGES) {
     const entrypoints = await packageEntrypoints(dir);
+    const path = await deno();
     const { stderr } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).lint().env({ NO_COLOR: "1" }).noThrow().quiet()
+      s.toolPath(path).paths(...entrypoints).lint().env({ NO_COLOR: "1" })
+        .noThrow().quiet()
     );
     reports.push({
       pkg: `@zuke/${dir}`,
