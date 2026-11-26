@@ -11,8 +11,8 @@
  * Everything lives in the build's own process, so the rollout must run start
  * to finish in one go: no approval gate, no durable bakes.
  */
-import { type NetServer, NetTasks } from "jsr:@zuke/core@^1";
-import type { CanaryContext, CanaryPlatform } from "jsr:@zuke/canary@^1";
+import { type NetServer, NetTasks } from "@zuke/core";
+import type { CanaryContext, CanaryPlatform } from "@zuke/canary";
 
 /** Whether `error` is the system's refusal of a port something else holds. */
 function isAddrInUse(error: unknown): boolean {

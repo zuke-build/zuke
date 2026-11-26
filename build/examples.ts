@@ -7,14 +7,16 @@
  * asked to list its targets, and asked to verify any pipeline files it commits
  * — an example cannot rot when the API moves.
  *
- * The examples import `jsr:@zuke/*`. From inside this repository those
- * specifiers resolve to the workspace members, so the check holds an example
- * to the real source rather than to a published version that could lag.
+ * The examples import `@zuke/*` by bare specifier. From inside this repository
+ * those resolve to the workspace members, on Node through the links in
+ * `node_modules` and on Deno through the workspace, so the check holds an
+ * example to the real source rather than to a published version that could
+ * lag. The builds run on the runtime the gate runs on, so the gate on Node
+ * proves them on Node on every operating system it runs on.
  */
 
-import { glob } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
-import { provisionedDeno } from "./deno_tool.ts";
+import { glob, type RuntimeFacts, RuntimeTasks } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 import { denoCheck, type SnippetChecker } from "./snippets.ts";
 
 /** Where the example builds live. */
@@ -60,7 +62,23 @@ export interface ExampleRunner {
 }
 
 /**
- * Run one example's build with `args`, from inside its own directory.
+ * The command that runs an example's build with `args` on `runtime`, the
+ * runtime at `execPath`: `deno run`, frozen, on Deno, and the build file
+ * itself on Node.
+ */
+export function exampleCommand(
+  runtime: RuntimeFacts,
+  execPath: string,
+  args: readonly string[],
+): string[] {
+  return runtime.name === "deno"
+    ? [execPath, "run", "-A", "--frozen", "build.ts", ...args]
+    : [execPath, "build.ts", ...args];
+}
+
+/**
+ * Run one example's build with `args`, from inside its own directory, on the
+ * runtime this build runs on.
  *
  * An example that drives a Node app carries that app's package.json, which
  * the root package.json lists as a workspace member, so the root lockfile
@@ -70,21 +88,22 @@ async function runExampleBuild(
   dir: string,
   args: string[],
 ): Promise<ExampleVerdict> {
-  const deno = await provisionedDeno();
-  const out = await DenoTasks.run((s) =>
-    s.toolPath(deno).allowAll().frozen().script("build.ts").scriptArgs(...args)
-      .cwd(dir).quiet().noThrow()
+  const command = exampleCommand(
+    RuntimeTasks.facts(),
+    RuntimeTasks.execPath(),
+    args,
   );
+  const out = await $`${command}`.cwd(dir).quiet().noThrow();
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 }
 
 /**
  * The default runner: `deno check`, then the build's own `--list` and
- * `generate-ci --check`, all frozen. An example that declares no pipeline
+ * `generate-ci --check` on the running runtime. An example that declares no pipeline
  * reports that and exits zero, so the last step is safe to run over every
  * example rather than only the ones that commit workflow files.
  */
-const denoRunner: ExampleRunner = {
+const defaultRunner: ExampleRunner = {
   check: denoCheck,
   list: (dir) => runExampleBuild(dir, ["--list"]),
   pipeline: (dir) => runExampleBuild(dir, ["generate-ci", "--check"]),
@@ -118,7 +137,7 @@ export async function discoverExamples(
  */
 export async function checkExamples(
   examples: Example[],
-  runner: ExampleRunner = denoRunner,
+  runner: ExampleRunner = defaultRunner,
 ): Promise<ExampleFailure[]> {
   const failures: ExampleFailure[] = [];
   for (const example of examples) {

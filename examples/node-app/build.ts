@@ -10,8 +10,8 @@
  *   zuke test              # just install → test
  *   npm run zuke -- --list # the same, for npm-centric colleagues
  */
-import { Build, run, target } from "jsr:@zuke/core@^1";
-import { NpmTasks } from "jsr:@zuke/npm@^1";
+import { Build, run, target } from "@zuke/core";
+import { NpmTasks } from "@zuke/npm";
 
 class App extends Build {
   install = target()

@@ -24,20 +24,15 @@ Other ways to install the CLI — Homebrew, Chocolatey, a signed binary — are 
 | [`release-library`](./release-library) | Release a small library: bump, tag, push, GitHub release with generated notes, publish.                                   |
 | [`scripts-to-zuke`](./scripts-to-zuke) | The same `scripts/release.sh` three ways: bash, the `$` shell with no build class, and targets.                           |
 
-Inside this repository the `jsr:@zuke/*` imports resolve to the workspace, so
-the examples always match the source you are reading, and `./zuke examplesCheck`
-type-checks every example and lists its targets on every CI run. Copied
-elsewhere, the same imports resolve to the published packages.
+Inside this repository the bare `@zuke/*` imports resolve to the workspace, on
+Node and on Deno alike, so the examples always match the source you are reading.
+`./zuke examplesCheck` type-checks every example, lists its targets and verifies
+its pipeline files on every CI run, on Node on Linux, macOS and Windows.
 
-These inline `jsr:` specifiers are the one place the docs still use them, and
-deliberately so: an example carries no `deno.json`, and giving it one would cut
-it out of the workspace — Deno then ignores the parent workspace config, and the
-gate above would check the examples against the _published_ packages instead of
-the source in this repository. Everywhere else, `@zuke/*` is imported by bare
-specifier and declared in `deno.json`, because Deno's default lint set rejects
-an inline specifier under `no-import-prefix`.
-
-So when you copy an example, run `zuke setup` in the copy. It adds the `./zuke`
-launcher and a `deno.json` — including the `imports` entries — and leaves the
-existing `build.ts` alone; switch its imports to the bare `@zuke/…` form
-afterwards and `deno task lint` stays clean.
+An example carries no `deno.json`, and no `package.json` that declares Zuke:
+giving it one would cut it out of the workspace, and the gate would check it
+against the _published_ packages instead of the source in this repository. So
+when you copy an example, run `zuke setup` in the copy. It adds the `./zuke`
+launcher and the manifest that declares `@zuke/core`, and leaves the existing
+`build.ts` alone. Then run `zuke add <name>` for each other package the build
+imports, such as `zuke add deno`.

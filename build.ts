@@ -735,9 +735,10 @@ class ZukeBuild extends Build {
   examplesCheck = target()
     .description("Type-check every example, list its targets, verify its CI")
     .executes(async () => {
-      // The examples import `jsr:@zuke/*`, which resolves to the workspace from
-      // inside this repository — so each one is held to the real source, not a
-      // published version that could lag behind it. A failing `--list` catches
+      // The examples import `@zuke/*`, which resolves to the workspace from
+      // inside this repository, and their builds run on this build's runtime
+      // — so each one is held to the real source, not a published version
+      // that could lag behind it. A failing `--list` catches
       // what a type-check cannot: a build that no longer constructs. And
       // `generate-ci --check` catches what neither can: an example that commits
       // generated pipeline files the current renderer no longer produces.

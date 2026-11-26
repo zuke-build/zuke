@@ -8,6 +8,7 @@ import {
   checkExamples,
   discoverExamples,
   type Example,
+  exampleCommand,
   type ExampleRunner,
   formatExampleFailures,
 } from "../build/examples.ts";
@@ -158,13 +159,25 @@ test("formatExampleFailures names the example, the step, and the output", () => 
   assertEquals(text.includes("it is what readers copy"), true);
 });
 
+test("an example's build runs as deno run on Deno and as itself on Node", () => {
+  const facts = { version: "1", typescript: undefined, standalone: false };
+  assertEquals(
+    exampleCommand({ ...facts, name: "deno" }, "/bin/deno", ["--list"]),
+    ["/bin/deno", "run", "-A", "--frozen", "build.ts", "--list"],
+  );
+  assertEquals(
+    exampleCommand({ ...facts, name: "node" }, "/bin/node", ["--list"]),
+    ["/bin/node", "build.ts", "--list"],
+  );
+});
+
 test({
   name: "the shipped examples are discovered and pass the real gate",
   denoOnly: "runs deno check and deno run over the examples",
   fn: async () => {
     // Integration: the default runner spawns the real `deno check` and
-    // `deno run … --list` (Deno.execPath() via the wrapper) over every shipped
-    // example, resolving their jsr:@zuke/* imports to this workspace — the same
+    // `deno run … --list` over every shipped example, resolving their bare
+    // @zuke/* imports to this workspace — the same
     // work `./zuke examplesCheck` does in the gate, so the normal test lane
     // proves the runner and the examples end to end on every OS the suite runs.
     const all = await discoverExamples();
