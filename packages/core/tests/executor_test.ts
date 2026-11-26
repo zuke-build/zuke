@@ -3309,10 +3309,10 @@ test("summary: a target's notes land in the run record and in a dependent's outc
       stateStore: store,
     });
     assertEquals(result.ok, true);
-    assertEquals(seen, [{ key: "Tests", value: "3" }, {
-      key: "Passed",
-      value: "3",
-    }]);
+    assertEquals(seen, [
+      { key: "Tests", value: "3" },
+      { key: "Passed", value: "3" },
+    ]);
     const loaded = await store.getRun(result.runId ?? "");
     assertEquals(loaded?.record.targets.test.summary, [
       { key: "Tests", value: "3" },

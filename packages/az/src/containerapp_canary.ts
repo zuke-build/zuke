@@ -184,7 +184,7 @@ export class AzContainerAppCanarySettings {
  */
 export class AzContainerAppCanary {
   /** Container Apps splits requests, so exposure is a traffic share. */
-  readonly exposure: "traffic" = "traffic";
+  readonly exposure = "traffic";
   readonly #configure: Configure<AzContainerAppCanarySettings>;
 
   /** A platform whose settings `configure` produces, afresh on every call. */

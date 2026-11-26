@@ -18,11 +18,10 @@ test("errors: each names what failed and how to find it", () => {
   assertEquals(api.name, "SignPathApiError");
   const request = new SignPathRequestError("POST", "/v1/o/x", "timed out");
   assertEquals(request.message, "SignPath POST /v1/o/x failed: timed out");
-  assertEquals([request.name, request.method, request.path], [
-    "SignPathRequestError",
-    "POST",
-    "/v1/o/x",
-  ]);
+  assertEquals(
+    [request.name, request.method, request.path],
+    ["SignPathRequestError", "POST", "/v1/o/x"],
+  );
   const signing = new SignPathSigningError(
     REQUEST,
     "Denied",
@@ -35,11 +34,10 @@ test("errors: each names what failed and how to find it", () => {
   );
   assertEquals(signing.name, "SignPathSigningError");
   const timeout = new SignPathTimeoutError(REQUEST, "InProgress", 5, WEB_URL);
-  assertEquals([timeout.name, timeout.status, timeout.webUrl], [
-    "SignPathTimeoutError",
-    "InProgress",
-    WEB_URL,
-  ]);
+  assertEquals(
+    [timeout.name, timeout.status, timeout.webUrl],
+    ["SignPathTimeoutError", "InProgress", WEB_URL],
+  );
   const validation = new SignPathValidationError([
     { error: "a", howToFix: undefined },
   ]);

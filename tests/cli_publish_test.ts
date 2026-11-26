@@ -251,9 +251,12 @@ test("publishStrandedCliDrafts publishes only the CLI drafts older than the curr
   }
   assertEquals(edit[edit.indexOf("--repo") + 1], "zuke-build/zuke");
   // Both calls run as the token that may create the tag.
-  assertEquals(envs, [[{ GH_TOKEN: "app-token" }], [{
-    GH_TOKEN: "app-token",
-  }]]);
+  assertEquals(envs, [
+    [{ GH_TOKEN: "app-token" }],
+    [{
+      GH_TOKEN: "app-token",
+    }],
+  ]);
 });
 
 test("publishStrandedCliDrafts edits nothing when no older CLI draft exists", async () => {

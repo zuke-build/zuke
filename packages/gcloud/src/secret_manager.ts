@@ -109,10 +109,11 @@ export const SecretManagerTasks: SecretManagerTasksApi = {
     }/secrets/${encodeURIComponent(name)}/versions/${
       encodeURIComponent(version)
     }:access`;
-    const body = await gcpJson(url, { method: "GET" }, {
-      token,
-      fetch: options.fetch,
-    });
+    const body = await gcpJson(
+      url,
+      { method: "GET" },
+      { token, fetch: options.fetch },
+    );
     const payload = isRecord(body) && isRecord(body.payload)
       ? readString(body.payload, "data")
       : undefined;

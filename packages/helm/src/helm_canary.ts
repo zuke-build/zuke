@@ -166,7 +166,7 @@ export interface HelmCanaryContext {
  */
 export class HelmCanary {
   /** Exposure is a share of replicas, quantised to whole pods. */
-  readonly exposure: "replicas" = "replicas";
+  readonly exposure = "replicas";
   readonly #configure: Configure<HelmCanarySettings>;
 
   /** A platform whose settings `configure` produces, afresh on every call. */

@@ -44,7 +44,7 @@ export interface DocLintDiagnostic {
 function stripAnsi(text: string): string {
   // deno doc colours its diagnostics; NO_COLOR isn't always honoured, so remove
   // the CSI SGR sequences (ESC [ … m) before matching.
-  return text.replace(/\[[0-9;]*m/g, "");
+  return text.replace(/\[[0-9;]*m/g, ""); // oxlint-disable-line no-control-regex
 }
 
 /**

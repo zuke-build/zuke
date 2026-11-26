@@ -92,8 +92,8 @@ The same pattern applies to the other JS package managers, each with its own
 wrapper: [`@zuke/bun`](../packages/bun) (`BunTasks` — also `bun test`),
 [`@zuke/pnpm`](../packages/pnpm) (`PnpmTasks`, with `--filter` for workspaces),
 and [`@zuke/yarn`](../packages/yarn) (`YarnTasks`, Classic and Berry). For
-example, `await PnpmTasks.install((s) => s.frozenLockfile())` or
-`await BunTasks.run((s) => s.script("build"))`.
+example, `await PnpmTasks.install((s) => s.frozenLockfile())` or `await
+BunTasks.run((s) => s.script("build"))`.
 
 To download and run a package binary in one step, [`@zuke/npx`](../packages/npx)
 (`NpxTasks`) wraps `npx` — npm's sibling of `bun x` and `pnpm dlx`. For example,

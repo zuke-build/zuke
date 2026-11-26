@@ -117,7 +117,7 @@ function cell(value: string): string {
   return value
     .replace(/\\/g, "\\\\")
     // deno-lint-ignore no-control-regex -- catching these is the point.
-    .replace(/[\u0000-\u001f\u007f]/g, visible)
+    .replace(/[\u0000-\u001f\u007f]/g, visible) // oxlint-disable-line no-control-regex
     .replace(/\|/g, "\\|");
 }
 

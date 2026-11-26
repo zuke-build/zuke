@@ -81,8 +81,8 @@ test("bun install, add and remove report onto the running target", async () => {
     return Promise.resolve();
   });
   // Each report replaces the last: the row keeps the final command's figures.
-  assertEquals(summary.entries(), [{ key: "Installed", value: "0" }, {
-    key: "Removed",
-    value: "1",
-  }]);
+  assertEquals(summary.entries(), [
+    { key: "Installed", value: "0" },
+    { key: "Removed", value: "1" },
+  ]);
 });

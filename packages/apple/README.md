@@ -157,8 +157,8 @@ repeats, with the cleanup done right:
 2. create a uniquely named keychain in a fresh private temp directory, with a
    random password;
 3. turn its auto-lock off (`set-keychain-settings` with no flags) and unlock it;
-4. write the decoded `.p12` to a `0600` file, `security import` it with
-   `-T /usr/bin/codesign -f pkcs12`, and delete the file at once;
+4. write the decoded `.p12` to a `0600` file, `security import` it with `-T
+   /usr/bin/codesign -f pkcs12`, and delete the file at once;
 5. `set-key-partition-list -S apple-tool:,apple: -s`, so `codesign` never raises
    the access prompt that hangs a headless build;
 6. put the keychain first on the search list;
@@ -189,9 +189,9 @@ dry run.
 
 ## Notarization
 
-`NotarytoolTasks.submit` always passes `--output-format json` and returns
-`{ id, status, message }`. With `.wait()`, any final status other than
-`Accepted` fetches `notarytool log <id>` with the same credentials and throws a
+`NotarytoolTasks.submit` always passes `--output-format json` and returns `{ id,
+status, message }`. With `.wait()`, any final status other than `Accepted`
+fetches `notarytool log <id>` with the same credentials and throws a
 `NotarizationError` whose message lists the log's issues (and whose `.log` holds
 them parsed). Any other non-zero exit is a `CommandError`, even when notarytool
 printed a result with an id. Set `.noThrow()` to get the result back instead.

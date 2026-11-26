@@ -35,9 +35,11 @@ test("filterDiff includes only matching files, parsing spaced paths", () => {
 test("filterDiff keeps preamble but drops an unparseable file section when filters are active", () => {
   const preamble = "warning: some git advice\n";
   const weird = "diff --git \nBinary files differ\n"; // a file section, no path line
-  const out = filterDiff(preamble + section("src/x.ts") + weird, [], [
-    "**/*.lock",
-  ]);
+  const out = filterDiff(
+    preamble + section("src/x.ts") + weird,
+    [],
+    ["**/*.lock"],
+  );
   assertEquals(out.includes("some git advice"), true); // preamble kept
   assertEquals(out.includes("src/x.ts"), true); // parseable file kept
   assertEquals(out.includes("Binary files differ"), false); // fail-safe: dropped

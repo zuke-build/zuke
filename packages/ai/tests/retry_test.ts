@@ -114,11 +114,12 @@ test("a thrown fetch (network error) is retried, then surfaces an AiReviewError"
   );
   await assertRejects(
     () =>
-      retryingFetch(f.fetch, "https://api.example/x", { method: "POST" }, {
-        attempts: 2,
-        baseDelayMs: 5,
-        sleep,
-      }),
+      retryingFetch(
+        f.fetch,
+        "https://api.example/x",
+        { method: "POST" },
+        { attempts: 2, baseDelayMs: 5, sleep },
+      ),
     AiReviewError,
     "request failed after 2 attempt(s): connection reset",
   );
@@ -133,11 +134,12 @@ test("thrown-fetch backoff is capped at MAX_DELAY_MS", async () => {
     new TypeError("connection reset"),
     new Response("ok", { status: 200 }),
   );
-  await retryingFetch(f.fetch, "https://api.example/x", { method: "POST" }, {
-    attempts: 3,
-    baseDelayMs: 20_000,
-    sleep,
-  });
+  await retryingFetch(
+    f.fetch,
+    "https://api.example/x",
+    { method: "POST" },
+    { attempts: 3, baseDelayMs: 20_000, sleep },
+  );
   // Attempt 0 → 20_000 (under the cap); attempt 1 → 40_000 uncapped, capped to
   // the 30_000 ceiling. Without the cap this would sleep 40_000ms.
   assertEquals(sleeps, [20_000, 30_000]);
@@ -166,15 +168,20 @@ test("onRetry reports each retry — its status, the attempt count, and the dela
     new Response("ok", { status: 200 }),
   );
   const seen: string[] = [];
-  await retryingFetch(f.fetch, "https://api.example/x", { method: "POST" }, {
-    attempts: 3,
-    baseDelayMs: 10,
-    sleep,
-    onRetry: (info) =>
-      seen.push(
-        `${info.attempt}/${info.attempts} ${info.reason} ${info.delayMs}`,
-      ),
-  });
+  await retryingFetch(
+    f.fetch,
+    "https://api.example/x",
+    { method: "POST" },
+    {
+      attempts: 3,
+      baseDelayMs: 10,
+      sleep,
+      onRetry: (info) =>
+        seen.push(
+          `${info.attempt}/${info.attempts} ${info.reason} ${info.delayMs}`,
+        ),
+    },
+  );
   // One notice per failed attempt, with the failure reason and backoff.
   assertEquals(seen, ["1/3 HTTP 503 10", "2/3 connection reset 20"]);
 });
@@ -192,11 +199,16 @@ test("a hung request is aborted by the per-attempt timeout and surfaces as a tim
       })) as typeof fetch;
   await assertRejects(
     () =>
-      retryingFetch(hang, "https://api.example/x", { method: "POST" }, {
-        attempts: 1,
-        timeoutMs: 5, // fires quickly; the cleared timer leaves no leak
-        sleep,
-      }),
+      retryingFetch(
+        hang,
+        "https://api.example/x",
+        { method: "POST" },
+        {
+          attempts: 1,
+          timeoutMs: 5, // fires quickly; the cleared timer leaves no leak
+          sleep,
+        },
+      ),
     AiReviewError,
     "timed out after 5ms",
   );

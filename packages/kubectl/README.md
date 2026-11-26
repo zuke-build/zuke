@@ -102,8 +102,8 @@ every PodDisruptionBudget an operator wrote down on purpose.
 ## Two names that differ from the CLI
 
 Both are inherited-method collisions, not preferences. `ToolSettings.quiet()`
-suppresses Zuke's own echo of the command, so kubectl's `--quiet` on
-`auth can-i` is `.quietAnswer()`. `ToolSettings.env(...)` sets the environment
+suppresses Zuke's own echo of the command, so kubectl's `--quiet` on `auth
+can-i` is `.quietAnswer()`. `ToolSettings.env(...)` sets the environment
 `kubectl` itself runs in, so `kubectl run --env` is `.envVar(key, value)`.
 
 ## Kubernetes canary platform
@@ -359,7 +359,7 @@ class KubectlCanary
 
   constructor(configure: Configure<KubectlCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Traffic follows ready pods, so exposure is a share of replicas.
   describe(): string
     `"Kubernetes deployment api (canary api-canary)"`, for the summary.

@@ -186,10 +186,10 @@ test("logsInsightsQuery polls until Complete and returns the rows", async () => 
     poll("Scheduled"),
     poll("Running"),
     poll("Complete", [
-      [{ field: "bin(5m)", value: "2026-10-07 11:55:00.000" }, {
-        field: "count(*)",
-        value: "3",
-      }],
+      [
+        { field: "bin(5m)", value: "2026-10-07 11:55:00.000" },
+        { field: "count(*)", value: "3" },
+      ],
       [{ field: "count(*)", value: "1" }],
     ]),
   );

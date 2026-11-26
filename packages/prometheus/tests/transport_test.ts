@@ -209,13 +209,18 @@ test("an error envelope becomes a PrometheusApiError with status, errorType and 
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
-        s.url(BASE).query("rate(x[5m]").fetch(fakeFetch(() =>
-          Response.json({
-            status: "error",
-            errorType: "bad_data",
-            error: "1:11: parse error: unclosed left parenthesis",
-          }, { status: 400 })
-        ))
+        s.url(BASE).query("rate(x[5m]").fetch(
+          fakeFetch(() =>
+            Response.json(
+              {
+                status: "error",
+                errorType: "bad_data",
+                error: "1:11: parse error: unclosed left parenthesis",
+              },
+              { status: 400 },
+            )
+          ),
+        )
       ),
     PrometheusApiError,
   );
@@ -252,11 +257,10 @@ test("an error status on a 2xx and an HTTP error without an envelope are both re
       PrometheusApiError,
     );
     if (!(error instanceof PrometheusApiError)) throw error;
-    assertEquals([error.status, error.detail, error.errorType], [
-      status,
-      detail,
-      undefined,
-    ]);
+    assertEquals(
+      [error.status, error.detail, error.errorType],
+      [status, detail, undefined],
+    );
   }
 });
 
@@ -290,9 +294,10 @@ test("a long server message is capped", async () => {
       PrometheusTasks.query((s) =>
         s.url(BASE).query("q").fetch(
           fakeFetch(() =>
-            Response.json({ status: "error", error: "e".repeat(2000) }, {
-              status: 422,
-            })
+            Response.json(
+              { status: "error", error: "e".repeat(2000) },
+              { status: 422 },
+            )
           ),
         )
       ),
@@ -325,8 +330,10 @@ test("an answer over maxResponseBytes fails instead of being buffered", async ()
 test("a request that outlives requestTimeout fails as a timeout", async () => {
   const fetcher = fakeFetch((request) =>
     new Promise((_resolve, reject) => {
-      request.signal?.addEventListener("abort", () =>
-        reject(request.signal?.reason));
+      request.signal?.addEventListener(
+        "abort",
+        () => reject(request.signal?.reason),
+      );
     })
   );
   await assertRejects(
@@ -376,11 +383,10 @@ test("credentials never reach an error: network failure, refusal and echo", asyn
     fakeFetch((r) => Promise.reject(new TypeError(echo(r.url)))),
     fakeFetch((r) => new Response(echo(r.url), { status: 401 })),
     fakeFetch((r) =>
-      Response.json({
-        status: "error",
-        errorType: echo(r.url),
-        error: echo(r.url),
-      }, { status: 403 })
+      Response.json(
+        { status: "error", errorType: echo(r.url), error: echo(r.url) },
+        { status: 403 },
+      )
     ),
     fakeFetch((r) => new Response(echo(r.url))),
   ];

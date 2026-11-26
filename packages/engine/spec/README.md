@@ -1,11 +1,11 @@
 # The tool spec
 
 `tools.json` describes every wrapper's tasks and the settings they are
-configured with, read from the wrappers' own `deno doc --json` output by
-`./zuke toolSpec` in the Zuke repository, where `toolSpecCheck` fails the gate
-when it drifts. An SDK in another language generates its tool facades from it,
-so none is written by hand; the Python SDK's generator is the first reader. The
-file ships with `@zuke/engine`, so a release's spec is at
+configured with, read from the wrappers' own `deno doc --json` output by `./zuke
+toolSpec` in the Zuke repository, where `toolSpecCheck` fails the gate when it
+drifts. An SDK in another language generates its tool facades from it, so none
+is written by hand; the Python SDK's generator is the first reader. The file
+ships with `@zuke/engine`, so a release's spec is at
 `https://jsr.io/@zuke/engine/<version>/spec/tools.json`.
 
 The spec carries only what `tool.call` carries. A task or setter taking a

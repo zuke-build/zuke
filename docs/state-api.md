@@ -13,9 +13,9 @@ The client is dependency-free and talks plain HTTP, so any stack can serve it.
 ## Conventions
 
 - **Base URL.** Configured on the client; every path below is relative to it.
-- **Auth.** If a token is configured, every request carries
-  `Authorization: Bearer <token>`. The service should reject unauthenticated
-  requests with `401`.
+- **Auth.** If a token is configured, every request carries `Authorization:
+  Bearer <token>`. The service should reject unauthenticated requests with
+  `401`.
 - **Body.** A run record is JSON, exactly the shape in
   [Durable run state](./state.md#the-run-record). The service should store it
   verbatim and return it verbatim.
@@ -156,9 +156,8 @@ and only loses the listing.
 
 ### `POST /locks/:key`
 
-Acquire. Body `{ holder, ttlMs }`, where `holder` is
-`{ actor?, runId?, target?, at }` — descriptive only, never an authorization
-input.
+Acquire. Body `{ holder, ttlMs }`, where `holder` is `{ actor?, runId?, target?,
+at }` — descriptive only, never an authorization input.
 
 - `201 { "token": "…" }` — acquired.
 - `409 { … }` — already held; the body is the **current holder**, which the
@@ -167,8 +166,8 @@ input.
 
 ### `PUT /locks/:key`
 
-Renew (the heartbeat). Body `{ token, ttlMs }`; extend the deadline to
-`now + ttlMs` only when `token` matches the current holder.
+Renew (the heartbeat). Body `{ token, ttlMs }`; extend the deadline to `now +
+ttlMs` only when `token` matches the current holder.
 
 - `204`/`200` — renewed.
 - `409` or `404` — the token no longer holds the lock. **Not an error:** the

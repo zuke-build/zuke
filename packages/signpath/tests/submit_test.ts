@@ -355,21 +355,27 @@ test("submit: explicit GitHub settings win over the environment", async () => {
 
 test("submit: origin validation errors are listed, scrubbed of both tokens", async () => {
   const net = routes({
-    [`POST ${CONNECTOR_URL}`]: [() =>
-      Response.json({
-        error: "Build system validation failed",
-        validationResult: {
-          errors: [
-            {
-              error: `Job 'build' ran on a self-hosted runner (${GH_TOKEN})`,
-              howToFix: `Use a GitHub-hosted runner, ${TOKEN}`,
+    [`POST ${CONNECTOR_URL}`]: [
+      () =>
+        Response.json(
+          {
+            error: "Build system validation failed",
+            validationResult: {
+              errors: [
+                {
+                  error:
+                    `Job 'build' ran on a self-hosted runner (${GH_TOKEN})`,
+                  howToFix: `Use a GitHub-hosted runner, ${TOKEN}`,
+                },
+                { error: "Artifact not found" },
+                {},
+                "junk",
+              ],
             },
-            { error: "Artifact not found" },
-            {},
-            "junk",
-          ],
-        },
-      }, { status: 400 })],
+          },
+          { status: 400 },
+        ),
+    ],
   });
   const error = await assertRejects(
     () => viaGitHub(net),
@@ -389,11 +395,13 @@ test("submit: origin validation errors are listed, scrubbed of both tokens", asy
 
 test("submit: a connector refusal or a foreign answer is reported plainly", async () => {
   const refused = routes({
-    [`POST ${CONNECTOR_URL}`]: [() =>
-      Response.json({
-        error: `bad token ${GH_TOKEN}`,
-        validationResult: null,
-      }, { status: 401 })],
+    [`POST ${CONNECTOR_URL}`]: [
+      () =>
+        Response.json(
+          { error: `bad token ${GH_TOKEN}`, validationResult: null },
+          { status: 401 },
+        ),
+    ],
   });
   const error = await assertRejects(
     () => viaGitHub(refused),
@@ -569,11 +577,14 @@ test("submit: a flood of validation errors is capped", async () => {
   // Regression (adversarial review): the list was unbounded.
   const net = routes({
     [`POST ${CONNECTOR_URL}`]: [() =>
-      Response.json({
-        validationResult: {
-          errors: Array.from({ length: 500 }, (_, i) => ({ error: `e${i}` })),
+      Response.json(
+        {
+          validationResult: {
+            errors: Array.from({ length: 500 }, (_, i) => ({ error: `e${i}` })),
+          },
         },
-      }, { status: 400 })],
+        { status: 400 },
+      )],
   });
   const error = await assertRejects(
     () => viaGitHub(net),

@@ -102,12 +102,12 @@ RELEASE_VERSION=1.1.0 zuke                       # the parameter from the enviro
 - **You can stop anywhere.** `zuke tag` runs check → test → bump → tag and
   nothing after it; `--dry-run` prints the plan for any target. A script has one
   entry point and a comment that says "don't run past here".
-- **Every step is the real CLI, typed.**
-  `GitTasks.tag((s) => s.name(…).message(…))` is `git tag -a … -m …`;
-  `GhTasks.releaseCreate((s) => s.generateNotes().latest())` is
-  `gh release create --generate-notes --latest`; `DenoTasks.publish()` is
-  `deno publish`, which reads your `jsr.json` (or `deno.json`). The flags are
-  methods, a typo is a compile error, and the argv is built without a shell.
+- **Every step is the real CLI, typed.** `GitTasks.tag((s) =>
+  s.name(…).message(…))` is `git tag -a … -m …`; `GhTasks.releaseCreate((s) =>
+  s.generateNotes().latest())` is `gh release create --generate-notes --latest`;
+  `DenoTasks.publish()` is `deno publish`, which reads your `jsr.json` (or
+  `deno.json`). The flags are methods, a typo is a compile error, and the argv
+  is built without a shell.
 - **The version is a typed input.** `parameter(…).required()` is read from
   `--release-version` or `RELEASE_VERSION`, checked before the first target
   runs, and used in the targets as `this.releaseVersion.value`. `zuke --list`
@@ -117,9 +117,9 @@ RELEASE_VERSION=1.1.0 zuke                       # the parameter from the enviro
 
 ## Variations
 
-- **npm instead of JSR:** replace the `publish` body with
-  `NpmTasks.publish((s) => s.access("public"))` from `@zuke/npm`, and bump
-  `package.json` instead of `jsr.json`.
+- **npm instead of JSR:** replace the `publish` body with `NpmTasks.publish((s)
+  => s.access("public"))` from `@zuke/npm`, and bump `package.json` instead of
+  `jsr.json`.
 - **A changelog file:** `GhTasks.releaseCreate` also takes `.notesFile(path)`,
   so a `CHANGELOG.md` section you maintain by hand becomes the release body.
 - **Fully automated:** `@zuke/release-please` wraps release-please, which opens

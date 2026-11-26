@@ -93,13 +93,16 @@ test("an empty artifact signs; a blob shorter than a MAC is refused", async () =
 // a slow upload left the tee buffering the whole archive for it.
 test("signing advances only as fast as the upload reads", async () => {
   let produced = 0;
-  const source = new ReadableStream<Uint8Array<ArrayBuffer>>({
-    pull(controller) {
-      if (produced === 256) return controller.close();
-      produced++;
-      controller.enqueue(new Uint8Array(64 * 1024));
+  const source = new ReadableStream<Uint8Array<ArrayBuffer>>(
+    {
+      pull(controller) {
+        if (produced === 256) return controller.close();
+        produced++;
+        controller.enqueue(new Uint8Array(64 * 1024));
+      },
     },
-  }, { highWaterMark: 0 });
+    { highWaterMark: 0 },
+  );
   const reader = source.pipeThrough(signingStream("s", "k")).getReader();
   await reader.read();
   await new Promise((resolve) => setTimeout(resolve, 50)); // a stalled upload

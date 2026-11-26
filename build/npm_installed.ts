@@ -141,7 +141,7 @@ export function manifestProblems(
   }
   return NPM_ACTED_ON_FIELDS.filter((field) =>
     JSON.stringify(canonical(present(metadata[field]))) !==
-      JSON.stringify(canonical(present(dig(manifest, field))))
+    JSON.stringify(canonical(present(dig(manifest, field))))
   ).map((field) =>
     `the registry's metadata for ${field} differs from the rebuilt package.json.`
   );
@@ -211,7 +211,7 @@ export function lockProblems(
     // None of our packages has a bin: a package or its alias must not gain one.
     if (
       JSON.stringify(canonical(present(dig(entry, "bin")))) !==
-        JSON.stringify(canonical(present(want.bin)))
+      JSON.stringify(canonical(present(want.bin)))
     ) {
       add(short, `${key} has a bin other than the rebuild's.`);
     }

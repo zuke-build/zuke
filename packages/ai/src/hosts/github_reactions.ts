@@ -115,11 +115,10 @@ export function githubReactions(context: GithubContext): ReviewReactions {
       const settings = (s: GhReactionSettings) =>
         description(bound(targetOf(context), doFetch)(s));
       try {
-        const own = (await GhTasks.listReactions((s) =>
-          settings(s).content(CONTENT[signal])
-        )).filter((r) =>
-          r.login === login && r.content === CONTENT[signal]
-        );
+        const own =
+          (await GhTasks.listReactions((s) =>
+            settings(s).content(CONTENT[signal])
+          )).filter((r) => r.login === login && r.content === CONTENT[signal]);
         let removed = false;
         for (const reaction of own) {
           try {

@@ -111,10 +111,10 @@ function hermetic(f: ReturnType<typeof aiFixer>): ReturnType<typeof aiFixer> {
 test("reviewer records token usage against a shared budget", async () => {
   const b = budget((x) => x.maxTokens(1000));
   const { fetch } = recordFetch(
-    claude({ score: 0, severity: "none", summary: "", findings: [] }, {
-      input_tokens: 100,
-      output_tokens: 20,
-    }),
+    claude(
+      { score: 0, severity: "none", summary: "", findings: [] },
+      { input_tokens: 100, output_tokens: 20 },
+    ),
   );
   const lines = await captured(() =>
     securityReviewer((r) =>
@@ -161,10 +161,10 @@ test("the verify pass's own usage draws down the shared budget", async () => {
     file: "h.ts",
   });
   const responses = [
-    claude({ score: 8, severity: "high", summary: "s", findings: [finding] }, {
-      input_tokens: 10,
-      output_tokens: 5,
-    }),
+    claude(
+      { score: 8, severity: "high", summary: "s", findings: [finding] },
+      { input_tokens: 10, output_tokens: 5 },
+    ),
     // The verify verdict also reports usage — it must be folded in too.
     JSON.stringify({
       content: [{

@@ -27,17 +27,20 @@ test("series POSTs repeated match[] with its range and limit", async () => {
   const [sent] = fetcher.sent;
   assertEquals(sent.method, "POST");
   assertEquals(sent.url.pathname, "/api/v1/series");
-  assertEquals([...new URLSearchParams(sent.body)], [
-    ["match[]", "up"],
-    ["match[]", 'process_start_time_seconds{job="p"}'],
-    ["start", "1"],
-    ["end", "2026-01-01T00:00:00Z"],
-    ["limit", "5"],
+  assertEquals(
+    [...new URLSearchParams(sent.body)],
+    [
+      ["match[]", "up"],
+      ["match[]", 'process_start_time_seconds{job="p"}'],
+      ["start", "1"],
+      ["end", "2026-01-01T00:00:00Z"],
+      ["limit", "5"],
+    ],
+  );
+  assertEquals(response.data, [
+    { __name__: "up", job: "api" },
+    { __name__: "up", job: "db" },
   ]);
-  assertEquals(response.data, [{ __name__: "up", job: "api" }, {
-    __name__: "up",
-    job: "db",
-  }]);
 });
 
 test("series needs a selector, and GET puts them in the URL", async () => {

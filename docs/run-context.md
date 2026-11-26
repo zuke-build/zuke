@@ -104,17 +104,15 @@ wrapper reports its counts from its runner's own result line — on a failed run
 too, so a red row says how many failed — and `DenoTasks.coverage` reports the
 measured line and branch percentages.
 
-Test runners share one shape.
-`reportTestCounts({ passed, failed, skipped?,
-todo?, flaky? })` from
-`@zuke/core` reports `Tests` (the sum), `Passed` and `Failed`, then `Skipped`,
-`Todo` and `Flaky` only when non-zero, so every test-runner wrapper puts the
-same labels on its row and a body that runs tests some other way can match them.
-The wrappers that report this way, each from the closing lines its runner's
-default reporters print: `DenoTasks.test`, `VitestTasks.run`, `JestTasks.run`,
-`BunTasks.test`, `NodeTasks.test`, `PlaywrightTasks.test` and
-`CypressTasks.run`. A reporter that replaces those lines (JSON, JUnit, or a
-machine-readable format) reports nothing.
+Test runners share one shape. `reportTestCounts({ passed, failed, skipped?,
+todo?, flaky? })` from `@zuke/core` reports `Tests` (the sum), `Passed` and
+`Failed`, then `Skipped`, `Todo` and `Flaky` only when non-zero, so every
+test-runner wrapper puts the same labels on its row and a body that runs tests
+some other way can match them. The wrappers that report this way, each from the
+closing lines its runner's default reporters print: `DenoTasks.test`,
+`VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,
+`PlaywrightTasks.test` and `CypressTasks.run`. A reporter that replaces those
+lines (JSON, JUnit, or a machine-readable format) reports nothing.
 
 ### What the wrappers report
 
@@ -153,11 +151,9 @@ line (`--format json`, JUnit) reports nothing either.
 A settled target's notes are written to its row of the [run record](./state.md)
 alongside its status and timing, redacted like every other stored string. So
 they survive the process: `zuke runs show <id>` prints them after each target's
-duration
-(`✔ test  succeeded  128.1s  // Tests: 4094
-· Passed: 4094 · Failed: 0`), the
-MCP `show_run` tool returns them in the record, and a target that reads a
-dependency's outcome sees them as `ctx.outcomeOf("test")?.summary` — after a
+duration (`✔ test  succeeded  128.1s  // Tests: 4094 · Passed: 4094 · Failed:
+0`), the MCP `show_run` tool returns them in the record, and a target that reads
+a dependency's outcome sees them as `ctx.outcomeOf("test")?.summary` — after a
 resume too, since the record is what a resumed run reads.
 
 ## Reading the run's shape — `ctx.plan()`

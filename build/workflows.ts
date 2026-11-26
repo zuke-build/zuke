@@ -113,8 +113,8 @@ export interface WorkflowTargets {
  * registry for the `@jsr`-scoped development dependencies that installing
  * `package.json` brings, such as `@std/yaml`), the OpenAI API for
  * the lint fixer, GitHub for the fixer's comment and push, Codecov's CDN,
- * API, and upload bucket, and Sigstore's TUF repository for the npm
- * attestation check.
+ * API, and upload bucket, Sigstore's TUF repository for the npm attestation
+ * check, and dprint's plugin host for the formatter.
  */
 const GATE_ENDPOINTS = [
   "deno.land:443",
@@ -134,7 +134,9 @@ const GATE_ENDPOINTS = [
   "storage.googleapis.com:443",
   // Sigstore's trusted root, over TUF: `npmSigstoreCheck` verifies a recorded
   // attestation with sigstore-js, which contacts only this host.
-  "tuf-repo-cdn.sigstore.dev:443",
+  "tuf-repo-cdn.sigstore.dev:443", // dprint's formatting plugins, which `format` and the generators fetch on
+  // first use and then cache, each pinned by its checksum in dprint.json.
+  "plugins.dprint.dev:443",
 ];
 
 /**

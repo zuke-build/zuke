@@ -22,9 +22,12 @@ By participating, you agree to abide by our
 
 ## Prerequisites
 
-- [Deno](https://deno.com/) 2.x — the only toolchain you need. There is no Node,
-  npm, or external build step. The test runner, formatter, linter, type-checker,
-  and coverage tooling are all the built-in `deno` CLI.
+- [Deno](https://deno.com/) 2.x — the test runner, linter, type-checker and
+  coverage tooling are all the built-in `deno` CLI.
+- [Node](https://nodejs.org/) with npm, for the formatter,
+  [dprint](https://dprint.dev/), and the gate's second linter,
+  [Oxlint](https://oxc.rs/). Both are pinned in `package.json`; `npm ci`
+  installs them, and the gate does so itself.
 
 ## Getting started
 
@@ -47,10 +50,10 @@ deno task ci   # run the full gate to confirm a clean baseline
 | Spell-check                   | `deno task spell`                       |
 | Full pre-commit / CI gate     | `deno task ci` / `./zuke ci`            |
 
-**Run `deno task ci` before opening a pull request — it must be green.**
-`deno task ci` is `deno run -A --frozen build.ts ci`, the same gate CI's `ci`
-job runs (see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so
-a green `deno task ci` locally means a green CI run. If you change a public API,
+**Run `deno task ci` before opening a pull request — it must be green.** `deno
+task ci` is `deno run -A --frozen build.ts ci`, the same gate CI's `ci` job runs
+(see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so a green
+`deno task ci` locally means a green CI run. If you change a public API,
 regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
 `apiDocsCheck`, which fails on stale generated docs.
 

@@ -152,7 +152,7 @@ interface Project {
  */
 export class DockerComposeCanary {
   /** Compose runs replicas, so exposure is a share of instances. */
-  readonly exposure: "replicas" = "replicas";
+  readonly exposure = "replicas";
   readonly #configure: Configure<DockerComposeCanarySettings>;
 
   /** A platform whose settings `configure` produces, afresh on every call. */

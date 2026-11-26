@@ -608,9 +608,10 @@ test("a state block forged in a human comment is never trusted", async () => {
 });
 
 test("discussion without .comment() is disabled with a note", async () => {
-  const { fetch, calls } = discussionFetch([], [
-    claude({ score: 0, findings: [] }),
-  ]);
+  const { fetch, calls } = discussionFetch(
+    [],
+    [claude({ score: 0, findings: [] })],
+  );
   const warnings: string[] = [];
   const warn = console.warn;
   console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
@@ -1864,9 +1865,11 @@ function threadPosts(calls: Call[]): Call[] {
 }
 
 test("threads are off unless asked for", async () => {
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [ANCHORED] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [ANCHORED] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -1887,9 +1890,11 @@ test("threads are off unless asked for", async () => {
 });
 
 test("a finding is posted as a thread anchored to its line", async () => {
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [ANCHORED] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [ANCHORED] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -2124,9 +2129,11 @@ test("a forged thread root is never adopted", async () => {
 
 test("an unanchorable finding says so in the posted comment", async () => {
   const floating = { ...ANCHORED, line: 9999 };
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [floating] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [floating] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -2710,9 +2717,11 @@ test("a quiet reviewer posts no threads either", async () => {
   // Quiet withholds the summary comment, which is where an unanchorable finding
   // is reported — so posting threads anyway would leave some findings visible
   // inline and others nowhere at all.
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [ANCHORED] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [ANCHORED] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -2734,9 +2743,10 @@ test("a quiet reviewer posts no threads either", async () => {
 
 test("comment and discussion degrade to warnings outside any CI host", async () => {
   // An env reader that sees nothing: no CI host markers at all (a local run).
-  const { fetch, calls } = discussionFetch([], [
-    claude({ score: 0, severity: "none", findings: [] }),
-  ]);
+  const { fetch, calls } = discussionFetch(
+    [],
+    [claude({ score: 0, severity: "none", findings: [] })],
+  );
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k")
@@ -2784,10 +2794,10 @@ test("an exhausted budget skips the reworded-finding check, and says so", async 
   const b = budget((x) => x.maxTokens(1));
   const { fetch, calls } = discussionFetch(
     priorComment(stateWith("dismissed")),
-    [claudeWithUsage({ score: 9, severity: "high", findings: [REWORDED] }, {
-      input_tokens: 500,
-      output_tokens: 100,
-    })],
+    [claudeWithUsage(
+      { score: 9, severity: "high", findings: [REWORDED] },
+      { input_tokens: 500, output_tokens: 100 },
+    )],
   );
   const lines = await captured(() =>
     inPr(async () => {
@@ -3012,9 +3022,11 @@ test("findings beyond the thread cap stay in the table, and the gap is announced
     file: "src/big.ts",
     line: i + 1,
   }));
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: many }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: many })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -3104,9 +3116,10 @@ test("a thread phase that throws degrades to a note, never a failure", async () 
 test("discussion on GitHub without a PR context is skipped silently", async () => {
   // A push build on GitHub Actions: the host can list comments, but there is
   // no pull request to list them from — the discussion just does not run.
-  const { fetch, calls } = discussionFetch([], [
-    claude({ score: 0, severity: "none", findings: [] }),
-  ]);
+  const { fetch, calls } = discussionFetch(
+    [],
+    [claude({ score: 0, severity: "none", findings: [] })],
+  );
   const lines = await captured(() =>
     inEnv(
       {
@@ -3310,10 +3323,10 @@ test("an exhausted budget skips the adjudication; contested findings stay open",
   ];
   // The review's own usage blows the cap before the adjudication would run.
   const { fetch, calls } = discussionFetch(comments, [
-    claudeWithUsage({ score: 9, severity: "high", findings: [FINDING] }, {
-      input_tokens: 500,
-      output_tokens: 100,
-    }),
+    claudeWithUsage(
+      { score: 9, severity: "high", findings: [FINDING] },
+      { input_tokens: 500, output_tokens: 100 },
+    ),
   ]);
   await captured(() =>
     inPr(async () => {
@@ -3386,9 +3399,10 @@ test("a sticky dismissal with no recorded author or rationale still mutes, rende
 test("a missing token env skips the comment with the PR-context warning", async () => {
   // A PR on GitHub Actions, but GITHUB_TOKEN is absent and no .commentToken()
   // was configured: the comment is skipped, never posted unauthenticated.
-  const { fetch, calls } = discussionFetch([], [
-    claude({ score: 0, severity: "none", findings: [] }),
-  ]);
+  const { fetch, calls } = discussionFetch(
+    [],
+    [claude({ score: 0, severity: "none", findings: [] })],
+  );
   const lines = await captured(() =>
     inEnv(
       {
@@ -3562,9 +3576,11 @@ const LEAKY = {
 };
 
 test("the overview comment is masked before it reaches the host", async () => {
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [LEAKY] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [LEAKY] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -3595,9 +3611,11 @@ test("the overview comment is masked before it reaches the host", async () => {
 test("a review thread is masked before it reaches the host", async () => {
   // The sharper of the two paths: a thread is where a finding's quoted code
   // lands, so it is the likeliest to carry a credential the model saw.
-  const { fetch, calls } = threadFetch([summaryComment()], [], [
-    claude({ score: 9, severity: "high", findings: [LEAKY] }),
-  ]);
+  const { fetch, calls } = threadFetch(
+    [summaryComment()],
+    [],
+    [claude({ score: 9, severity: "high", findings: [LEAKY] })],
+  );
   await captured(() =>
     inPr(async () => {
       await assertRejects(
@@ -4445,9 +4463,10 @@ test("an accept command for a contested finding the model dropped still decides 
 });
 
 test("the Commands panel is absent unless commands are on", async () => {
-  const { fetch, calls } = discussionFetch([], [
-    claude({ score: 0, severity: "none", findings: [] }),
-  ]);
+  const { fetch, calls } = discussionFetch(
+    [],
+    [claude({ score: 0, severity: "none", findings: [] })],
+  );
   await captured(() =>
     inPr(async () => {
       await securityReviewer((r) =>
@@ -4640,9 +4659,10 @@ test("an accept on a finding the verifier refuted is recorded and answered", asy
 });
 
 test("a comment-started run acknowledges the command with 👍 before the review", async () => {
-  const { fetch: inner } = discussionFetch([], [
-    claude({ score: 0, severity: "none", findings: [] }),
-  ]);
+  const { fetch: inner } = discussionFetch(
+    [],
+    [claude({ score: 0, severity: "none", findings: [] })],
+  );
   // The shared fake answers reactions without recording them; this test is
   // about one, so it records the order itself.
   const order: Array<{ url: string; body: string }> = [];

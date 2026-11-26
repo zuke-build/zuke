@@ -93,10 +93,10 @@ test("bufferReporter: keeps a chunk the stream reuses, and writes it whole", () 
   chunk.fill(0); // the stream reusing its read buffer
   // A writer that accepts two bytes per call, like a short write to a pipe.
   const out = recorder(2);
-  buffer.flush({ info: () => {}, error: () => {} }, {
-    stdout: out,
-    stderr: recorder(),
-  });
+  buffer.flush(
+    { info: () => {}, error: () => {} },
+    { stdout: out, stderr: recorder() },
+  );
   assertEquals(out.text(), "abcdef");
 });
 

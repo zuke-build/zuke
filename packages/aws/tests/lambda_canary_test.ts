@@ -290,9 +290,8 @@ test("lambdaCanary: a code source is shipped to the function the alias belongs t
   for (const [label, configure, expected] of sources) {
     const model = new LambdaModel();
     await platform(model, configure).stage(context());
-    const publish = model.calls.find((argv) =>
-      argv[1] === "update-function-code"
-    ) ?? [];
+    const publish =
+      model.calls.find((argv) => argv[1] === "update-function-code") ?? [];
     for (const token of expected) {
       assertEquals(publish.includes(token), true, `${label}: ${token}`);
     }

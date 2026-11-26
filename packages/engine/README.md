@@ -23,16 +23,16 @@ the project root, so the whole CLI — targets, `--list --json`, `graph`,
 bodies.
 
 The global `zuke` binary needs no Deno for this: it is compiled with this engine
-and every wrapper release inside it, and runs a hosted build on them. A
-`deno compile` binary cannot import a module it was not compiled with, so its
+and every wrapper release inside it, and runs a hosted build on them. A `deno
+compile` binary cannot import a module it was not compiled with, so its
 `tool.call`s are served by `embeddedTools` from the releases it carries: one
 serves a call that asks for the same major version, at that version or newer,
 and anything else is refused with `-32602`, naming the release it holds and the
-way past it: a newer `zuke`, which for a project's launchers is
-`zuke upgrade --engine`. The binary runs the pinned engine on its own when that
-release serves the pin by the same rule; otherwise it hands the command to the
-project's launchers, which download the `zuke` release they pin. A hosted build
-never needs Deno. `hostedBuild` is what both programs start from: the worker
+way past it: a newer `zuke`, which for a project's launchers is `zuke upgrade
+--engine`. The binary runs the pinned engine on its own when that release serves
+the pin by the same rule; otherwise it hands the command to the project's
+launchers, which download the `zuke` release they pin. A hosted build never
+needs Deno. `hostedBuild` is what both programs start from: the worker
 `zuke.json` names, started, described and materialised as a `Build`.
 
 The protocol is newline-delimited JSON-RPC 2.0 over loopback TCP; the engine

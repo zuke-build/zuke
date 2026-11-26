@@ -169,7 +169,7 @@ export function stylize(
 
 /** Matches every ANSI SGR escape sequence, so width can ignore colour codes. */
 // deno-lint-ignore no-control-regex
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g; // oxlint-disable-line no-control-regex
 
 /** Strip ANSI escape sequences, leaving the visible text. */
 export function stripAnsi(text: string): string {

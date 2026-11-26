@@ -24,11 +24,11 @@ What to notice in [`build.ts`](./build.ts):
   reserves for reporting its own version — a parameter that collides with a
   built-in flag is refused at discovery rather than quietly losing to it.
 - Each step is a typed wrapper that mirrors the real CLI: `GitTasks.add`,
-  `.commit`, `.tag((s) => s.name("v1.1.0").message(...))`,
-  `.push((s) => s.followTags())`, then
-  `GhTasks.releaseCreate((s) => s.tag("v1.1.0").generateNotes().latest())` — the
-  release notes are the merged pull requests since the last tag — and
-  `DenoTasks.publish()` reads the [`jsr.json`](./jsr.json) manifest.
+  `.commit`, `.tag((s) => s.name("v1.1.0").message(...))`, `.push((s) =>
+  s.followTags())`, then `GhTasks.releaseCreate((s) =>
+  s.tag("v1.1.0").generateNotes().latest())` — the release notes are the merged
+  pull requests since the last tag — and `DenoTasks.publish()` reads the
+  [`jsr.json`](./jsr.json) manifest.
 - Because it is a chain, you can stop anywhere: `tag` is a safe local dry run of
   everything up to the tag, and `--dry-run` prints the plan for any target.
 - Publishing to npm instead is `NpmTasks.publish()` from `@zuke/npm`; a

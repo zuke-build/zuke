@@ -70,9 +70,9 @@ export function extractCheckedSnippets(
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== CHECK_MARKER) continue;
     // The opening fence is the next non-blank line — tolerating the blank line
-    // `deno fmt` keeps between an HTML comment and a following code block. Only
-    // blank lines may sit between the marker and its fence; anything else means
-    // the marker is not attached to a ```ts block and is ignored.
+    // the formatter keeps between an HTML comment and a following code block.
+    // Only blank lines may sit between the marker and its fence; anything else
+    // means the marker is not attached to a ```ts block and is ignored.
     let fence = i + 1;
     while (fence < lines.length && lines[fence].trim() === "") fence++;
     if (fence >= lines.length || !TS_FENCE.test(lines[fence].trim())) continue;

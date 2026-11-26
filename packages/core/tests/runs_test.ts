@@ -601,10 +601,10 @@ test("formatRunDetail trails a target's summary notes after its duration or erro
         meta: {},
         startedAt: "2026-07-17T10:00:00.000Z",
         endedAt: "2026-07-17T10:00:08.000Z",
-        summary: [{ key: "Tests", value: "4094" }, {
-          key: "Failed",
-          value: "0",
-        }],
+        summary: [
+          { key: "Tests", value: "4094" },
+          { key: "Failed", value: "0" },
+        ],
       },
       lint: {
         status: "failed",

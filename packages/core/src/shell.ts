@@ -537,10 +537,10 @@ export class Command implements PromiseLike<CommandOutput> {
       // broken pipe, as it would writing to that terminal, rather than blocking
       // on a pipe nobody reads.
       for (
-        const [stream, writer] of [[child.stdout, sink.stdout], [
-          child.stderr,
-          sink.stderr,
-        ]] as const
+        const [stream, writer] of [
+          [child.stdout, sink.stdout],
+          [child.stderr, sink.stderr],
+        ] as const
       ) {
         void captureStream(stream, writer, 0).catch(() =>
           stream.cancel().catch(() => {})

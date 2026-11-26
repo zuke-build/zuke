@@ -28,5 +28,5 @@ The committed files are exactly what the build generates. What to notice:
 - Running any target regenerates the files, so you cannot forget to. On CI
   (`GITHUB_ACTIONS`, `GITLAB_CI`, and the rest are detected) the run verifies
   the committed files instead and fails on drift.
-- Bitbucket Pipelines is the fourth provider; add
-  `bitbucket = cicd({ provider: "bitbucket" })` and regenerate.
+- Bitbucket Pipelines is the fourth provider; add `bitbucket = cicd({ provider:
+  "bitbucket" })` and regenerate.

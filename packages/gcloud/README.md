@@ -207,10 +207,10 @@ rollout = canary((c) =>
 );
 ```
 
-- **`stage`** deploys the image as a tagged revision with no traffic
-  (`run services update … --tag canary --no-traffic`).
-- **`expose`** moves traffic through that tag
-  (`update-traffic --to-tags canary=<n>`).
+- **`stage`** deploys the image as a tagged revision with no traffic (`run
+  services update … --tag canary --no-traffic`).
+- **`expose`** moves traffic through that tag (`update-traffic --to-tags
+  canary=<n>`).
 - **`promote`** checks that the latest revision is still the candidate, then
   runs `--to-latest`.
 - **`abort`** sets the tag back to 0 % mid-rollout. Run by hand, it sends all
@@ -218,9 +218,9 @@ rollout = canary((c) =>
   runs nothing — nothing was staged, so the stable revision is left alone.
 
 `stage` records the service, region, tag and `.gcloud(...)` flags, and the
-service's `metadata.uid`. Every later call — in a resumed process or a
-`zuke cancel` too — compares its configuration with that record before any
-command, and the live uid with the recorded one before changing anything, so a
+service's `metadata.uid`. Every later call — in a resumed process or a `zuke
+cancel` too — compares its configuration with that record before any command,
+and the live uid with the recorded one before changing anything, so a
 configuration that now reaches another service (another name, region or project,
 or one deleted and created again) is refused rather than acted on. The refusal
 stops the run, its rollback refuses the same way, and it gives the gcloud
@@ -548,7 +548,7 @@ class CloudRunCanary
 
   constructor(configure: Configure<CloudRunCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "traffic"
+  readonly exposure: string
     Cloud Run splits requests, so exposure is a traffic share.
   describe(): string
     `"Cloud Run service api"`, for the build summary.

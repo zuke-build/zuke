@@ -17,7 +17,7 @@
  */
 
 import { FileTasks, type TargetBuilder } from "@zuke/core";
-import { formatText } from "./fmt_text.ts";
+import { dprint, type Formatter } from "./fmt_text.ts";
 
 /** Where the generated graph page is committed. */
 export const GRAPH_DOC_PATH = "docs/graph.md";
@@ -148,10 +148,10 @@ export function renderGraphDoc(targets: Map<string, TargetBuilder>): string {
 
 /**
  * The exact bytes the page should hold: {@link renderGraphDoc}'s output run
- * through `deno fmt`.
+ * through the formatter.
  *
  * The page lives under `docs/`, which the formatter covers, so the rendered
- * text is not the committed text: `deno fmt` rewraps the prose paragraphs to
+ * text is not the committed text: the formatter rewraps the prose paragraphs to
  * the margin and pads the target table's columns into alignment. Comparing
  * against the raw render would make `format` and `graphDocCheck` contradict
  * each other — each one's fix breaks the other. Formatting here, at the one
@@ -160,8 +160,9 @@ export function renderGraphDoc(targets: Map<string, TargetBuilder>): string {
  */
 export async function canonicalGraphDoc(
   targets: Map<string, TargetBuilder>,
+  format: Formatter = dprint,
 ): Promise<string> {
-  return await formatText(renderGraphDoc(targets), "md");
+  return await format(renderGraphDoc(targets), "md");
 }
 
 /**
@@ -172,8 +173,9 @@ export async function canonicalGraphDoc(
 export async function writeGraphDoc(
   targets: Map<string, TargetBuilder>,
   path: string = GRAPH_DOC_PATH,
+  format: Formatter = dprint,
 ): Promise<boolean> {
-  const content = await canonicalGraphDoc(targets);
+  const content = await canonicalGraphDoc(targets, format);
   if (await FileTasks.exists(path)) {
     if (await FileTasks.readText(path) === content) return false;
   }
@@ -189,10 +191,11 @@ export async function writeGraphDoc(
 export async function checkGraphDoc(
   targets: Map<string, TargetBuilder>,
   path: string = GRAPH_DOC_PATH,
+  format: Formatter = dprint,
 ): Promise<string[]> {
   if (!await FileTasks.exists(path)) return [`${path} (missing)`];
   const committed = await FileTasks.readText(path);
-  if (committed !== await canonicalGraphDoc(targets)) {
+  if (committed !== await canonicalGraphDoc(targets, format)) {
     return [`${path} (stale)`];
   }
   return [];

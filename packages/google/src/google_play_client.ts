@@ -18,7 +18,7 @@ import { isObject, type JsonObject, stringAt } from "./json.ts";
 /** The longest Google message an error keeps, with control characters flattened. */
 function printable(text: string): string {
   // deno-lint-ignore no-control-regex
-  return text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 500);
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 500); // oxlint-disable-line no-control-regex
 }
 
 /** Sends Google Play Developer API requests for one settings object. */

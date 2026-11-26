@@ -107,9 +107,11 @@ function readTask(value: unknown, names: Set<string>, into: Draft): void {
   if (typeof value === "string") command(value, into);
   else if (Array.isArray(value)) steps(value, names, into);
   else if (isRecord(value)) readTable(value, names, into);
-  else {into.steps.push({
+  else {
+    into.steps.push({
       todo: `translate this task: ${JSON.stringify(value)}`,
-    });}
+    });
+  }
 }
 
 /** Read a list of steps: a name of another task is a dependency. */

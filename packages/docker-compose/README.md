@@ -89,15 +89,15 @@ Every move is `up -d --no-deps --scale <service>=<n> <service>`, with `--wait`
 when `n` is not 0:
 
 - **`stage`** reads the image the stable replicas run (`ps --format {{.Image}}`)
-  and its ID (`images --quiet`), pulls the candidate if it is not present
-  (`pull --policy missing`), and records the rollout: the two services, the
-  replicas, the two variables, the two images, the stable image's ID, the
-  project's global flags and the project Compose reports the stable replicas in
-  (its containers' `com.docker.compose.project` label; below). Every later call
-  acts on that record, whatever the lambda resolves to then, and every command
-  that may create a stable replica sets the stable variable to `sha256:<id>`,
-  not the tag, so a tag moved by a local pull or build mid-rollout cannot bring
-  a release nobody analysed into the stable service. It then puts the stable
+  and its ID (`images --quiet`), pulls the candidate if it is not present (`pull
+  --policy missing`), and records the rollout: the two services, the replicas,
+  the two variables, the two images, the stable image's ID, the project's global
+  flags and the project Compose reports the stable replicas in (its containers'
+  `com.docker.compose.project` label; below). Every later call acts on that
+  record, whatever the lambda resolves to then, and every command that may
+  create a stable replica sets the stable variable to `sha256:<id>`, not the
+  tag, so a tag moved by a local pull or build mid-rollout cannot bring a
+  release nobody analysed into the stable service. It then puts the stable
   service at every replica and the canary service at none.
 - **`expose`** puts the canary service at its share and the stable service at
   the rest, scaling whichever grows first, and checks with `ps` that the canary
@@ -144,21 +144,21 @@ before running any command, reads included, unless the lambda gives exactly
 those flags again, in the same order: a resumed or cancelling process whose
 `.projectName(this.env.value)` resolves to another value would otherwise move
 same-named services in a project the rollout never staged. Flags are not all
-that selects a project, so after that check each of those calls reads
-`ps -a --format '{{.Label "com.docker.compose.project"}}' <stable> <canary>`,
-before any other command, and refuses unless Compose reports the services in
-exactly the project `stage` saw; it refuses too when Compose reports no
-container of either, running or stopped (a live rollout always has some). A
-record without the flags or the project is refused as damaged. The engine then
-leaves the run cancelled, so a resume or `zuke cancel` will not roll it back;
-the refusal names the recovery that does. Set the configuration and environment
-back to what the rollout started with, check with `docker compose ps` that it
-reaches the staged project, then run `zuke rollout.abort` by hand with
-`.stable("sha256:<id>")` set to the stable image ID the message names (or its
-tag, only if that still resolves to the ID). A hand-run abort has no record, so
-it acts on whatever project the lambda selects. The lambda runs once per command
-as well, and a command it gives other flags than the call resolved at its start
-is refused before it runs.
+that selects a project, so after that check each of those calls reads `ps -a
+--format '{{.Label "com.docker.compose.project"}}' <stable> <canary>`, before
+any other command, and refuses unless Compose reports the services in exactly
+the project `stage` saw; it refuses too when Compose reports no container of
+either, running or stopped (a live rollout always has some). A record without
+the flags or the project is refused as damaged. The engine then leaves the run
+cancelled, so a resume or `zuke cancel` will not roll it back; the refusal names
+the recovery that does. Set the configuration and environment back to what the
+rollout started with, check with `docker compose ps` that it reaches the staged
+project, then run `zuke rollout.abort` by hand with `.stable("sha256:<id>")` set
+to the stable image ID the message names (or its tag, only if that still
+resolves to the ID). A hand-run abort has no record, so it acts on whatever
+project the lambda selects. The lambda runs once per command as well, and a
+command it gives other flags than the call resolved at its start is refused
+before it runs.
 
 The check compares the project Compose itself reports, so it covers whatever
 selects the project: the flags, `COMPOSE_PROJECT_NAME` in the environment, a
@@ -197,21 +197,21 @@ names Docker, Compose or the process read as settings (`DOCKER_*`, `COMPOSE_*`,
 `SSH_AUTH_SOCK`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, in any case), and the two must
 differ in more than case.
 
-**Give the stable service `scale:` equal to `.replicas(...)`.** A plain
-`docker compose up` sets every service back to its `scale:`, so any other value
-changes the replica count behind the platform. Compose 2.21 or later
-(`docker compose`) is required: the project check's `{{.Label ...}}` template is
-not in earlier releases, and the v1 `docker-compose` binary has no `--wait`,
-`pull --policy` or `ps --format`.
+**Give the stable service `scale:` equal to `.replicas(...)`.** A plain `docker
+compose up` sets every service back to its `scale:`, so any other value changes
+the replica count behind the platform. Compose 2.21 or later (`docker compose`)
+is required: the project check's `{{.Label ...}}` template is not in earlier
+releases, and the v1 `docker-compose` binary has no `--wait`, `pull --policy` or
+`ps --format`.
 
 **A promotion is not durable on its own.** The image variable is set only for
 the commands the platform runs. Until the candidate is written where `APP_IMAGE`
 comes from (the `.env` file, or the environment of whatever runs Compose next),
 a plain `docker compose up` puts the stable service back on the old image. A
 rollback is an override in the same way. The build summary says so after a
-promotion, naming the ID the reference must still resolve to
-(`Persist: set APP_IMAGE=<image> (which must resolve to sha256:<id>) and keep scale: <replicas>`),
-and after a hand-run rollback. See
+promotion, naming the ID the reference must still resolve to (`Persist: set
+APP_IMAGE=<image> (which must resolve to sha256:<id>) and keep scale:
+<replicas>`), and after a hand-run rollback. See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md)
 for the details and the other limits.
 
@@ -338,7 +338,7 @@ class DockerComposeCanary
 
   constructor(configure: Configure<DockerComposeCanarySettings>)
     A platform whose settings `configure` produces, afresh on every call.
-  readonly exposure: "replicas"
+  readonly exposure: string
     Compose runs replicas, so exposure is a share of instances.
   describe(): string
     `"Compose service app"`, for the build summary.

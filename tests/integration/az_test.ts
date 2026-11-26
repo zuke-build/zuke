@@ -150,12 +150,14 @@ class Deploy extends Build {
       abort: (ctx) => platform.abort(ctx),
     })
       .steps(10)
-      .analysis(azureMonitor((m) =>
-        m.name("canary failures").resource(APP).metric("requests/failed")
-          .aggregation("Total").dimension("cloud/roleName", "api-canary")
-          .window("5m").max(5).missingDataAs(0)
-          .az((a) => a.subscription("prod").runner(fakeAz))
-      ))
+      .analysis(
+        azureMonitor((m) =>
+          m.name("canary failures").resource(APP).metric("requests/failed")
+            .aggregation("Total").dimension("cloud/roleName", "api-canary")
+            .window("5m").max(5).missingDataAs(0)
+            .az((a) => a.subscription("prod").runner(fakeAz))
+        ),
+      )
   );
 }
 

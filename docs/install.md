@@ -2,10 +2,10 @@
 
 <!-- cspell:ignore slsaprovenance spctl -->
 
-The global `zuke` command (`@zuke/cli`) scaffolds projects (`zuke setup`,
-`zuke import`), shows package docs (`zuke doc`), and forwards everything else to
-the build of the project you are in. There are three supported ways to install
-it. All of them install the same program, from the same release.
+The global `zuke` command (`@zuke/cli`) scaffolds projects (`zuke setup`, `zuke
+import`), shows package docs (`zuke doc`), and forwards everything else to the
+build of the project you are in. There are three supported ways to install it.
+All of them install the same program, from the same release.
 
 A machine without the CLI — a CI runner — can still run a project's build: the
 committed `./zuke` launcher (`.\zuke.ps1` on Windows) that `zuke setup` writes
@@ -32,13 +32,13 @@ have, and `zuke upgrade` moves it to the latest release, or to a given one.
 brew install zuke-build/tap/zuke
 ```
 
-This installs a standalone binary, so it needs **no Deno up front**.
-`zuke setup` runs right away. For a `build.ts` build, the `./zuke` launcher it
-writes installs Deno the first time the build runs, and from then on
-`zuke <target>` forwards to that Deno. A Python build never needs Deno: the
-binary runs it on the engine it carries. Upgrade with `brew upgrade zuke`.
-`zuke upgrade` refuses to run from a Homebrew install, because reinstalling from
-JSR would leave this one as it was.
+This installs a standalone binary, so it needs **no Deno up front**. `zuke
+setup` runs right away. For a `build.ts` build, the `./zuke` launcher it writes
+installs Deno the first time the build runs, and from then on `zuke <target>`
+forwards to that Deno. A Python build never needs Deno: the binary runs it on
+the engine it carries. Upgrade with `brew upgrade zuke`. `zuke upgrade` refuses
+to run from a Homebrew install, because reinstalling from JSR would leave this
+one as it was.
 
 The binaries are built for Apple silicon and Intel Macs, and for arm64 and
 x86_64 Linux.
@@ -51,9 +51,9 @@ choco install zuke
 
 The same standalone binary for x86_64 Windows, installed from the release's
 `.zip` with its SHA-256 checked against the one the package pins. It needs **no
-Deno up front**, exactly as the Homebrew binary does. Upgrade with
-`choco upgrade zuke`; `zuke upgrade` refuses to run from a Chocolatey install,
-for the same reason as from Homebrew.
+Deno up front**, exactly as the Homebrew binary does. Upgrade with `choco
+upgrade zuke`; `zuke upgrade` refuses to run from a Chocolatey install, for the
+same reason as from Homebrew.
 
 > [!IMPORTANT]
 > `zuke.exe` is **not Authenticode-signed yet**, so Windows SmartScreen may warn
@@ -77,10 +77,10 @@ install that answered:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The `install` row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`,
-`Chocolatey (…)`, `standalone binary (…)` (a binary installed some other way),
-or `source (…)` (a local checkout). A binary names the `@zuke/engine` it carries
-as `built-in`, and has no `deno` row: its runtime is compiled in, not a Deno you
+The `install` row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`, `Chocolatey
+(…)`, `standalone binary (…)` (a binary installed some other way), or `source
+(…)` (a local checkout). A binary names the `@zuke/engine` it carries as
+`built-in`, and has no `deno` row: its runtime is compiled in, not a Deno you
 have or need. A JSR install names the Deno it runs on instead. Piped or under
 `--plain`, `zuke --version` prints only the bare version, for scripts.
 
@@ -144,9 +144,9 @@ gh attestation verify zuke-1.15.0-x86_64-pc-windows-msvc.zip `
 ```
 
 How the release is built — compiled from the published `jsr:@zuke/cli`, signed
-and notarized on a macOS runner, attested, then checked with a real
-`brew install` on macOS and Linux and a real `choco install` on Windows before
-the formula and the package are published — is in
+and notarized on a macOS runner, attested, then checked with a real `brew
+install` on macOS and Linux and a real `choco install` on Windows before the
+formula and the package are published — is in
 [`build/cli_release.ts`](../build/cli_release.ts) and the `cli*` jobs of
 [`release.yml`](../.github/workflows/release.yml).
 

@@ -354,10 +354,10 @@ test("yesNoFromStatus: the failure carries git's own explanation", () => {
   // A silent failure still reports the status, without a trailing colon.
   const quiet = assertThrows(
     () =>
-      yesNoFromStatus({ code: 3, stdout: "", stderr: "   " }, {
-        task: "isIgnored",
-        command: "git check-ignore",
-      }),
+      yesNoFromStatus(
+        { code: 3, stdout: "", stderr: "   " },
+        { task: "isIgnored", command: "git check-ignore" },
+      ),
     Error,
   );
   assertEquals(quiet.message.endsWith("rather than a verdict"), true);

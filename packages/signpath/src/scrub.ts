@@ -29,7 +29,7 @@ const MAX_DETAIL = 500;
  */
 const UNPRINTABLE =
   // deno-lint-ignore no-control-regex
-  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g;
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g; // oxlint-disable-line no-control-regex
 
 /** `text`, safe to put in an error message or a log line. */
 export function scrub(redactor: Redactor, text: string): string {

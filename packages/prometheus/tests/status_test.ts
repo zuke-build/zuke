@@ -164,25 +164,26 @@ test("rules GETs every filter it was given and answers typed rules", async () =>
       .ruleGroup("g").file("/rules.yaml").match('{severity="page"}')
       .excludeAlerts().groupLimit(10).groupNextToken("prev-page")
   );
-  assertEquals([...fetcher.sent[0].url.searchParams], [
-    ["type", "alert"],
-    ["rule_name[]", "A"],
-    ["rule_name[]", "B"],
-    ["rule_group[]", "g"],
-    ["file[]", "/rules.yaml"],
-    ["match[]", '{severity="page"}'],
-    ["exclude_alerts", "true"],
-    ["group_limit", "10"],
-    ["group_next_token", "prev-page"],
-  ]);
+  assertEquals(
+    [...fetcher.sent[0].url.searchParams],
+    [
+      ["type", "alert"],
+      ["rule_name[]", "A"],
+      ["rule_name[]", "B"],
+      ["rule_group[]", "g"],
+      ["file[]", "/rules.yaml"],
+      ["match[]", '{severity="page"}'],
+      ["exclude_alerts", "true"],
+      ["group_limit", "10"],
+      ["group_next_token", "prev-page"],
+    ],
+  );
   assertEquals(response.data.groupNextToken, "next-page");
   const [group] = response.data.groups;
-  assertEquals([group.name, group.file, group.interval, group.limit], [
-    "example",
-    "/rules.yaml",
-    60,
-    0,
-  ]);
+  assertEquals(
+    [group.name, group.file, group.interval, group.limit],
+    ["example", "/rules.yaml", 60, 0],
+  );
   const [alerting, recording] = group.rules;
   if (alerting.type !== "alerting") throw new Error("expected alerting");
   assertEquals(alerting.duration, 600);

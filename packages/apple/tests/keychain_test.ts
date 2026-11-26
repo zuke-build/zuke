@@ -120,9 +120,10 @@ test("temporaryKeychain sets up, runs the callback, and tears down, in order", a
   assertEquals(result, "Developer ID Application: Example (T)");
   assertEquals(host.log, [...SETUP, `use ${KEYCHAIN} ${HASH}`, ...CLEANUP]);
   // The decoded .p12 is what reached the private file.
-  assertEquals([...(host.written.get(`${DIR}/certificate.p12`) ?? [])], [
-    ...P12,
-  ]);
+  assertEquals(
+    [...(host.written.get(`${DIR}/certificate.p12`) ?? [])],
+    [...P12],
+  );
 });
 
 test("cleanup runs in full when the callback throws, and the error survives", async () => {
@@ -410,9 +411,10 @@ test("whitespace in the base64 certificate is ignored", async () => {
   const spaced = `${P12_BASE64.slice(0, 2)}\n ${P12_BASE64.slice(2)}\n`;
   await new TemporaryKeychainSettings().certificate(spaced).host(host)
     .open_(() => Promise.resolve());
-  assertEquals([...(host.written.get(`${DIR}/certificate.p12`) ?? [])], [
-    ...P12,
-  ]);
+  assertEquals(
+    [...(host.written.get(`${DIR}/certificate.p12`) ?? [])],
+    [...P12],
+  );
   // No password given: an empty one is passed, so security never prompts.
   assertEquals(
     host.log.some((l) => l.endsWith(" -P  -T /usr/bin/codesign -f pkcs12")),

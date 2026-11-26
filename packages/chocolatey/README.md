@@ -93,15 +93,14 @@ release = cicd({
 ```
 
 `verify` installs the package the way a user would: it writes the files into a
-fresh temporary directory, runs `choco pack` there, then
-`choco install <id> --source=<dir> --version=<version> --yes --force
---no-progress`
-— the directory is the only source, and `--force` replaces a copy already on the
-machine — and runs the shim with the given arguments, checking that its output
-contains the version (`expectVersion()`) or a text (`expectOutput(...)`). The
-`choco uninstall` and the removal of the directory always run, whether or not
-the install and the check passed, and an error in the cleanup is raised
-alongside the one that caused it, never instead of it.
+fresh temporary directory, runs `choco pack` there, then `choco install <id>
+--source=<dir> --version=<version> --yes --force --no-progress` — the directory
+is the only source, and `--force` replaces a copy already on the machine — and
+runs the shim with the given arguments, checking that its output contains the
+version (`expectVersion()`) or a text (`expectOutput(...)`). The `choco
+uninstall` and the removal of the directory always run, whether or not the
+install and the check passed, and an error in the cleanup is raised alongside
+the one that caused it, never instead of it.
 
 `verifyJob` returns a plain `CiInvocation` for `cicd({ invokes: [...] })`: a
 `windows-latest` matrix (`.runners(...)` to change it) that lets every runner

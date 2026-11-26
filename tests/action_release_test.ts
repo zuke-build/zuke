@@ -469,8 +469,7 @@ test("every YAML shape that broke the line reader now parses", () => {
   // under-reports, which is the outcome this check cannot afford — an input it
   // fails to see is an input nobody checks. Parsing removes the class, and this
   // is the list it has to stay removed for.
-  const wf = (withBlock: string) =>
-    `name: CI
+  const wf = (withBlock: string) => `name: CI
 jobs:
   gate:
     steps:

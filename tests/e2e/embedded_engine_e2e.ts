@@ -203,9 +203,12 @@ async function runsHostedBuild(): Promise<void> {
             tasks: "DenoTasks",
             task: "eval",
             args: [{
-              configure: [["toolPath", [Deno.execPath()]], ["code", [
-                "console.log(40 + 2)",
-              ]]],
+              configure: [
+                ["toolPath", [Deno.execPath()]],
+                ["code", [
+                  "console.log(40 + 2)",
+                ]],
+              ],
             }],
           },
         }],

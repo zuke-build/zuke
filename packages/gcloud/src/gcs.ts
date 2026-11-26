@@ -108,10 +108,11 @@ export const GcsTasks: GcsTasksApi = {
       ? ""
       : `?prefix=${encodeURIComponent(options.prefix)}`;
     const url = `${STORAGE_BASE}/b/${encodeURIComponent(bucket)}/o${query}`;
-    const body = await gcpJson(url, { method: "GET" }, {
-      token,
-      fetch: options.fetch,
-    });
+    const body = await gcpJson(
+      url,
+      { method: "GET" },
+      { token, fetch: options.fetch },
+    );
     const root = isRecord(body) ? body : {};
     return readArray(root, "items").flatMap((item) => {
       const name = isRecord(item) ? readString(item, "name") : undefined;

@@ -35,9 +35,8 @@ the same CLI as a signed standalone binary; `zuke setup` then works at once, and
 the `./zuke` launcher it writes installs Deno when the build first runs. Update
 that install with `brew upgrade zuke`, not `zuke upgrade` (which refuses it). On
 Windows, `choco install zuke` installs the same binary through Chocolatey (not
-Authenticode-signed yet, so SmartScreen may warn); update it with
-`choco upgrade zuke`. `zuke --version` on a terminal shows which install
-answered.
+Authenticode-signed yet, so SmartScreen may warn); update it with `choco upgrade
+zuke`. `zuke --version` on a terminal shows which install answered.
 
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
 existing files), `--yes` (non-interactive), `--bootstrap` / `--no-bootstrap`
@@ -46,8 +45,7 @@ existing files), `--yes` (non-interactive), `--bootstrap` / `--no-bootstrap`
 are the older spellings), `--mcp` (also write `.mcp.json` registering the
 build's MCP server, so this agent — and any other stdio MCP client — can list
 and run the targets through typed calls; `--allow-run` registers it with
-execution enabled and implies `--mcp`), `--launcher-name
-<name>` (write the
+execution enabled and implies `--mcp`), `--launcher-name <name>` (write the
 launcher under a different name when a `zuke/` directory already occupies it — a
 directory collision now fails with an actionable error instead of silently
 skipping the launcher), `--sdk python` (scaffold a Python build instead — see
@@ -67,17 +65,16 @@ directory.
 
 ### A Node project: `zuke setup --runtime node`
 
-To run the build on Node 26 instead of Deno, pass `--runtime node`
-(`--runtime
-deno` is the default; it cannot combine with `--sdk`). Setup writes
-`build.ts`, a `package.json` (created, or merged without overwriting:
-`"type": "module"` and the `@zuke/core` dependency `npm:@zuke-build/core@^1` are
-added when absent), a `zuke.json` with `"runtime": "node"`, Node launchers that
-bootstrap a pinned, checksum-verified Node, and a `.gitignore` entry for
-`node_modules/`. **A Node project needs no Deno** — never tell its user to
-install it. With `--mcp`, `.mcp.json` registers `node <build file> mcp`, which
-works on every platform once Node 26 or newer is on `PATH` and a first `./zuke`
-run has installed the dependencies.
+To run the build on Node 26 instead of Deno, pass `--runtime node` (`--runtime
+deno` is the default; it cannot combine with `--sdk`). Setup writes `build.ts`,
+a `package.json` (created, or merged without overwriting: `"type": "module"` and
+the `@zuke/core` dependency `npm:@zuke-build/core@^1` are added when absent), a
+`zuke.json` with `"runtime": "node"`, Node launchers that bootstrap a pinned,
+checksum-verified Node, and a `.gitignore` entry for `node_modules/`. **A Node
+project needs no Deno** — never tell its user to install it. With `--mcp`,
+`.mcp.json` registers `node <build file> mcp`, which works on every platform
+once Node 26 or newer is on `PATH` and a first `./zuke` run has installed the
+dependencies.
 
 `zuke add docker` then installs `@zuke/docker` from npm (as the alias for
 `npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
@@ -89,34 +86,33 @@ downloaded.
 A build can be written in Python with the `zuke` package from PyPI and run on
 `@zuke/engine`, which hosts it as a worker. **A Python project needs no Deno,
 anywhere** — never tell its user to install Deno, and never reach for a Deno
-command in it. Each SDK runs on its own stack only.
-`zuke setup --sdk python
---yes` writes a starter `build.py` in place of
-`build.ts`, a `zuke.json` with the worker command (`uv run build.py`) and the
-exact engine release, the launchers and `.gitignore`, and no `deno.json`. The
-launchers run the standalone `zuke` binary, which carries the engine and every
-wrapper: they pin one `zuke` release (the running one's, or `--zuke <version>`)
-with each platform's SHA-256, and on first use download it from the GitHub
-release, verify it and keep it in `~/.zuke`, so a clone or a CI job needs only
-uv. `zuke.json` pins the engine inside that release. The `build.py` opens with
-inline script metadata naming `zuke` as its dependency, so `uv run` provides the
-SDK without a project file; a project that already manages its environment can
-drop that block and add `zuke` to its dev dependencies instead. Every other
-`setup` flag applies; `--mcp` registers the build's MCP server as `zuke mcp`.
-Later, `zuke upgrade --engine [<version>]` moves the project to the latest (or
-given) `zuke` release, rewriting the launchers and the pin, with `--dry-run`.
-With the CLI installed, run the build exactly as a TypeScript one, no launcher
-needed: `zuke <target>`, `zuke --list`, `zuke generate-ci`, `zuke mcp`; the
-launchers are for CI runners without the CLI. `zuke add`, `remove`, `cache` and
-`relock` refuse a Python build, whose wrappers come with the SDK as
-`zuke.tools`. Author the targets with the Python SDK's own documentation; the
-TypeScript authoring skill does not apply to a `build.py`.
+command in it. Each SDK runs on its own stack only. `zuke setup --sdk python
+--yes` writes a starter `build.py` in place of `build.ts`, a `zuke.json` with
+the worker command (`uv run build.py`) and the exact engine release, the
+launchers and `.gitignore`, and no `deno.json`. The launchers run the standalone
+`zuke` binary, which carries the engine and every wrapper: they pin one `zuke`
+release (the running one's, or `--zuke <version>`) with each platform's SHA-256,
+and on first use download it from the GitHub release, verify it and keep it in
+`~/.zuke`, so a clone or a CI job needs only uv. `zuke.json` pins the engine
+inside that release. The `build.py` opens with inline script metadata naming
+`zuke` as its dependency, so `uv run` provides the SDK without a project file; a
+project that already manages its environment can drop that block and add `zuke`
+to its dev dependencies instead. Every other `setup` flag applies; `--mcp`
+registers the build's MCP server as `zuke mcp`. Later, `zuke upgrade --engine
+[<version>]` moves the project to the latest (or given) `zuke` release,
+rewriting the launchers and the pin, with `--dry-run`. With the CLI installed,
+run the build exactly as a TypeScript one, no launcher needed: `zuke <target>`,
+`zuke --list`, `zuke generate-ci`, `zuke mcp`; the launchers are for CI runners
+without the CLI. `zuke add`, `remove`, `cache` and `relock` refuse a Python
+build, whose wrappers come with the SDK as `zuke.tools`. Author the targets with
+the Python SDK's own documentation; the TypeScript authoring skill does not
+apply to a `build.py`.
 
 ### Migrating an existing project: `zuke import`
 
-If the project already has `package.json` scripts or a `Makefile`, prefer
-`zuke import` over `setup` — it reads them and generates a `build.ts` with a
-target per task, a working starting point instead of a blank build:
+If the project already has `package.json` scripts or a `Makefile`, prefer `zuke
+import` over `setup` — it reads them and generates a `build.ts` with a target
+per task, a working starting point instead of a blank build:
 
 ```sh
 zuke import                  # auto-detects package.json, then a Makefile, then pyproject.toml
@@ -166,8 +162,8 @@ no `CmdTasks` and no Deno.
   download a tool from its build entry point. Both pass `--frozen` once a
   `deno.lock` exists, so the first run writes the lockfile and every run after
   verifies it.
-- **`deno.json`** — merged to add an `imports` entry for `@zuke/core`
-  (`zuke import` adds `@zuke/cmd` too when it generates one), a `zuke` task, and
+- **`deno.json`** — merged to add an `imports` entry for `@zuke/core` (`zuke
+  import` adds `@zuke/cmd` too when it generates one), a `zuke` task, and
   `fmt`/`lint`/`test` if absent. The scaffolded build imports by **bare
   specifier** (`from "@zuke/core"`), not an inline `jsr:@zuke/core@^1` — Deno's
   default lint set rejects an inline specifier under `no-import-prefix`, so an
@@ -190,22 +186,21 @@ no `CmdTasks` and no Deno.
   — with a note saying so. `--mcp` that cannot register into an unparseable
   `.mcp.json` is reported the same way, as a note.
 - **`zuke.json`** — `{ "name": "...", "build": "build.ts" }`, which marks the
-  repo root and names the build file; the `zuke` command and a re-run of
-  `zuke setup` follow it. A `zuke.json` with no `build` field means `zuke.ts`.
-  With `--sdk python` it carries `sdk.command` and `engine` instead, and
-  `build.py` is the build file while `deno.json` is not written.
+  repo root and names the build file; the `zuke` command and a re-run of `zuke
+  setup` follow it. A `zuke.json` with no `build` field means `zuke.ts`. With
+  `--sdk python` it carries `sdk.command` and `engine` instead, and `build.py`
+  is the build file while `deno.json` is not written.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
-- **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching
-  `deno run -A build.ts mcp` (plus `--allow-run` when asked). Merged around any
-  other servers already in the file; an existing `zuke` entry is kept unless
-  `--force` is set.
+- **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching `deno run -A
+  build.ts mcp` (plus `--allow-run` when asked). Merged around any other servers
+  already in the file; an existing `zuke` entry is kept unless `--force` is set.
 
 ## Running the build
 
 Run the build with the global `zuke` command, from any directory inside the
-project. If `zuke` is not on `PATH`, install it first with
-`deno install -A -g -n zuke jsr:@zuke/cli`.
+project. If `zuke` is not on `PATH`, install it first with `deno install -A -g
+-n zuke jsr:@zuke/cli`.
 
 ```sh
 zuke                      # run the default target
@@ -217,36 +212,35 @@ zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
 zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
 ```
 
-Every run opens with a banner: the Zuke wordmark, then
-`zuke <version> · deno <version> · <platform>` and `run <id> · <cwd>`. On CI the
-wordmark is dropped — the identifying lines are what a runner log wants, six
-lines of ASCII are not — and the detected host is appended to the first line.
-`--no-banner` or `ZUKE_NO_BANNER` turns it off entirely. On an interactive
-terminal `--version`, `--help`, `--list` and `graph` print a rich, coloured
-form; `--plain` or `ZUKE_PLAIN=1` asks for plain output everywhere (no banner or
-colour, undecorated informational commands), and output is plain automatically
-on CI and through a pipe, so `zuke -- --version | …` is always the bare version
-of Zuke the build runs on (`zuke --version` alone also reports the CLI's).
+Every run opens with a banner: the Zuke wordmark, then `zuke <version> · deno
+<version> · <platform>` and `run <id> · <cwd>`. On CI the wordmark is dropped —
+the identifying lines are what a runner log wants, six lines of ASCII are not —
+and the detected host is appended to the first line. `--no-banner` or
+`ZUKE_NO_BANNER` turns it off entirely. On an interactive terminal `--version`,
+`--help`, `--list` and `graph` print a rich, coloured form; `--plain` or
+`ZUKE_PLAIN=1` asks for plain output everywhere (no banner or colour,
+undecorated informational commands), and output is plain automatically on CI and
+through a pipe, so `zuke -- --version | …` is always the bare version of Zuke
+the build runs on (`zuke --version` alone also reports the CLI's).
 
-The bare `zuke` works from anywhere inside the project: `zuke <target>`,
-`zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke` for the default target —
-every command that is not the CLI's own (`setup`, `import`, `doc`) is forwarded
-to the nearest `build.ts`. `--help` and `--version` show both surfaces, the
-CLI's and then the build's, each labelled; `zuke -- --help` is the build's own
-usage alone, and `zuke -- <target>` reaches a target that shares one of those
-names. It walks up to the `zuke.json` that marks the repository root and runs
-the executable `./zuke <args>` launcher there, so a project's customised
-launcher (pinned Deno, exported env, a lock outside the repo) applies to `zuke`
-too. With no executable launcher (and on Windows) it runs
-`deno run -A build.ts <args>`, with `--frozen` once a `deno.lock` exists.
-Outside a project, `zuke <target>` reports the unknown command and the missing
-`zuke.json`, and a bare `zuke` prints the usage. The forwarding refuses a
-project whose root directory is owned by another user or is world-writable, and
-one where an ancestor `deno.json`, `deno.jsonc` or `package.json` Deno would
-read is owned by another user (the `safe.directory` rule git applies, since
-discovery runs code the caller never named); the error names what was refused
-and the fix — run that project's own `./zuke` there, or fix the ownership. On
-Windows the gate is inert.
+The bare `zuke` works from anywhere inside the project: `zuke <target>`, `zuke
+--list`, `zuke graph`, `zuke mcp`, bare `zuke` for the default target — every
+command that is not the CLI's own (`setup`, `import`, `doc`) is forwarded to the
+nearest `build.ts`. `--help` and `--version` show both surfaces, the CLI's and
+then the build's, each labelled; `zuke -- --help` is the build's own usage
+alone, and `zuke -- <target>` reaches a target that shares one of those names.
+It walks up to the `zuke.json` that marks the repository root and runs the
+executable `./zuke <args>` launcher there, so a project's customised launcher
+(pinned Deno, exported env, a lock outside the repo) applies to `zuke` too. With
+no executable launcher (and on Windows) it runs `deno run -A build.ts <args>`,
+with `--frozen` once a `deno.lock` exists. Outside a project, `zuke <target>`
+reports the unknown command and the missing `zuke.json`, and a bare `zuke`
+prints the usage. The forwarding refuses a project whose root directory is owned
+by another user or is world-writable, and one where an ancestor `deno.json`,
+`deno.jsonc` or `package.json` Deno would read is owned by another user (the
+`safe.directory` rule git applies, since discovery runs code the caller never
+named); the error names what was refused and the fix — run that project's own
+`./zuke` there, or fix the ownership. On Windows the gate is inert.
 
 The CLI is self-describing: `zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
@@ -255,10 +249,9 @@ calls, `zuke mcp` runs a Model Context Protocol server over it (register with
 `claude mcp add zuke -- deno run -A build.ts mcp`; add `--allow-run` to let the
 agent execute targets, not just inspect them).
 
-The scaffolded `deno.json` also carries a `zuke` task
-(`deno task zuke <target>`), but it is not quite equivalent: it deliberately
-omits `--frozen`, so it may heal a stale lockfile where `zuke` would fail on it.
-Prefer `zuke`.
+The scaffolded `deno.json` also carries a `zuke` task (`deno task zuke
+<target>`), but it is not quite equivalent: it deliberately omits `--frozen`, so
+it may heal a stale lockfile where `zuke` would fail on it. Prefer `zuke`.
 
 On a machine without the CLI — a CI runner — the committed `./zuke` launcher
 (`zuke.ps1` on Windows) installs Deno and runs the build, which is why generated
@@ -299,11 +292,10 @@ class CI extends Build {
 await run(CI);
 ```
 
-Mark the project root with a `zuke.json`
-(`{ "name": "my-project", "build": "build.ts" }`) so the `zuke` command can find
-the build and knows its file, then run it with `zuke test`. (For the launcher
-scripts a CLI-less CI runner needs, prefer `zuke setup`, which drops them in for
-you.)
+Mark the project root with a `zuke.json` (`{ "name": "my-project", "build":
+"build.ts" }`) so the `zuke` command can find the build and knows its file, then
+run it with `zuke test`. (For the launcher scripts a CLI-less CI runner needs,
+prefer `zuke setup`, which drops them in for you.)
 
 ## Finding the exact API — never guess
 
@@ -323,8 +315,8 @@ exact signatures:
   repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
   Both track `master`, so they may document symbols that are merged but not yet
-  released; use them to find what exists, then confirm the signature with
-  `deno doc`.
+  released; use them to find what exists, then confirm the signature with `deno
+  doc`.
 
 Once the project is scaffolded, use the **zuke-write-build** skill to add and
 edit targets.

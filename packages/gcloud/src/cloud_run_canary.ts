@@ -187,7 +187,7 @@ export class CloudRunCanarySettings {
  */
 export class CloudRunCanary {
   /** Cloud Run splits requests, so exposure is a traffic share. */
-  readonly exposure: "traffic" = "traffic";
+  readonly exposure = "traffic";
   readonly #configure: Configure<CloudRunCanarySettings>;
 
   /** A platform whose settings `configure` produces, afresh on every call. */

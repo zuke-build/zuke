@@ -71,9 +71,9 @@ calls a `CanaryPlatform`:
 
 Every call gets the same `ctx.state`, the rollout's durable platform state, so
 `abort` can read what `stage` wrote even in another process after a resume.
-**Never put a secret in it**: it is persisted in plain JSON and shown by
-`zuke runs show`. `ctx.signal` aborts when the run is cancelled; pass it to
-network calls.
+**Never put a secret in it**: it is persisted in plain JSON and shown by `zuke
+runs show`. `ctx.signal` aborts when the run is cancelled; pass it to network
+calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
 [Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm),
@@ -225,9 +225,9 @@ against). Then run the `run services update-traffic … --to-tags canary=0`
 command it gives, built from the recorded service, region, tag and flags. Prefer
 it: it returns the tag's share to the revisions already serving, keeping their
 split. Running `zuke rollout.abort` by hand with `.stable(...)` instead sends
-all traffic to that one revision, collapsing any earlier split; the
-`run revisions list` command the refusal gives lists the revisions to choose
-from. A rollback run by hand with no record uses the configuration as it is.
+all traffic to that one revision, collapsing any earlier split; the `run
+revisions list` command the refusal gives lists the revisions to choose from. A
+rollback run by hand with no record uses the configuration as it is.
 
 ### Kubernetes
 
@@ -314,9 +314,9 @@ Limits worth knowing:
   change mid-rollout either: a resume or `zuke cancel` pointed at another
   cluster would act on the same-named Deployments there. A refusal leaves the
   run cancelled with its rollback failed, so roll back by hand: set the
-  configuration back, then run the rollout's `<field>.abort` target (e.g.
-  `zuke rollout.abort`) with `.stableImage(...)` set to the image the refusal
-  names. `expose` and `promote` also refuse a rollout `stage` did not record.
+  configuration back, then run the rollout's `<field>.abort` target (e.g. `zuke
+  rollout.abort`) with `.stableImage(...)` set to the image the refusal names.
+  `expose` and `promote` also refuse a rollout `stage` did not record.
 
 ### Helm
 
@@ -392,23 +392,23 @@ revision its history does not hold. The kube context still cannot be recorded,
 but one that now points at another cluster refuses rather than act, because that
 cluster's release will not have been first deployed at the same nanosecond — a
 strong check, not a proof. The refusal names both times and changes nothing, but
-the run is left cancelled with the canary release in place, so a resume or
-`zuke cancel` will not roll it back. To recover, point the kube context back at
-the cluster the rollout started on, check with `helm status <stable>` that it
+the run is left cancelled with the canary release in place, so a resume or `zuke
+cancel` will not roll it back. To recover, point the kube context back at the
+cluster the rollout started on, check with `helm status <stable>` that it
 reaches the release that was staged (a rollback run by hand has no record to
 check it against), then run the rollout's `<field>.abort` target by hand with
 `.stableRevision(n)` — the refusal names the revision `stage` recorded. If the
-release really was reinstalled, that revision is not in its history: check
-`helm history <stable>` and clean up by hand, uninstalling the canary release
-once the stable one is as it should be.
+release really was reinstalled, that revision is not in its history: check `helm
+history <stable>` and clean up by hand, uninstalling the canary release once the
+stable one is as it should be.
 
 What it relies on, and cannot check:
 
 - **The stable release's Service must select the canary release's pods too.** A
-  chart scaffolded by `helm create` selects on
-  `app.kubernetes.io/instance: <release>`, so its canary pods would take no
-  requests at all and every analysis would pass on the stable version alone. Use
-  a chart whose selector spans both releases.
+  chart scaffolded by `helm create` selects on `app.kubernetes.io/instance:
+  <release>`, so its canary pods would take no requests at all and every
+  analysis would pass on the stable version alone. Use a chart whose selector
+  spans both releases.
 - **The canary release inherits nothing from the stable one.** It is the chart's
   defaults plus `.values(...)`, so those files must reproduce the stable
   release's whole configuration — values only ever set by hand on the stable
@@ -506,9 +506,9 @@ await run(Deploy);
 ```
 
 Its lambda runs on every call, so it may read resolved parameters. Every call
-after `stage` checks the project first (see below). Every move is
-`up -d --no-deps --scale <service>=<n> <service>`, with `--wait` when `n` is not
-0, run with the image variables set:
+after `stage` checks the project first (see below). Every move is `up -d
+--no-deps --scale <service>=<n> <service>`, with `--wait` when `n` is not 0, run
+with the image variables set:
 
 | Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -521,15 +521,15 @@ after `stage` checks the project first (see below). Every move is
 of its own: the stable service's image is whatever `${APP_IMAGE}` resolves to
 when Compose next runs. The platform sets it for its own commands only, so until
 the candidate is written where the variable comes from (the `.env` file, or the
-environment of whatever runs `docker compose up` next), a plain
-`docker compose up` puts the stable service back on the old image. The build
-summary says so after a promotion and after a hand-run rollback, as
-`Persist: set APP_IMAGE=<image> and keep scale: <replicas>`. Persist the image
-after `rollout.promote` (a target that depends on it can write the `.env` file),
-or always run Compose with the variable set. The platform itself does not depend
-on that: the next rollout's `stage` records what the stable replicas actually
-run, so its rollback returns to the image that was serving, whatever the `.env`
-file says.
+environment of whatever runs `docker compose up` next), a plain `docker compose
+up` puts the stable service back on the old image. The build summary says so
+after a promotion and after a hand-run rollback, as `Persist: set
+APP_IMAGE=<image> and keep scale: <replicas>`. Persist the image after
+`rollout.promote` (a target that depends on it can write the `.env` file), or
+always run Compose with the variable set. The platform itself does not depend on
+that: the next rollout's `stage` records what the stable replicas actually run,
+so its rollback returns to the image that was serving, whatever the `.env` file
+says.
 
 A hand-run `zuke rollout.abort` is a fresh run with no record of the rollout,
 and the release it undoes has usually been promoted, so re-scaling the stable
@@ -545,8 +545,8 @@ project, so `stage` records the global flags `.compose(...)` gives (`-f`, `-p`,
 `.env(...)` passes, which may be a secret. `expose`, `promote` and a recorded
 `abort` compare the flags the lambda gives now with the recorded ones before
 running any command, reads included, since a read of another project would
-inform the next move, and refuse on any difference: as written, in order, so
-`-f a.yml -f b.yml` and `-f b.yml -f a.yml` differ too. A record with no usable
+inform the next move, and refuse on any difference: as written, in order, so `-f
+a.yml -f b.yml` and `-f b.yml -f a.yml` differ too. A record with no usable
 flags is refused as damaged. Without this, a resumed or cancelling process whose
 `.projectName(this.env.value)` resolves to another value would scale and
 recreate same-named services in a project the rollout never staged. The lambda
@@ -557,17 +557,16 @@ it runs.
 Flags are not all that selects a project: `COMPOSE_PROJECT_NAME` in the
 environment, a `.env` or `--env-file` that sets it, the lambda's `.env(...)` and
 `.cwd(...)`, and the working directory a default name comes from do too. So
-`stage` also records the project Compose reports the stable replicas in
-(`ps -a --format '{{.Label "com.docker.compose.project"}}' <stable>`, which
-prints each container's project label; `.Label` is in Compose 2.21 and later),
-and after the flag check every later call reads the same with
-`<stable> <canary>` before any other command. Compose resolves the project from
-all of those and lists only that project's containers, so the call refuses
-unless the output is exactly the recorded project. `-a` counts stopped
-containers, so a daemon restart that stopped them does not block the rollback; a
-call that finds no container of either service, running or stopped, refuses: a
-live rollout always has some, since the total never dips. A record without the
-project is refused as damaged.
+`stage` also records the project Compose reports the stable replicas in (`ps -a
+--format '{{.Label "com.docker.compose.project"}}' <stable>`, which prints each
+container's project label; `.Label` is in Compose 2.21 and later), and after the
+flag check every later call reads the same with `<stable> <canary>` before any
+other command. Compose resolves the project from all of those and lists only
+that project's containers, so the call refuses unless the output is exactly the
+recorded project. `-a` counts stopped containers, so a daemon restart that
+stopped them does not block the rollback; a call that finds no container of
+either service, running or stopped, refuses: a live rollout always has some,
+since the total never dips. A record without the project is refused as damaged.
 
 Either refusal says the call changed nothing and names both projects, or both
 sets of flags; the project refusal also names what can change the project. Since
@@ -581,9 +580,9 @@ the project that was staged (a rollback run by hand has no record to check
 against), then run the rollout's abort target by hand (`zuke rollout.abort`)
 with `.stable("sha256:<id>")` set to the stable image ID the message names, the
 one the rollout recorded. The message names the tag as well, but a tag can move,
-so use it only if it still resolves to that ID. A rollback by ID passes
-`--pull never`, and it also undoes a promotion that failed part-way. A hand-run
-abort has no record, so it acts on whatever project the lambda selects.
+so use it only if it still resolves to that ID. A rollback by ID passes `--pull
+never`, and it also undoes a promotion that failed part-way. A hand-run abort
+has no record, so it acts on whatever project the lambda selects.
 
 Limits worth knowing:
 
@@ -652,9 +651,9 @@ Limits worth knowing:
   `{{.Label "com.docker.compose.project"}}` template is not in earlier releases,
   and `--wait`, `pull --policy` and `ps --format` with a Go template are not in
   the v1 `docker-compose` binary.
-- `--wait` has no timeout. Bound each command with
-  `.compose((s) => s.killAfter(600_000))` if a replica that never becomes
-  healthy must not hold the rollout indefinitely.
+- `--wait` has no timeout. Bound each command with `.compose((s) =>
+  s.killAfter(600_000))` if a replica that never becomes healthy must not hold
+  the rollout indefinitely.
 
 Global flags such as `-f`, `-p` and `--env-file` go in `.compose(...)`. The
 image variables are applied after it, so an `.env(...)` there cannot override
@@ -818,12 +817,11 @@ class Deploy extends Build {
 await run(Deploy);
 ```
 
-The app must already exist, in **multiple-revision mode**
-(`az containerapp
-revision set-mode --mode multiple`), with ingress. Its lambda
-runs on every call, so it may read resolved parameters. `.image(...)` is the
-candidate, which `stage` deploys; `.containerName(...)` picks the container in
-an app with several, and `.revisionSuffix(...)` names the candidate revision
+The app must already exist, in **multiple-revision mode** (`az containerapp
+revision set-mode --mode multiple`), with ingress. Its lambda runs on every
+call, so it may read resolved parameters. `.image(...)` is the candidate, which
+`stage` deploys; `.containerName(...)` picks the container in an app with
+several, and `.revisionSuffix(...)` names the candidate revision
 `<app>--<suffix>`. The `Requests` metric above is the whole app's; it also has a
 `revisionName` dimension, which judges the candidate alone once its name is
 known.
@@ -872,8 +870,8 @@ record check, before anything changes:
   of the same name.
 
 Every command a call runs after it has checked the app's resource id carries
-`--subscription` with the subscription that id names, so another job's
-`az account set` landing mid-call cannot redirect a write. The `.az(...)` lambda
+`--subscription` with the subscription that id names, so another job's `az
+account set` landing mid-call cannot redirect a write. The `.az(...)` lambda
 runs for each command, and a command it gives other flags than the ones the call
 checked does not run. The CLI has no conditional update for ingress traffic, so
 a change someone makes between a read and the write that follows it is not
@@ -889,9 +887,9 @@ longer splits as the rollout left it, the rollback still sends the traffic back
 to the stable revision, unless a third revision has a share: that is a newer
 rollout or a change made by hand, and the rollback refuses rather than undo it.
 After a rollback the traffic stays pinned to the stable revision by name, and
-the candidate revision still exists, with no traffic; deactivate it with
-`az containerapp revision deactivate` when it is no longer wanted. A hand-run
-`zuke rollout.abort` with `.stable(...)` has no record to check against.
+the candidate revision still exists, with no traffic; deactivate it with `az
+containerapp revision deactivate` when it is no longer wanted. A hand-run `zuke
+rollout.abort` with `.stable(...)` has no record to check against.
 
 ## Bakes: inline or durable
 
@@ -1047,13 +1045,15 @@ class Deploy extends Build {
       .steps(10, 50)
       .bake("10m")
       .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
-      .analysis(cloudwatch((m) =>
-        m.name("canary 5xx").namespace("AWS/ApplicationELB")
-          .metricName("HTTPCode_Target_5XX_Count")
-          .dimension("TargetGroup", this.targetGroup.value)
-          .stat("Sum").window("10m").max(5).missingDataAs(0)
-          .aws((a) => a.region("eu-west-1"))
-      ))
+      .analysis(
+        cloudwatch((m) =>
+          m.name("canary 5xx").namespace("AWS/ApplicationELB")
+            .metricName("HTTPCode_Target_5XX_Count")
+            .dimension("TargetGroup", this.targetGroup.value)
+            .stat("Sum").window("10m").max(5).missingDataAs(0)
+            .aws((a) => a.region("eu-west-1"))
+        ),
+      )
   );
 
   release = target().dependsOn(this.rollout.promote).executes(() => {});
@@ -1110,13 +1110,15 @@ class Deploy extends Build {
       .steps(10, 50)
       .bake("10m")
       .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
-      .analysis(azureMonitor((m) =>
-        m.name("canary failures").resource(this.appInsights.value)
-          .metric("requests/failed").aggregation("Count")
-          .dimension("cloud/roleName", "api-canary")
-          .window("10m").max(5).missingDataAs(0)
-          .az((a) => a.subscription("prod"))
-      ))
+      .analysis(
+        azureMonitor((m) =>
+          m.name("canary failures").resource(this.appInsights.value)
+            .metric("requests/failed").aggregation("Count")
+            .dimension("cloud/roleName", "api-canary")
+            .window("10m").max(5).missingDataAs(0)
+            .az((a) => a.subscription("prod"))
+        ),
+      )
   );
 
   release = target().dependsOn(this.rollout.promote).executes(() => {});
@@ -1177,16 +1179,18 @@ class Deploy extends Build {
       .steps(10, 50)
       .bake("10m")
       .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
-      .analysis(cloudMonitoring((m) =>
-        m.name("canary 5xx").project("my-project")
-          .metricType("run.googleapis.com/request_count")
-          .resourceType("cloud_run_revision")
-          .cloudRunCandidate("api", "europe-west1")
-          .metricLabel("response_code_class", "5xx")
-          .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
-          .crossSeriesReducer("REDUCE_SUM")
-          .window("5m").max(5).missingDataAs(0)
-      ))
+      .analysis(
+        cloudMonitoring((m) =>
+          m.name("canary 5xx").project("my-project")
+            .metricType("run.googleapis.com/request_count")
+            .resourceType("cloud_run_revision")
+            .cloudRunCandidate("api", "europe-west1")
+            .metricLabel("response_code_class", "5xx")
+            .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+            .crossSeriesReducer("REDUCE_SUM")
+            .window("5m").max(5).missingDataAs(0)
+        ),
+      )
   );
 
   release = target().dependsOn(this.rollout.promote).executes(() => {});
@@ -1285,9 +1289,8 @@ field names none. So a platform of your own records what a rollback needs before
 it changes anything: write the handles in `stage` first — with
 `ctx.state.trySet(...)`, stopping when it returns `false` — then deploy. Forcing
 `rollout.stage` succeeded with `zuke force` leaves its rollback no record
-either, so a cancel after it changes nothing; roll back with a hand-run
-`zuke rollout.abort` instead. When the rollout declares a lock, a hand-run
-`abort` takes it too, so it is refused while a rollout holds the service. To
-stop a rollout that is still running or parked, use `zuke cancel <run-id>`
-instead: it rolls back with the recorded state, and it releases the rollout's
-lock.
+either, so a cancel after it changes nothing; roll back with a hand-run `zuke
+rollout.abort` instead. When the rollout declares a lock, a hand-run `abort`
+takes it too, so it is refused while a rollout holds the service. To stop a
+rollout that is still running or parked, use `zuke cancel <run-id>` instead: it
+rolls back with the recorded state, and it releases the rollout's lock.

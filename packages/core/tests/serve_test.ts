@@ -258,11 +258,10 @@ test("only idle connections are closed on stop", async () => {
   const closed = new Promise((resolve) => idle.once("close", resolve));
   connections.closeIdle();
   await closed;
-  assertEquals([idle.destroyed, busy.destroyed, connections.size], [
-    true,
-    false,
-    1,
-  ]);
+  assertEquals(
+    [idle.destroyed, busy.destroyed, connections.size],
+    [true, false, 1],
+  );
   busy.destroy();
 });
 

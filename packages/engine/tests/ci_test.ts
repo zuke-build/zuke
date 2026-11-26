@@ -24,9 +24,10 @@ const PIPELINE = {
     manual: true,
     issueComment: ["created"],
     branchProtectionRule: true,
-    schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }, {
-      cron: "0 0 * * 0",
-    }],
+    schedule: [
+      { cron: "30 9 * * 1-5", tz: "Europe/Sofia" },
+      { cron: "0 0 * * 0" },
+    ],
   },
   permissions: { contents: "read" },
   concurrency: { group: "gate-${{ github.ref }}", cancelInProgress: true },

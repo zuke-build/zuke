@@ -255,14 +255,15 @@ test("formula: each missing field is named", () => {
 });
 
 test("formula: binary fields are validated and named", () => {
-  const binary = (
-    configure: Parameters<FormulaSettings["binary"]>[0],
-  ) =>
-  () =>
-    HomebrewTasks.formula((s) =>
-      s.name("app").description("Widget tool").homepage("https://e.com")
-        .version("1").install("app").binary(configure)
-    );
+  const binary =
+    (
+      configure: Parameters<FormulaSettings["binary"]>[0],
+    ) =>
+    () =>
+      HomebrewTasks.formula((s) =>
+        s.name("app").description("Widget tool").homepage("https://e.com")
+          .version("1").install("app").binary(configure)
+      );
   const sha = SHA.macArm;
   assertThrows(binary((b) => b), Error, ".os(...)");
   assertThrows(binary((b) => b.os("macos")), Error, ".arch(...)");

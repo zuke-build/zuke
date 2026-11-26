@@ -69,12 +69,15 @@ function server() {
     "POST https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/token":
       (request) =>
         azureRefuses
-          ? Response.json({
-            error: "invalid_client",
-            error_description: `wrong secret: ${
-              new URLSearchParams(request.body).get("client_secret")
-            }`,
-          }, { status: 401 })
+          ? Response.json(
+            {
+              error: "invalid_client",
+              error_description: `wrong secret: ${
+                new URLSearchParams(request.body).get("client_secret")
+              }`,
+            },
+            { status: 401 },
+          )
           : Response.json({ access_token: "azure-token", expires_in: 3600 }),
     [`POST ${GOOGLE}/api/v1/query`]: () => vector([{}, "1"]),
     [`POST ${AZURE}/api/v1/query`]: () => vector([{}, "2"]),

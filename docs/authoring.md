@@ -158,9 +158,9 @@ group field above the targets that join it.
 
 A **component** is just a function that returns a bundle of related targets.
 Assign it to a build field; discovery recurses into the bundle and names each
-target with a dotted path (`release.publish`), runnable as
-`zuke release.publish` and shown in the graph. Components compose, nest, and
-take options.
+target with a dotted path (`release.publish`), runnable as `zuke
+release.publish` and shown in the graph. Components compose, nest, and take
+options.
 
 ```ts
 // A shared, configurable component.
@@ -203,9 +203,9 @@ compile = target()
 ```
 
 Fingerprints live in `<repo root>/.zuke/cache.json` (git-ignored). A target with
-no inputs (and no cache keys) always runs. Pass `--no-cache` (or
-`execute(..., { cache: false })`) to ignore the cache and rebuild everything. A
-skipped/cached target counts as satisfied, so its dependents still run.
+no inputs (and no cache keys) always runs. Pass `--no-cache` (or `execute(..., {
+cache: false })`) to ignore the cache and rebuild everything. A skipped/cached
+target counts as satisfied, so its dependents still run.
 
 See the dedicated **[Caching](./caching.md)** page for the full picture — the
 fingerprint algorithm, how adding or removing a file invalidates a target, the
@@ -480,11 +480,9 @@ follows the same **settings-lambda** shape as the tool wrappers, but runs no
 subprocess: each task takes `(s) => s.…` and configures a fluent settings
 object. Set the destination with `.webhook(url)` and the message with `.text()`,
 `.title()`, a level (`.success()` / `.failure()` / `.warning()` / `.info()`, or
-`.level(...)`), repeatable `.field(name, value)` details, and a
-`.link(text,
-url)` action. Each task POSTs the platform-native payload over
-`fetch` (override it with `.fetch()` in tests) and throws an `HttpError` on a
-non-2xx response.
+`.level(...)`), repeatable `.field(name, value)` details, and a `.link(text,
+url)` action. Each task POSTs the platform-native payload over `fetch` (override
+it with `.fetch()` in tests) and throws an `HttpError` on a non-2xx response.
 
 A webhook URL embeds the secret that authorises posting, so source it from a
 `parameter().secret()` build input rather than hard-coding it — Zuke redacts the
@@ -568,11 +566,11 @@ override async onFinish(result) {
 
 Pack build artifacts without any dependency. `gzip(bytes)`/`gunzip(bytes)` wrap
 the platform `CompressionStream`; `tar(entries)`/`untar(archive)` read and write
-the POSIX `ustar` format in memory; and the file helpers
-`createTarGzip(files, dest, { cwd })` / `extractTarGzip(src, destDir)` produce
-and unpack `.tar.gz` archives, and `extractTarXz(src, destDir)` unpacks a
-`.tar.xz` with a built-in LZMA2 decoder. Entry names are limited to 100 bytes
-and archives use a fixed mtime, so output is reproducible.
+the POSIX `ustar` format in memory; and the file helpers `createTarGzip(files,
+dest, { cwd })` / `extractTarGzip(src, destDir)` produce and unpack `.tar.gz`
+archives, and `extractTarXz(src, destDir)` unpacks a `.tar.xz` with a built-in
+LZMA2 decoder. Entry names are limited to 100 bytes and archives use a fixed
+mtime, so output is reproducible.
 
 <!-- check -->
 
@@ -618,8 +616,8 @@ wrappers that drive them.
 Generate your CI configuration **from the build** instead of hand-maintaining
 YAML. Declare a pipeline as a build field with `cicd()`, binding a
 provider-agnostic `CiPipeline` to an output path. The file is then kept in sync
-with the definition: it is regenerated whenever you run the build, and
-`zuke generate-ci` writes it on demand.
+with the definition: it is regenerated whenever you run the build, and `zuke
+generate-ci` writes it on demand.
 
 The provider is the only required field. `cicd({ provider: "github" })` declares
 a workflow at `.github/workflows/ci.yml` that, on push/PR to `main`, runs a
@@ -685,17 +683,17 @@ class CI extends Build {
 }
 ```
 
-This emits a `lint` job and `test`/`build` jobs that each declare
-`needs: [lint]`, so they wait for `lint` and then run concurrently. Each job
-runs only its own target (`./zuke <target>`); its dependencies run in their own
-jobs, so pair fan-out with the [remote cache](./cli.md#remote-cache) (configured
-here via `env`) to restore their outputs instead of rebuilding them. Pass
-`fanOut: true` for the defaults, or `FanOutOptions` to set the per-job
-`command`, `setupSteps` (default: none — the prelude action already checks out),
-`runsOn`, `env`, or `includeUnlisted`. The `pipeline` field still supplies the
-workflow-level `name`, `triggers`, `permissions`, and `concurrency`. Targets
-with no body, and `unlisted` ones, are omitted.
-`fanOutPipeline(targets, base, options)` exposes the same expansion directly.
+This emits a `lint` job and `test`/`build` jobs that each declare `needs:
+[lint]`, so they wait for `lint` and then run concurrently. Each job runs only
+its own target (`./zuke <target>`); its dependencies run in their own jobs, so
+pair fan-out with the [remote cache](./cli.md#remote-cache) (configured here via
+`env`) to restore their outputs instead of rebuilding them. Pass `fanOut: true`
+for the defaults, or `FanOutOptions` to set the per-job `command`, `setupSteps`
+(default: none — the prelude action already checks out), `runsOn`, `env`, or
+`includeUnlisted`. The `pipeline` field still supplies the workflow-level
+`name`, `triggers`, `permissions`, and `concurrency`. Targets with no body, and
+`unlisted` ones, are omitted. `fanOutPipeline(targets, base, options)` exposes
+the same expansion directly.
 
 The model is a portable subset: a `run` step (a shell command) maps to every
 provider; a `uses` step (a GitHub Action) renders only for GitHub and is skipped
@@ -752,8 +750,8 @@ ci = cicd({
   the job runs in: what protection rules, required reviewers and
   environment-scoped secrets attach to (not `env`, which is variables). It
   grants nothing by itself; the provider still enforces the environment's rules.
-- **`outputs`** hands values to the jobs that `need` this one, read as
-  `${{ needs.<job>.outputs.<name> }}`. Expressions render verbatim.
+- **`outputs`** hands values to the jobs that `need` this one, read as `${{
+  needs.<job>.outputs.<name> }}`. Expressions render verbatim.
 - **`matrixInclude` / `matrixExclude`** make a matrix sparse, with GitHub's
   semantics: `exclude` rows (partial matches over the `matrix` axes) are removed
   first, then each `include` row extends every combination it agrees with on the
@@ -785,10 +783,10 @@ combinations GitHub would run, so one declaration means the same jobs on every
 provider. Path patterns pass through in each provider's own glob syntax.
 
 For one-off rendering without the build wiring, `generateCi(pipeline, provider)`
-returns the YAML string directly (pass an empty pipeline,
-`generateCi({}, "github")`, to accept every default). Either way the emitted
-YAML quotes any scalar that would otherwise be misread (a bare `on`, a
-numeric-looking version), so the output is paste-ready.
+returns the YAML string directly (pass an empty pipeline, `generateCi({},
+"github")`, to accept every default). Either way the emitted YAML quotes any
+scalar that would otherwise be misread (a bare `on`, a numeric-looking version),
+so the output is paste-ready.
 
 #### Scheduled runs — timezone-aware cron
 
@@ -904,11 +902,11 @@ for a skipped or cached target — and `onTargetEnd` fires after each target
 settles, with its final status. For exporting rather than observing, prefer a
 [plugin](./extending.md), whose hooks mirror these.
 
-`BuildResult` is
-`{ ok: boolean; executed: string[]; error?: unknown; suspended?: boolean; cancelled?: boolean; runId?: string }`.
-`runId` is what you point a follow-up `zuke runs show` or `zuke cancel` at, and
-`suspended` distinguishes a run parked at a [gate](./orchestration.md) from one
-that finished.
+`BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown;
+suspended?: boolean; cancelled?: boolean; runId?: string }`. `runId` is what you
+point a follow-up `zuke runs show` or `zuke cancel` at, and `suspended`
+distinguishes a run parked at a [gate](./orchestration.md) from one that
+finished.
 
 **The other overridable methods.** Beyond the hooks and the ordering seams
 below, `Build` exposes one override per subsystem, each documented on its own

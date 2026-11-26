@@ -141,9 +141,12 @@ test("parseInstallFlags refuses an unknown option or a missing value", () => {
     "unknown",
   );
   for (
-    const bad of [["--min-dep-age"], ["--min-dep-age", "--dry-run"], [
-      "--min-dep-age=",
-    ], ["--min-dep-age", ""]]
+    const bad of [
+      ["--min-dep-age"],
+      ["--min-dep-age", "--dry-run"],
+      ["--min-dep-age="],
+      ["--min-dep-age", ""],
+    ]
   ) {
     assertThrows(
       () => parseInstallFlags("relock", bad),

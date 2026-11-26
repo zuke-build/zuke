@@ -109,16 +109,14 @@ test("a matching marker with the bin present is reused without re-running npm", 
 test("a different version misses the cache and re-installs", async () => {
   await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
-    await installNpmTool({ name: "vitest", version: "1.0.0" }, {
-      destDir: dir,
-      run,
-      os: "linux",
-    });
-    await installNpmTool({ name: "vitest", version: "2.0.0" }, {
-      destDir: dir,
-      run,
-      os: "linux",
-    });
+    await installNpmTool(
+      { name: "vitest", version: "1.0.0" },
+      { destDir: dir, run, os: "linux" },
+    );
+    await installNpmTool(
+      { name: "vitest", version: "2.0.0" },
+      { destDir: dir, run, os: "linux" },
+    );
     assertEquals(calls.length, 2);
   });
 });
@@ -188,9 +186,10 @@ test("installNpmTool rejects an unsafe name, version, or bin", async () => {
   }
   await assertRejects(
     () =>
-      installNpmTool({ name: "x", version: "1.0.0", bin: "../evil" }, {
-        run: noop,
-      }),
+      installNpmTool(
+        { name: "x", version: "1.0.0", bin: "../evil" },
+        { run: noop },
+      ),
     Error,
     "invalid bin",
   );
@@ -291,10 +290,10 @@ test("installNpmTool runs the ambient npm by default", async () => {
         withAmbientEcho(
           (line) => echoed.push(line),
           () =>
-            installNpmTool({ name: "vitest", version: "4.1.9" }, {
-              destDir: dir,
-              os: "linux",
-            }),
+            installNpmTool(
+              { name: "vitest", version: "4.1.9" },
+              { destDir: dir, os: "linux" },
+            ),
         ),
       Error,
       "its bin was not found",

@@ -291,8 +291,8 @@ that already speak `GET`/`PUT <url>/<key>` but authenticate differently:
 
 - **Azure Blob Storage with a SAS URL** — the practical remote cache for Azure
   Pipelines. A container SAS as `ZUKE_REMOTE_CACHE_URL` needs nothing else: the
-  key lands before the `?sv=…`, and every `PUT` carries the
-  `x-ms-blob-type: BlockBlob` header Azure requires (other servers ignore it).
+  key lands before the `?sv=…`, and every `PUT` carries the `x-ms-blob-type:
+  BlockBlob` header Azure requires (other servers ignore it).
 - **A Gradle-protocol build cache, WebDAV, or an nginx/Caddy directory with
   `PUT` enabled** — `headers: { Authorization: "Basic …" }` in a `remoteCache()`
   override.

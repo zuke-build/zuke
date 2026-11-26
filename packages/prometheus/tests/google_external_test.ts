@@ -86,11 +86,14 @@ test("a url source in json format sends its headers and reads the named field", 
     "POST https://sts.example/v1/token": sts,
   });
   await headers(
-    account({
-      url: "http://169.254.169.254/metadata/identity/oauth2/token?resource=x",
-      headers: { Metadata: "True", ignored: 1 },
-      format: { type: "json", subject_token_field_name: "access_token" },
-    }, { token_url: "https://sts.example/v1/token" }),
+    account(
+      {
+        url: "http://169.254.169.254/metadata/identity/oauth2/token?resource=x",
+        headers: { Metadata: "True", ignored: 1 },
+        format: { type: "json", subject_token_field_name: "access_token" },
+      },
+      { token_url: "https://sts.example/v1/token" },
+    ),
     { fetch: fetcher },
   );
   assertEquals(fetcher.sent[0].headers.get("metadata"), "True");
@@ -100,9 +103,10 @@ test("a url source in json format sends its headers and reads the named field", 
     "azure-subject-token",
   );
   await headers(
-    account({ url: "https://idp.example/token", format: { type: "text" } }, {
-      token_url: "https://sts.example/v1/token",
-    }),
+    account(
+      { url: "https://idp.example/token", format: { type: "text" } },
+      { token_url: "https://sts.example/v1/token" },
+    ),
     {
       fetch: routes({
         "GET https://idp.example/token": () => new Response("text-subject"),
@@ -122,11 +126,14 @@ test("impersonation exchanges the federated token for the service account's", as
       }),
   });
   const sent = await headers(
-    account({ file: "/oidc" }, {
-      service_account_impersonation_url: IMPERSONATE,
-      service_account_impersonation: { token_lifetime_seconds: 600 },
-      workforce_pool_user_project: "ignored-when-impersonating",
-    }),
+    account(
+      { file: "/oidc" },
+      {
+        service_account_impersonation_url: IMPERSONATE,
+        service_account_impersonation: { token_lifetime_seconds: 600 },
+        workforce_pool_user_project: "ignored-when-impersonating",
+      },
+    ),
     { files: { "/oidc": "subject" }, fetch: fetcher },
   );
   assertEquals(sent, { authorization: "Bearer impersonated-token" });
@@ -154,11 +161,14 @@ test("impersonation exchanges the federated token for the service account's", as
         Response.json({ accessToken: "t", expireTime: "2026-01-01T01:00:00Z" }),
     });
     await headers(
-      account({ file: "/oidc" }, {
-        service_account_impersonation_url: IMPERSONATE,
-        service_account_impersonation: options,
-        audience: `${AUDIENCE}-${String(options)}`,
-      }),
+      account(
+        { file: "/oidc" },
+        {
+          service_account_impersonation_url: IMPERSONATE,
+          service_account_impersonation: options,
+          audience: `${AUDIENCE}-${String(options)}`,
+        },
+      ),
       { files: { "/oidc": "subject" }, fetch: again },
     );
     assertEquals(JSON.parse(again.sent[1].body).lifetime, "3600s");
@@ -253,10 +263,13 @@ test("unsupported or malformed subject-token sources are refused by name", async
 test("a refused exchange or impersonation names the step, never the tokens", async () => {
   const refused = routes({
     [`POST ${STS}`]: (request) =>
-      Response.json({
-        error: "invalid_grant",
-        error_description: `bad ${form(request.body).subject_token}`,
-      }, { status: 400 }),
+      Response.json(
+        {
+          error: "invalid_grant",
+          error_description: `bad ${form(request.body).subject_token}`,
+        },
+        { status: 400 },
+      ),
   });
   const error = await assertRejects(
     () =>
@@ -271,9 +284,10 @@ test("a refused exchange or impersonation names the step, never the tokens", asy
   assertEquals(error.message.includes("secret-subject-token"), false);
   const failures: Array<[Response, string]> = [
     [
-      Response.json({ error: { message: "echo federated-token" } }, {
-        status: 403,
-      }),
+      Response.json(
+        { error: { message: "echo federated-token" } },
+        { status: 403 },
+      ),
       "HTTP 403: echo [redacted]",
     ],
     [
@@ -285,10 +299,13 @@ test("a refused exchange or impersonation names the step, never the tokens", asy
     await assertRejects(
       () =>
         headers(
-          account({ file: "/oidc" }, {
-            service_account_impersonation_url: IMPERSONATE,
-            audience: `${AUDIENCE}-${message}`,
-          }),
+          account(
+            { file: "/oidc" },
+            {
+              service_account_impersonation_url: IMPERSONATE,
+              audience: `${AUDIENCE}-${message}`,
+            },
+          ),
           {
             files: { "/oidc": "s" },
             fetch: routes({

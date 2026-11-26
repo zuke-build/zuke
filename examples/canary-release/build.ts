@@ -30,9 +30,11 @@ export class Release extends Build {
       .steps(10, 50)
       .bake("2s")
       .analysisInterval("1s")
-      .analysis(httpProbe((h) =>
-        h.url(this.router.url).samples(20).interval(0).maxFailures(0)
-      ))
+      .analysis(
+        httpProbe((h) =>
+          h.url(this.router.url).samples(20).interval(0).maxFailures(0)
+        ),
+      )
   );
 
   ship = target()

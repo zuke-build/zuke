@@ -184,10 +184,10 @@ test("a scaffolded bootstrap launcher verifies before it downloads", async () =>
   if (RuntimeTasks.os() === "windows") return; // the generated bash launcher
   if (await bareDenoOnPath()) return;
   await withTemp(async (dir) => {
-    await runSetup({ dir, force: false, name: "Scaffolded" }, {
-      ...defaultHost,
-      log: () => {},
-    });
+    await runSetup(
+      { dir, force: false, name: "Scaffolded" },
+      { ...defaultHost, log: () => {} },
+    );
     const { code, err } = await bash([`${dir}/zuke`, "--help"], {
       PATH: "/usr/bin:/bin",
       HOME: dir,

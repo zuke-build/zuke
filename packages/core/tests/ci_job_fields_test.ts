@@ -325,15 +325,18 @@ const WEBSITE = ["website/**", ".github/workflows/website-project.yml"];
 
 test("github: per-event paths and paths-ignore render under each trigger", () => {
   const yaml = generateCi(
-    oneJob({}, {
-      triggers: {
-        push: ["main"],
-        pushPaths: { paths: WEBSITE },
-        pullRequest: ["main"],
-        pullRequestTypes: ["opened"],
-        pullRequestPaths: { pathsIgnore: ["docs/**"] },
+    oneJob(
+      {},
+      {
+        triggers: {
+          push: ["main"],
+          pushPaths: { paths: WEBSITE },
+          pullRequest: ["main"],
+          pullRequestTypes: ["opened"],
+          pullRequestPaths: { pathsIgnore: ["docs/**"] },
+        },
       },
-    }),
+    ),
     "github",
   );
   assertStringIncludes(
@@ -361,9 +364,12 @@ test("a path filter needs the event it narrows, on every provider", () => {
     assertThrows(
       () =>
         generateCi(
-          oneJob({}, {
-            triggers: { push: ["main"], pullRequestPaths: { paths: ["x"] } },
-          }),
+          oneJob(
+            {},
+            {
+              triggers: { push: ["main"], pullRequestPaths: { paths: ["x"] } },
+            },
+          ),
           provider,
         ),
       Error,
@@ -388,14 +394,17 @@ test("a filter setting both lists is refused, as GitHub would", () => {
   assertThrows(
     () =>
       generateCi(
-        oneJob({}, {
-          triggers: {
-            push: ["main"],
-            // @ts-expect-error — the type forbids both lists; this exercises the
-            // runtime guard a JavaScript caller (or a cast) could still reach.
-            pushPaths: { paths: ["a"], pathsIgnore: ["b"] },
+        oneJob(
+          {},
+          {
+            triggers: {
+              push: ["main"],
+              // @ts-expect-error — the type forbids both lists; this exercises the
+              // runtime guard a JavaScript caller (or a cast) could still reach.
+              pushPaths: { paths: ["a"], pathsIgnore: ["b"] },
+            },
           },
-        }),
+        ),
         "github",
       ),
     Error,
@@ -405,14 +414,17 @@ test("a filter setting both lists is refused, as GitHub would", () => {
 
 test("azure: path filters use the include/exclude pair", () => {
   const yaml = generateCi(
-    oneJob({}, {
-      triggers: {
-        push: ["main"],
-        pushPaths: { paths: WEBSITE },
-        pullRequest: [],
-        pullRequestPaths: { pathsIgnore: ["docs/**"] },
+    oneJob(
+      {},
+      {
+        triggers: {
+          push: ["main"],
+          pushPaths: { paths: WEBSITE },
+          pullRequest: [],
+          pullRequestPaths: { pathsIgnore: ["docs/**"] },
+        },
       },
-    }),
+    ),
     "azure",
   );
   assertStringIncludes(
@@ -429,14 +441,17 @@ test("azure: path filters use the include/exclude pair", () => {
 
 test("gitlab: paths become a changes: clause on each trigger rule", () => {
   const yaml = generateCi(
-    oneJob({}, {
-      triggers: {
-        push: ["main"],
-        pushPaths: { paths: WEBSITE },
-        pullRequest: ["main"],
-        pullRequestPaths: { paths: ["website/**"] },
+    oneJob(
+      {},
+      {
+        triggers: {
+          push: ["main"],
+          pushPaths: { paths: WEBSITE },
+          pullRequest: ["main"],
+          pullRequestPaths: { paths: ["website/**"] },
+        },
       },
-    }),
+    ),
     "gitlab",
   );
   assertEquals(yaml.split("changes:").length - 1, 2);
@@ -459,36 +474,44 @@ test("gitlab refuses pathsIgnore; bitbucket refuses any path filter", () => {
   const cases: Array<[CiProvider, CiPipeline, string]> = [
     [
       "gitlab",
-      oneJob({}, {
-        triggers: { push: ["main"], pushPaths: { pathsIgnore: ["d/**"] } },
-      }),
+      oneJob(
+        {},
+        { triggers: { push: ["main"], pushPaths: { pathsIgnore: ["d/**"] } } },
+      ),
       "`triggers.pushPaths` cannot be expressed for GitLab",
     ],
     [
       "gitlab",
-      oneJob({}, {
-        triggers: {
-          pullRequest: ["main"],
-          pullRequestPaths: { pathsIgnore: ["d/**"] },
+      oneJob(
+        {},
+        {
+          triggers: {
+            pullRequest: ["main"],
+            pullRequestPaths: { pathsIgnore: ["d/**"] },
+          },
         },
-      }),
+      ),
       "`triggers.pullRequestPaths` cannot be expressed for GitLab",
     ],
     [
       "bitbucket",
-      oneJob({}, {
-        triggers: { push: ["main"], pushPaths: { paths: ["src/**"] } },
-      }),
+      oneJob(
+        {},
+        { triggers: { push: ["main"], pushPaths: { paths: ["src/**"] } } },
+      ),
       "`triggers.pushPaths` cannot be expressed for Bitbucket",
     ],
     [
       "bitbucket",
-      oneJob({}, {
-        triggers: {
-          pullRequest: ["main"],
-          pullRequestPaths: { paths: ["src/**"] },
+      oneJob(
+        {},
+        {
+          triggers: {
+            pullRequest: ["main"],
+            pullRequestPaths: { paths: ["src/**"] },
+          },
         },
-      }),
+      ),
       "`triggers.pullRequestPaths` cannot be expressed for Bitbucket",
     ],
   ];

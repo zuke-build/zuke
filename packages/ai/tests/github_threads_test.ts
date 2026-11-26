@@ -131,10 +131,12 @@ test("opening a thread anchors to the head commit on the right side", async () =
 
 test("a rejected anchor skips one finding; a rate limit stops the phase", async () => {
   for (
-    const [status, expected] of [[422, "rejected"], [429, "stop"], [
-      500,
-      "stop",
-    ], [403, "stop"]] as const
+    const [status, expected] of [
+      [422, "rejected"],
+      [429, "stop"],
+      [500, "stop"],
+      [403, "stop"],
+    ] as const
   ) {
     const { fetch } = fake([[
       "/pulls/7/comments",

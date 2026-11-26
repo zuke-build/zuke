@@ -21,11 +21,10 @@ test("discovery recurses into component bundles with dotted names", () => {
   }
   const b = new B();
   const targets = discoverTargets(b);
-  assertEquals([...targets.keys()], [
-    "release.pack",
-    "release.publish",
-    "deploy",
-  ]);
+  assertEquals(
+    [...targets.keys()],
+    ["release.pack", "release.publish", "deploy"],
+  );
   assertEquals(b.release.pack.name_, "release.pack");
   assertEquals(b.deploy.dependsOn_.map((t) => t.name_), ["release.publish"]);
 });

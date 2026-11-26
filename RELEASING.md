@@ -96,12 +96,11 @@ the packages publish themselves.
 > raise that pin — doing so makes Deno ignore the workspace member and try to
 > download a version that is not published yet, and the whole build fails to
 > resolve. Land the usage against the existing floor, then once the core release
-> publishes, raise the floor in a small follow-up `fix:` PR (see
-> `fix: raise the @zuke/core floor to 1.31.0 in
-> wrappers using SubcommandSettings`).
-> Until that lands, a consumer whose lockfile already resolves the older core
-> can hit a missing-export error, so treat the follow-up as part of the change,
-> not optional cleanup.
+> publishes, raise the floor in a small follow-up `fix:` PR (see `fix: raise the
+> @zuke/core floor to 1.31.0 in wrappers using SubcommandSettings`). Until that
+> lands, a consumer whose lockfile already resolves the older core can hit a
+> missing-export error, so treat the follow-up as part of the change, not
+> optional cleanup.
 >
 > The same holds for a **rich feature package**'s workspace sibling (see
 > `PACKAGE_DEPENDENCIES` in `build/packages.ts`): `@zuke/ai` calling a task new
@@ -121,12 +120,12 @@ the release bundled into one ES module and injected into the pinned Node release
 of its platform.
 
 Releases are **immutable**: once published, nothing can be added to one or
-changed. So release-please cuts the CLI's release as a **draft**
-(`"draft": true` for `packages/cli` in `.release-please-config.json`), the
-pipeline attaches everything to the draft, and publishing it is the last step,
-which locks the release with its binaries already inside. The jobs in
-`release.yml` run after `publishJsr`, each running a `cli*` target in `build.ts`
-(the code is in `build/cli_*.ts`):
+changed. So release-please cuts the CLI's release as a **draft** (`"draft":
+true` for `packages/cli` in `.release-please-config.json`), the pipeline
+attaches everything to the draft, and publishing it is the last step, which
+locks the release with its binaries already inside. The jobs in `release.yml`
+run after `publishJsr`, each running a `cli*` target in `build.ts` (the code is
+in `build/cli_*.ts`):
 
 1. `cliBinaries` decides what the current CLI version owes from what is
    published — everything while its release is unpublished, only the tap or the
@@ -146,10 +145,10 @@ which locks the release with its binaries already inside. The jobs in
    runtime and notarizes them, on a macOS runner in the `cli-signing`
    environment. Missing credentials fail it: nothing is published unsigned.
 3. `cliUpload` packs the archives, attests their build provenance, attaches
-   them, the attestation bundle and `SHA256SUMS` to the draft with
-   `gh release upload --clobber`, then publishes it with
-   `gh release edit --draft=false --latest=false` (the "Latest release" pointer
-   stays on the Marketplace action's release).
+   them, the attestation bundle and `SHA256SUMS` to the draft with `gh release
+   upload --clobber`, then publishes it with `gh release edit --draft=false
+   --latest=false` (the "Latest release" pointer stays on the Marketplace
+   action's release).
 4. `cliFormulaVerify` installs the formula built from the published `SHA256SUMS`
    with the real `brew` on macOS and Linux, runs its test, and checks the macOS
    signatures.
@@ -204,10 +203,9 @@ for the same reason.
 
 Every package except `engine` is also published to npm as `@zuke-build/<name>`
 (the `@zuke` scope there belongs to someone else). A consumer installs it under
-the name the sources import, through an alias:
-`npm install @zuke/core@npm:@zuke-build/core`. The `dependencies` of each
-published package are written the same way, so `@zuke/*` specifiers resolve
-without rewriting.
+the name the sources import, through an alias: `npm install
+@zuke/core@npm:@zuke-build/core`. The `dependencies` of each published package
+are written the same way, so `@zuke/*` specifiers resolve without rewriting.
 
 `engine` stays off npm (`NPM_EXCLUDED` in `build/npm_manifest.ts`): it loads
 `jsr:` specifiers with a runtime `import()`, which Node cannot resolve. It joins
@@ -221,18 +219,17 @@ such an install prints `npm install -g @zuke-build/cli@latest` and runs nothing.
   its README and the LICENSE). The compiler and the `@types/node` and
   `@types/deno` packages are installed by npm into `.zuke/tools/npm-tsc`; Node
   24 or later and npm must be on `PATH`.
-- `./zuke publishNpm` runs `npmBuild`, then
-  `npm publish --access public
-  --provenance` for each package, in `PACKAGES`
-  order. A version already on the registry and `0.0.0` are skipped, and a
-  package whose dependency failed is not tried, as for JSR. In CI it refuses any
-  ref but `master`. It publishes a version only when `packages/<name>` is still
-  the source of its release tag `<name>-v<version>`, so npm `X.Y.Z` carries the
-  same source as JSR `X.Y.Z`; the job checks out the full history and tags for
-  that. A package changed since its tag waits, with a notice and no failure, for
-  its next release, and so does every package depending on it: this is how a
-  package new to npm goes there with its next release. A missing tag fails that
-  package. `npmVerify` skips a waiting version that is not on npm the same way.
+- `./zuke publishNpm` runs `npmBuild`, then `npm publish --access public
+  --provenance` for each package, in `PACKAGES` order. A version already on the
+  registry and `0.0.0` are skipped, and a package whose dependency failed is not
+  tried, as for JSR. In CI it refuses any ref but `master`. It publishes a
+  version only when `packages/<name>` is still the source of its release tag
+  `<name>-v<version>`, so npm `X.Y.Z` carries the same source as JSR `X.Y.Z`;
+  the job checks out the full history and tags for that. A package changed since
+  its tag waits, with a notice and no failure, for its next release, and so does
+  every package depending on it: this is how a package new to npm goes there
+  with its next release. A missing tag fails that package. `npmVerify` skips a
+  waiting version that is not on npm the same way.
 - The release workflow's **Publish to npm** job runs it after `release`. It is
   inert until the repository variable `NPM_PUBLISH` is `true`.
 - The **Verify npm packages** job runs `./zuke npmVerify` after it, on Ubuntu,

@@ -6,9 +6,9 @@ fresh clone or a bare CI runner has everything it needs — and **reproducible**
 versions are pinned, downloads are verified, and every machine runs the same
 binary.
 
-Tools are provisioned in Zuke's fluent settings-lambda style — the same
-`(s) => s.method(...)` shape the [tool wrappers](./tools.md) use — through two
-entry points in `@zuke/core`:
+Tools are provisioned in Zuke's fluent settings-lambda style — the same `(s) =>
+s.method(...)` shape the [tool wrappers](./tools.md) use — through two entry
+points in `@zuke/core`:
 
 | API                                                                           | Installs         | Reach for it when                                    |
 | ----------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------- |
@@ -186,18 +186,17 @@ apply to a tree:
 | `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX. Extraction keeps the archive's mode bits (tar entries, and zips made on Unix), so this is a fallback for an archive that ships a binary without the executable bit. Following a symlink chmods its real target too. |
 
 A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
-`"raw"` is rejected
-(`a tree install needs an archive ("tar.gz", "tar.xz" or "zip"), not "raw"`).
-`"tar.xz"` covers the runtimes that ship only that — the Flutter SDK on Linux,
-Zig — with the same checksum-before-unpack, `.strip(...)`, `.bins(...)`, symlink
-and path-traversal guarantees as `"tar.gz"`. Everything else — `.name(...)`,
-`.url(...)`, `.destDir(...)`, `.checksum(...)`, `.platform(...)`,
-`.download(...)` — behaves as for [`install()`](#settings); the tree lands at
-`<destDir>/<name>`. Pinning, verification, and caching work the same, except the
-checksum is always the SHA-256 of the **archive** and a cache hit additionally
-requires the declared `.bins(...)` to still be present. For a one-off outside a
-toolchain use `ToolTasks.installTree`; group several with
-[`Toolchain.tree`](#toolchain--many-tools), or drop to the
+`"raw"` is rejected (`a tree install needs an archive ("tar.gz", "tar.xz" or
+"zip"), not "raw"`). `"tar.xz"` covers the runtimes that ship only that — the
+Flutter SDK on Linux, Zig — with the same checksum-before-unpack, `.strip(...)`,
+`.bins(...)`, symlink and path-traversal guarantees as `"tar.gz"`. Everything
+else — `.name(...)`, `.url(...)`, `.destDir(...)`, `.checksum(...)`,
+`.platform(...)`, `.download(...)` — behaves as for [`install()`](#settings);
+the tree lands at `<destDir>/<name>`. Pinning, verification, and caching work
+the same, except the checksum is always the SHA-256 of the **archive** and a
+cache hit additionally requires the declared `.bins(...)` to still be present.
+For a one-off outside a toolchain use `ToolTasks.installTree`; group several
+with [`Toolchain.tree`](#toolchain--many-tools), or drop to the
 [`installTree`](#the-installrelease-primitive) primitive directly.
 
 ## `toolchain()` — many tools
@@ -292,10 +291,10 @@ class Test extends Build {
 }
 ```
 
-Each package installs under `<destDir>/npm/<name>@<version>` via
-`npm install --prefix <dir> --no-save <name>@<version>`, and `install()` returns
-its bin under the same `Map<name, AbsolutePath>` as the release tools. For a
-one-off outside a toolchain, `ToolTasks.npm(spec, options?)` (or the underlying
+Each package installs under `<destDir>/npm/<name>@<version>` via `npm install
+--prefix <dir> --no-save <name>@<version>`, and `install()` returns its bin
+under the same `Map<name, AbsolutePath>` as the release tools. For a one-off
+outside a toolchain, `ToolTasks.npm(spec, options?)` (or the underlying
 `installNpmTool`) does the same for a single package.
 
 - **npm is the one ambient requirement.** It resolves and downloads the package;
@@ -445,16 +444,15 @@ steps:
 
 `ToolTasks.install` and `toolchain()` are built on
 **`installRelease(options)`**, the lower-level function that takes the same
-fields as a plain options object
-(`{ name, url, destDir, archive?, binaryPath?, checksum?, platform?, download? }`)
-and returns the installed `AbsolutePath`. Reach for the fluent surface above in
-a build; use `installRelease` directly if you already have an options object in
-hand.
+fields as a plain options object (`{ name, url, destDir, archive?, binaryPath?,
+checksum?, platform?, download? }`) and returns the installed `AbsolutePath`.
+Reach for the fluent surface above in a build; use `installRelease` directly if
+you already have an options object in hand.
 
 Its tree counterpart is **`installTree(options)`** — the primitive behind
 `ToolTasks.installTree` and `Toolchain.tree`. It takes an `InstallTreeOptions`
-(`{ name, url, destDir, archive, strip?, bins?, checksum?, platform?, download? }`)
-and returns the extracted tree's root `AbsolutePath`.
+(`{ name, url, destDir, archive, strip?, bins?, checksum?, platform?, download?
+}`) and returns the extracted tree's root `AbsolutePath`.
 
 ## API reference
 

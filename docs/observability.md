@@ -101,10 +101,10 @@ only where a collector is configured.
 - **Export is best-effort.** A collector that is down, slow, or rejecting is
   never allowed to fail — or stall, beyond the timeout — the build. Export
   failures are swallowed, the OpenTelemetry-SDK convention.
-- **The record is secret-free.** It is the same redacted projection
-  `zuke runs show` prints: [`secret()`](./secrets.md) parameters are omitted,
-  and errors and state metadata are run through the redactor before they reach
-  the plugin. It is safe to ship to a collector.
+- **The record is secret-free.** It is the same redacted projection `zuke runs
+  show` prints: [`secret()`](./secrets.md) parameters are omitted, and errors
+  and state metadata are run through the redactor before they reach the plugin.
+  It is safe to ship to a collector.
 
 See the [`@zuke/otel` README](../packages/otel/README.md) for the generated API
 reference.

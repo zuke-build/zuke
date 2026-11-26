@@ -230,10 +230,12 @@ class Masked extends Build {
       abort: (ctx) => platform.abort(ctx),
     })
       .steps(10)
-      .analysis(cloudMonitoring((m) =>
-        m.name(`5xx of ${this.label.value}`).project("my-proj")
-          .metricType("m").token(TOKEN).fetch(fakeFetch).max(5)
-      ))
+      .analysis(
+        cloudMonitoring((m) =>
+          m.name(`5xx of ${this.label.value}`).project("my-proj")
+            .metricType("m").token(TOKEN).fetch(fakeFetch).max(5)
+        ),
+      )
   );
 }
 

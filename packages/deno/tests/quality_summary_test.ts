@@ -105,10 +105,10 @@ test({
         lint,
         () => DenoTasks.lint((s) => s.paths(`${dir}/ok.ts`).quiet()),
       );
-      assertEquals(lint.entries(), [{ key: "Files", value: "1" }, {
-        key: "Problems",
-        value: "0",
-      }]);
+      assertEquals(lint.entries(), [
+        { key: "Files", value: "1" },
+        { key: "Problems", value: "0" },
+      ]);
 
       const fmt = new TargetSummary();
       await assertRejects(
@@ -120,10 +120,10 @@ test({
           ),
         CommandError,
       );
-      assertEquals(fmt.entries(), [{ key: "Files", value: "1" }, {
-        key: "Unformatted",
-        value: "1",
-      }]);
+      assertEquals(fmt.entries(), [
+        { key: "Files", value: "1" },
+        { key: "Unformatted", value: "1" },
+      ]);
 
       const check = new TargetSummary();
       await assertRejects(

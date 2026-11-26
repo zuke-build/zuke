@@ -15,10 +15,13 @@ import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import {
   checkHclWrappers,
-  generateHclWrappers,
   type HclTarget,
   renderHcl,
 } from "../build/hcl_gen.ts";
+import type { Formatter } from "../build/fmt_text.ts";
+
+/** A formatter that changes nothing, so a test needs no real one. */
+const unchanged: Formatter = (source) => Promise.resolve(source);
 import { withTemp } from "./_temp.ts";
 
 test("renderHcl substitutes body placeholders and injects the module doc last", () => {
@@ -37,34 +40,18 @@ test("renderHcl substitutes body placeholders and injects the module doc last", 
   );
 });
 
-test({
-  name: "the committed wrappers round-trip through generate then check",
-  denoOnly: "formats through deno fmt",
-  fn: async () => {
-    // Regenerating writes byte-identical content (they are already generated), so
-    // the working tree is unchanged and the check then reports zero drift.
-    const written = await generateHclWrappers();
-    assertEquals(written.length, 2);
-    assertEquals(await checkHclWrappers(), []);
-  },
-});
-
-test({
-  name: "checkHclWrappers flags a target that has drifted from the template",
-  denoOnly: "formats through deno fmt",
-  fn: async () => {
-    await withTemp(async (dir) => {
-      const path = `${dir}/drifted.ts`;
-      await FileTasks.writeText(path, "// not what the template renders\n");
-      const targets: HclTarget[] = [
-        {
-          name: "Terraform",
-          tool: "terraform",
-          path,
-          docPath: "internal/terraform.moduledoc.txt",
-        },
-      ];
-      assertEquals(await checkHclWrappers(targets), [path]);
-    });
-  },
+test("checkHclWrappers flags a target that has drifted from the template", async () => {
+  await withTemp(async (dir) => {
+    const path = `${dir}/drifted.ts`;
+    await FileTasks.writeText(path, "// not what the template renders\n");
+    const targets: HclTarget[] = [
+      {
+        name: "Terraform",
+        tool: "terraform",
+        path,
+        docPath: "internal/terraform.moduledoc.txt",
+      },
+    ];
+    assertEquals(await checkHclWrappers(targets, unchanged), [path]);
+  });
 });

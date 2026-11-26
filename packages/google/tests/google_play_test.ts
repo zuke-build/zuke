@@ -140,10 +140,10 @@ test("upload signs in, uploads, releases and commits in one edit", async () => {
     releases: [{
       versionCodes: ["42"],
       status: "completed",
-      releaseNotes: [{ language: "en-US", text: "Hello" }, {
-        language: "bg",
-        text: "Здравей",
-      }],
+      releaseNotes: [
+        { language: "en-US", text: "Hello" },
+        { language: "bg", text: "Здравей" },
+      ],
     }],
   });
   assertEquals(commit.method, "POST");

@@ -300,10 +300,9 @@ test("metricValue aggregates over the window", async () => {
   assertEquals(await valueOf(results, (s) => s.aggregate("minimum")), 2);
   assertEquals(await valueOf(results, (s) => s.aggregate("latest")), 6);
   // The newest datapoint is not always the largest.
-  const rising = [series("e", [["2026-10-07T11:59:00Z", 1], [
-    "2026-10-07T11:58:00Z",
-    5,
-  ]])];
+  const rising = [
+    series("e", [["2026-10-07T11:59:00Z", 1], ["2026-10-07T11:58:00Z", 5]]),
+  ];
   assertEquals(await valueOf(rising, (s) => s.aggregate("maximum")), 5);
 });
 

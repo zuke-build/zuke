@@ -36,14 +36,14 @@ await run(MyBuild, { plugins: [timing] });
 | `onFinish(result, run)`               | Once, after the run (success or failure).                           |
 | `onRunStateChange(record)`            | On each run-level status change; needs a [state store](./state.md). |
 
-Each hook carries context beyond the bare names: `run` is a `RunInfo`
-(`{ runId, dryRun }`) whose `runId` is **stable across a suspend/resume
-boundary**, so an exporter can group a run's events (e.g. under one trace id);
-`timing` is a `TargetTiming` (`{ runId, durationMs }`). `onRunStateChange`
-receives the full [`RunRecord`](./state.md) whenever the run goes `running`,
-`suspended`, `succeeded`, `failed`, `cancelling`, or `cancelled` — per-target
-timings, waits, and the audit trail in one payload — and only fires when a state
-store is configured (a plain build with no store never produces a record).
+Each hook carries context beyond the bare names: `run` is a `RunInfo` (`{ runId,
+dryRun }`) whose `runId` is **stable across a suspend/resume boundary**, so an
+exporter can group a run's events (e.g. under one trace id); `timing` is a
+`TargetTiming` (`{ runId, durationMs }`). `onRunStateChange` receives the full
+[`RunRecord`](./state.md) whenever the run goes `running`, `suspended`,
+`succeeded`, `failed`, `cancelling`, or `cancelled` — per-target timings, waits,
+and the audit trail in one payload — and only fires when a state store is
+configured (a plain build with no store never produces a record).
 
 The extra arguments are **additive**: a plugin written against the old
 signatures (`onTargetEnd: (target, status) => …`) keeps working unchanged, since
@@ -170,9 +170,9 @@ JSON-escaped spellings the raw output may carry it in.
 
 A **component** is a function that returns an object of related targets.
 Assigned to a build field, discovery recurses into the bundle and names each
-target with a dotted path (`release.publish`), runnable as
-`zuke release.publish` and shown in the graph. Components compose, nest, and
-take options.
+target with a dotted path (`release.publish`), runnable as `zuke
+release.publish` and shown in the graph. Components compose, nest, and take
+options.
 
 ```ts
 // @acme/zuke-release

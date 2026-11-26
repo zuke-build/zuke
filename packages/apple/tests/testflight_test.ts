@@ -139,10 +139,10 @@ test("distribute: waits for processing, then compliance, notes, groups, review",
       },
     }],
     ["POST", "/v1/builds/build-1/relationships/betaGroups", {
-      data: [{ type: "betaGroups", id: "g-qa" }, {
-        type: "betaGroups",
-        id: "g-ext",
-      }],
+      data: [
+        { type: "betaGroups", id: "g-qa" },
+        { type: "betaGroups", id: "g-ext" },
+      ],
     }],
     ["POST", "/v1/betaAppReviewSubmissions", {
       data: {

@@ -49,10 +49,13 @@ function fakeContents(): { fetch: typeof fetch; writes: string[] } {
     const content = atob(body.content);
     files.set(path, content);
     writes.push(path);
-    return Response.json({
-      commit: { sha: `commit-${writes.length}` },
-      content: { sha: await blobSha(content) },
-    }, { status: 201 });
+    return Response.json(
+      {
+        commit: { sha: `commit-${writes.length}` },
+        content: { sha: await blobSha(content) },
+      },
+      { status: 201 },
+    );
   };
   return { fetch: impl, writes };
 }

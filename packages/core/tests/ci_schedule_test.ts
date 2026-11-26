@@ -205,17 +205,17 @@ test("guardShell tests the month when the schedule restricts it", () => {
 
 test("anyScheduleNeedsGuard is true only when a DST zone is present", () => {
   assertEquals(
-    anyScheduleNeedsGuard([{ cron: "0 6 * * *" }, {
-      cron: "0 6 * * *",
-      tz: "Etc/GMT-2",
-    }]),
+    anyScheduleNeedsGuard([
+      { cron: "0 6 * * *" },
+      { cron: "0 6 * * *", tz: "Etc/GMT-2" },
+    ]),
     false,
   );
   assertEquals(
-    anyScheduleNeedsGuard([{ cron: "0 6 * * *" }, {
-      cron: "0 6 * * *",
-      tz: "Europe/Sofia",
-    }]),
+    anyScheduleNeedsGuard([
+      { cron: "0 6 * * *" },
+      { cron: "0 6 * * *", tz: "Europe/Sofia" },
+    ]),
     true,
   );
 });

@@ -1,12 +1,12 @@
 # Zuke authoring cheatsheet
 
-A quick map for writing targets. **Always confirm exact signatures** with
-`deno doc jsr:@zuke/<package>`, which resolves the version the project actually
-has installed. For breadth — which packages and tasks exist — use
-`llms-full.txt`: at the repo root in the Zuke repo itself, or from a consumer
-repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>,
-which tracks `master` and so may list symbols not yet in any published release.
-This cheatsheet is a summary, not the source of truth.
+A quick map for writing targets. **Always confirm exact signatures** with `deno
+doc jsr:@zuke/<package>`, which resolves the version the project actually has
+installed. For breadth — which packages and tasks exist — use `llms-full.txt`:
+at the repo root in the Zuke repo itself, or from a consumer repo
+<https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>, which
+tracks `master` and so may list symbols not yet in any published release. This
+cheatsheet is a summary, not the source of truth.
 
 ## `target()` — the fluent builder
 
@@ -191,11 +191,10 @@ you intend to read (an `.always()` gate reads what ran before it).
 signal is the shell's ambient signal). Pass `ctx.signal` to `.signal(...)` to
 cancel a command explicitly; it composes with `.killAfter(ms)`. Cancel a run
 with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, the MCP `cancel_run` tool, or
-programmatically with `execute(build, root, { signal })` /
-`cancelRun(build, {
-runId })`. A body that ignores its signal and never shells
-out runs to completion. Register **compensations** with `.onCancel(...)` (see
-below) to undo a target's effect when the run is cancelled.
+programmatically with `execute(build, root, { signal })` / `cancelRun(build, {
+runId })`. A body that ignores its signal and never shells out runs to
+completion. Register **compensations** with `.onCancel(...)` (see below) to undo
+a target's effect when the run is cancelled.
 
 ## Durable run state
 
@@ -227,28 +226,25 @@ class CD extends Build {
 }
 ```
 
-- Backends: `FileSystemStateStore(dir)` (single host, dev) and
-  `HttpStateStore({ url, token? })` (hosted, production — see
-  `docs/state-api.md`). Both dependency-free and pluggable behind `StateStore`.
-  A hosted backend is verified with the **conformance kit**
-  (`deno run -A jsr:@zuke/core/conformance --url <base> [--token …]`, or
-  `checkStateStore`/`checkBuildRegistry` from `@zuke/core/conformance`) — it
-  exercises CAS, listing, and TTL-lock semantics. The HTTP clients stamp every
-  request with `x-zuke-state-protocol: 1` and fail loudly on a server-declared
-  mismatch.
+- Backends: `FileSystemStateStore(dir)` (single host, dev) and `HttpStateStore({
+  url, token? })` (hosted, production — see `docs/state-api.md`). Both
+  dependency-free and pluggable behind `StateStore`. A hosted backend is
+  verified with the **conformance kit** (`deno run -A jsr:@zuke/core/conformance
+  --url <base> [--token …]`, or `checkStateStore`/`checkBuildRegistry` from
+  `@zuke/core/conformance`) — it exercises CAS, listing, and TTL-lock semantics.
+  The HTTP clients stamp every request with `x-zuke-state-protocol: 1` and fail
+  loudly on a server-declared mismatch.
 - The run record holds status, the graph shape, resolved **non-secret**
   parameters, and per-target status/timing/metadata. Inspect it from the CLI
-  with
-  `zuke runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--counts]`
-  (newest first) and `zuke runs show <id>` (`--json` on both), or
-  programmatically with `store.listRuns({ status?, target?, since?, limit? })`
-  and `store.getRun(id)`.
+  with `zuke runs list [--status <s>] [--target <t>] [--since <iso>] [--limit
+  <n>] [--counts]` (newest first) and `zuke runs show <id>` (`--json` on both),
+  or programmatically with `store.listRuns({ status?, target?, since?, limit?
+  })` and `store.getRun(id)`.
 - **Retention:** `zuke runs prune --keep <age> --keep-last <n>` deletes only
   **terminal** runs matching neither rule (`--dry-run` to preview); a
   non-terminal run (suspended/running) is never pruned. The FS store owns
-  pruning via the CLI; for the HTTP backend retention is the server's job
-  (`GET /runs` takes `limit`; `DELETE /runs/:id` is optional). See
-  `docs/state.md`.
+  pruning via the CLI; for the HTTP backend retention is the server's job (`GET
+  /runs` takes `limit`; `DELETE /runs/:id` is optional). See `docs/state.md`.
 - **Run leases and reaping.** A run that writes durable state takes a TTL lease
   on its own id and heartbeats it, so two processes cannot both believe they own
   one run — a resume that adopts a run whose lease has lapsed takes it over, and
@@ -401,11 +397,11 @@ class Deploy extends Build {
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.
-- Continue a suspended run with
-  `zuke resume <id> --signal <name> [--data <json>]` (or
-  `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
-  **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
-  only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
+- Continue a suspended run with `zuke resume <id> --signal <name> [--data
+  <json>]` (or `zuke resume --check [<id>]` for predicate waits/timeouts).
+  Resumption is **exactly-once** (concurrent resumers get `AlreadyResumedError`)
+  and re-runs only the not-yet-succeeded targets; `--force-graph` overrides a
+  changed graph.
 
 ### The dispatched workflow's contract (`githubWorkflow`)
 
@@ -436,18 +432,16 @@ run-name: ${{ inputs.zuke_marker }} # the ENTIRE run-name; equality, not substri
   has **no run state** — it can read params but not a value an earlier target
   recorded in `ctx.state`; for a run-time value, write a custom `WaitTrigger`.
 - **Strict run-name equality.** Marker mode matches `display_title === marker`
-  **exactly, not by substring**. A decorated run-name
-  (`run-name: E2E [${{ inputs.zuke_marker }}]`) dispatches fine but never
-  correlates — the gate just times out. Echo the marker as the workflow's
-  _entire_ `run-name:`, or use `.correlate("created-window")`.
+  **exactly, not by substring**. A decorated run-name (`run-name: E2E [${{
+  inputs.zuke_marker }}]`) dispatches fine but never correlates — the gate just
+  times out. Echo the marker as the workflow's _entire_ `run-name:`, or use
+  `.correlate("created-window")`.
 
 ## Cancellation & compensation — `.onCancel()`
 
-Undo a target's effect when the run is cancelled.
-`.onCancel(target | () =>
-target)` registers a **compensation** that runs **iff
-this target succeeded**; on cancel, compensations run in **reverse order** of
-the succeeded targets.
+Undo a target's effect when the run is cancelled. `.onCancel(target | () =>
+target)` registers a **compensation** that runs **iff this target succeeded**;
+on cancel, compensations run in **reverse order** of the succeeded targets.
 
 ```ts
 class CD extends Build {
@@ -644,10 +638,10 @@ token = parameter("Deploy token")
   );
 ```
 
-The other source is
-**`fileSecret((s) => s.path("/run/secrets/deploy-token"))`**, for a secret
-mounted as a file by Kubernetes, Docker, or a systemd credential — no
-subprocess, and the common shape for a multi-line value like a private key.
+The other source is **`fileSecret((s) =>
+s.path("/run/secrets/deploy-token"))`**, for a secret mounted as a file by
+Kubernetes, Docker, or a systemd credential — no subprocess, and the common
+shape for a multi-line value like a private key.
 
 A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
 `.number()`); `.from(...)` just adds the run-time provider.
@@ -1182,10 +1176,8 @@ const result = await NotarytoolTasks.submit((s) =>
 - `NotarytoolTasks.submit` pins `--output-format json`. With `.wait()`, a status
   other than `Accepted` fetches `notarytool log` with the same credentials and
   throws `NotarizationError` (`.submission`, `.log.issues`); `.noThrow()`
-  returns the result instead. Authenticate with exactly one of
-  `.key().keyId()
-  [.issuer()]`, `.keychainProfile(name)`, or
-  `.appleId().password().teamId()`.
+  returns the result instead. Authenticate with exactly one of `.key().keyId()
+  [.issuer()]`, `.keychainProfile(name)`, or `.appleId().password().teamId()`.
 - Every password (`-p`, `-P`, `-k`, `--password`) is registered with the run's
   redactor and masked out of any `CommandError` — but it is still an argv token
   while the command runs, so prefer the API key and the random keychain password
@@ -1408,8 +1400,7 @@ await KubectlTasks.drain((s) =>
 `.contextName(...)` on `useContext`/`setContext` is the operand naming the
 context to switch to. Two methods are renamed off the CLI because the base class
 already owns the name: kubectl's `--quiet` on `auth can-i` is `.quietAnswer()`
-(`.quiet()` suppresses Zuke's own echo), and `kubectl run
---env` is
+(`.quiet()` suppresses Zuke's own echo), and `kubectl run --env` is
 `.envVar(key, value)` (`.env(...)` sets kubectl's own environment).
 
 ## AI review & self-healing — `@zuke/ai`
@@ -1500,17 +1491,16 @@ Depth and discussion knobs (all optional, per reviewer):
   by any reviewer however it is reworded, moved or escalated. In a finding's
   thread the id may be left out. On GitHub the workflow generator derives the
   on-demand job from the mention — `@zuke-build review` and `@zuke-build accept`
-  — so nothing is declared twice;
-  `command: (c) =>
-  c.role("triage").users("alice").secrets(this.appKey)`
-  refines who may start a run and what the job holds, and `c.text("/review")`
-  overrides the text. The reviews post as `github-actions[bot]` with nothing set
-  up; to post as a GitHub App of your own (which also lets the reviewer resolve
-  the threads it answers), declare its id and key as parameters and pass
-  `GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey))` to
-  `.commentToken(...)` — it mints once per run and yields `GITHUB_TOKEN`
-  wherever the App is absent. `secrets: [this.appId, this.appKey]` on the
-  workflow spec passes them to both jobs, by the parameters' env names.
+  — so nothing is declared twice; `command: (c) =>
+  c.role("triage").users("alice").secrets(this.appKey)` refines who may start a
+  run and what the job holds, and `c.text("/review")` overrides the text. The
+  reviews post as `github-actions[bot]` with nothing set up; to post as a GitHub
+  App of your own (which also lets the reviewer resolve the threads it answers),
+  declare its id and key as parameters and pass `GhTasks.appTokenSource((s) =>
+  s.app(this.appId, this.appKey))` to `.commentToken(...)` — it mints once per
+  run and yields `GITHUB_TOKEN` wherever the App is absent. `secrets:
+  [this.appId, this.appKey]` on the workflow spec passes them to both jobs, by
+  the parameters' env names.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is
@@ -1698,10 +1688,10 @@ const ready = await PrometheusTasks.ready(prod); // true / false (503)
   or the metadata server; `scopes`, `credentialsFile`, `quotaProject`),
   `.azure((a) => …)` (Entra ID — client secret, workload identity or managed
   identity from the `AZURE_*` env, or chosen with
-  `clientSecret()`/`workloadIdentity()`/`managedIdentity()`), and
-  `.sigv4((a) => a.region(…))` (AWS SigV4 for `aps` — env keys, profile, web
-  identity, ECS/EKS container endpoint, IMDSv2; put it last). Tokens are cached
-  until shortly before expiry; errors never carry the secret.
+  `clientSecret()`/`workloadIdentity()`/`managedIdentity()`), and `.sigv4((a) =>
+  a.region(…))` (AWS SigV4 for `aps` — env keys, profile, web identity, ECS/EKS
+  container endpoint, IMDSv2; put it last). Tokens are cached until shortly
+  before expiry; errors never carry the secret.
 
 ## Canary releases — `@zuke/canary`
 
@@ -1740,96 +1730,95 @@ class Deploy extends Build {
 - `CanaryPlatform` contract: `expose` is absolute and returns the exposure
   achieved; `promote` / `abort` are idempotent; `ctx.state` is shared by every
   call (never a secret in it). `zuke rollout.abort` **by hand** is a fresh run
-  with empty state, so `abort` must work from its own configuration; use
-  `zuke cancel <run-id>` for a rollout still running or parked. `ctx.reason`
-  tells `abort` why it runs: fall back to a configured stable version only for
+  with empty state, so `abort` must work from its own configuration; use `zuke
+  cancel <run-id>` for a rollout still running or parked. `ctx.reason` tells
+  `abort` why it runs: fall back to a configured stable version only for
   `"hand-run"` — a `"rollback"` with empty state means nothing was staged.
 - Analyses are any `Validation`; a canary-aware one reads `ctx.step`,
   `ctx.requested`, `ctx.exposure`. See `docs/canary.md`.
-- A managed Prometheus:
-  `prometheus((p) => p.url(AMP).query(Q).max(0.01)
-  .connection((c) => c.sigv4((a) => a.region("us-east-1"))))`
-  — `connection` takes `@zuke/prometheus`'s settings (`google()`, `azure()`,
-  `sigv4()`, …).
-- **CloudWatch analysis:**
-  `.analysis(cloudwatch((m) => m.name("canary 5xx").namespace("AWS/ApplicationELB")
-  .metricName("HTTPCode_Target_5XX_Count").dimension("TargetGroup", tg).stat("Sum")
-  .window("5m").max(5).missingDataAs(0).aws((a) => a.region("eu-west-1"))))`
-  from `@zuke/aws` — fails when any datapoint in the window is out of bounds
-  (each covers `.period(seconds)`, default 60), or on no data unless
-  `.missingDataAs(...)`; `.metricStat(id, …)` + `.expression("100*e/r")` judges
-  metric math.
-- **Azure Monitor analysis:**
-  `.analysis(azureMonitor((m) => m.name("canary failures").resource(appInsightsId)
-  .metric("requests/failed").aggregation("Count").dimension("cloud/roleName", "api-canary")
-  .window("5m").max(5).missingDataAs(0).az((a) => a.subscription("prod"))))`
-  from `@zuke/az` — fails when any datapoint in the window is out of bounds
-  (each covers `.interval(...)`, default `PT1M`; the window may not be shorter),
-  on no data unless `.missingDataAs(...)`, or when a dimension-filtered answer
-  reached `.top(n)` (default 10); `.kql(workspace, query)` judges a Log
-  Analytics query that returns one number instead.
-- **Cloud Run:**
-  `c.platform(cloudRunCanary((r) => r.service("api")
+- A managed Prometheus: `prometheus((p) => p.url(AMP).query(Q).max(0.01)
+  .connection((c) => c.sigv4((a) => a.region("us-east-1"))))` — `connection`
+  takes `@zuke/prometheus`'s settings (`google()`, `azure()`, `sigv4()`, …).
+- **CloudWatch analysis:** `.analysis(cloudwatch((m) => m.name("canary
+  5xx").namespace("AWS/ApplicationELB")
+  .metricName("HTTPCode_Target_5XX_Count").dimension("TargetGroup",
+  tg).stat("Sum") .window("5m").max(5).missingDataAs(0).aws((a) =>
+  a.region("eu-west-1"))))` from `@zuke/aws` — fails when any datapoint in the
+  window is out of bounds (each covers `.period(seconds)`, default 60), or on no
+  data unless `.missingDataAs(...)`; `.metricStat(id, …)` +
+  `.expression("100*e/r")` judges metric math.
+- **Azure Monitor analysis:** `.analysis(azureMonitor((m) => m.name("canary
+  failures").resource(appInsightsId)
+  .metric("requests/failed").aggregation("Count").dimension("cloud/roleName",
+  "api-canary") .window("5m").max(5).missingDataAs(0).az((a) =>
+  a.subscription("prod"))))` from `@zuke/az` — fails when any datapoint in the
+  window is out of bounds (each covers `.interval(...)`, default `PT1M`; the
+  window may not be shorter), on no data unless `.missingDataAs(...)`, or when a
+  dimension-filtered answer reached `.top(n)` (default 10); `.kql(workspace,
+  query)` judges a Log Analytics query that returns one number instead.
+- **Cloud Run:** `c.platform(cloudRunCanary((r) => r.service("api")
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`
   from `@zuke/gcloud`. It routes traffic through the candidate's tag
   (`.tag(...)`, default `canary`) in whole percents; `promote` refuses a
   revision deployed mid-rollout; a hand-run `abort` needs
   `.stable("<revision>")` to know where to send traffic, and refuses without it.
-- **Cloud Monitoring analysis:**
-  `.analysis(cloudMonitoring((m) => m.name("canary 5xx").project(p)
+- **Cloud Monitoring analysis:** `.analysis(cloudMonitoring((m) =>
+  m.name("canary 5xx").project(p)
   .metricType("run.googleapis.com/request_count").resourceType("cloud_run_revision")
-  .cloudRunCandidate("api", "europe-west1").metricLabel("response_code_class", "5xx")
+  .cloudRunCandidate("api", "europe-west1").metricLabel("response_code_class",
+  "5xx")
   .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM").crossSeriesReducer("REDUCE_SUM")
-  .window("5m").max(5).missingDataAs(0)))`
-  from `@zuke/gcloud` — fails when any aligned point in the window is out of
-  bounds (the window may not be shorter than the alignment period, and ends
-  `.delay(...)` before now, default 2m), on no data unless `.missingDataAs(...)`
-  — which then passes a candidate with no traffic too — or when there are more
-  pages than `.maxPages(n)`; a `CUMULATIVE` metric needs `ALIGN_DELTA` or
-  `ALIGN_RATE`; `.cloudRunCandidate(service, region)` narrows it to the revision
-  `cloudRunCanary` staged, in the analysis's project; `.logEntries((l) => …)`
-  judges a log-entry count instead.
-- **Kubernetes canary** —
-  `kubectlCanary((k) => k.stable("api").canary("api-canary").container("api").image(img).replicas(10))`
+  .window("5m").max(5).missingDataAs(0)))` from `@zuke/gcloud` — fails when any
+  aligned point in the window is out of bounds (the window may not be shorter
+  than the alignment period, and ends `.delay(...)` before now, default 2m), on
+  no data unless `.missingDataAs(...)` — which then passes a candidate with no
+  traffic too — or when there are more pages than `.maxPages(n)`; a `CUMULATIVE`
+  metric needs `ALIGN_DELTA` or `ALIGN_RATE`; `.cloudRunCandidate(service,
+  region)` narrows it to the revision `cloudRunCanary` staged, in the analysis's
+  project; `.logEntries((l) => …)` judges a log-entry count instead.
+- **Kubernetes canary** — `kubectlCanary((k) =>
+  k.stable("api").canary("api-canary").container("api").image(img).replicas(10))`
   from `@zuke/kubectl` is a `"replicas"` platform for `canary(...)`: two
   Deployments behind one Service, canary grown and ready before stable shrinks.
   Hand-run `rollout.abort` needs `.stableImage(...)`.
-- **Helm canary** —
-  `helmCanary((h) => h.chart("./charts/api").stableRelease("api").image(tag).replicas(10).values("values-prod.yaml"))`
+- **Helm canary** — `helmCanary((h) =>
+  h.chart("./charts/api").stableRelease("api").image(tag).replicas(10).values("values-prod.yaml"))`
   (`@zuke/helm`, Helm 3.14+) — two releases, exposure by replica share
   (`"replicas"`); abort is `helm rollback` to the revision `stage` recorded, or
   `.stableRevision(n)` by hand. The chart's Service must select both releases'
   pods, and `.values()` must carry the stable release's whole config.
-- **Canary on Docker Compose:**
-  `dockerComposeCanary((d) => d.service("app").canaryService("app-canary").replicas(4).image(img).stableImageVariable("APP_IMAGE").canaryImageVariable("APP_CANARY_IMAGE").stable(prev))`
+- **Canary on Docker Compose:** `dockerComposeCanary((d) =>
+  d.service("app").canaryService("app-canary").replicas(4).image(img).stableImageVariable("APP_IMAGE").canaryImageVariable("APP_CANARY_IMAGE").stable(prev))`
   from `@zuke/docker-compose`, for `c.platform(...)`. Exposure is replicas
   (quantised). Promote is an env override: persist `APP_IMAGE` afterwards or a
   plain `docker compose up` reverts it.
-- **Lambda canary** —
-  `lambdaCanary((l) => l.functionName("api").alias("live").zipFile(zip).aws((a) => a.profile("deploy").region("eu-west-1")))`
-  from `@zuke/aws` — the alias's weighted routing (`"traffic"`): `stage`
-  publishes the candidate (`update-function-code --publish` from `.zipFile`,
-  `.s3Bucket().s3Key()` or `.imageUri`; or `.version("12")` for one already
-  published), waits for it to be `Active`, and leaves the alias alone; `expose`
-  sets the candidate's `AdditionalVersionWeights`; `promote` moves the alias to
-  it. The alias must point at a published version and not already split; every
-  `update-alias` carries `--revision-id`; each call checks the alias's ARN
-  (account and region), and expose/promote the candidate's code hash. A code
-  source becomes `$LATEST` at stage and stays there after a rollback — use
-  `.version(...)` if anything invokes the function unqualified. Hand-run
-  `rollout.abort` needs `.stable("<version>")`.
-- **Container Apps canary** —
-  `containerAppCanary((a) => a.name("api").resourceGroup("rg-prod").image(img).az((z) => z.subscription("prod")))`
-  from `@zuke/az` — the app's ingress traffic split by revision name
-  (`"traffic"`, whole percents): `stage` pins the traffic to the serving
-  revision by name, deploys the image with `containerapp update` (optionally
-  `.containerName(...)`, `.revisionSuffix(...)`), and checks the new revision is
-  `Provisioned`; `expose` sets `ingress traffic set --revision-weight`;
-  `promote` hands the traffic to the candidate, back through "latest" if it
-  followed it before. The app must be in multiple-revision mode with ingress,
-  serving one revision without labels. Each call checks the app's resource id
-  (the subscription), and expose/promote that the traffic still goes only to the
-  two revisions. Hand-run `rollout.abort` needs `.stable("<revision>")`.
+- **Lambda canary** — `lambdaCanary((l) =>
+  l.functionName("api").alias("live").zipFile(zip).aws((a) =>
+  a.profile("deploy").region("eu-west-1")))` from `@zuke/aws` — the alias's
+  weighted routing (`"traffic"`): `stage` publishes the candidate
+  (`update-function-code --publish` from `.zipFile`, `.s3Bucket().s3Key()` or
+  `.imageUri`; or `.version("12")` for one already published), waits for it to
+  be `Active`, and leaves the alias alone; `expose` sets the candidate's
+  `AdditionalVersionWeights`; `promote` moves the alias to it. The alias must
+  point at a published version and not already split; every `update-alias`
+  carries `--revision-id`; each call checks the alias's ARN (account and
+  region), and expose/promote the candidate's code hash. A code source becomes
+  `$LATEST` at stage and stays there after a rollback — use `.version(...)` if
+  anything invokes the function unqualified. Hand-run `rollout.abort` needs
+  `.stable("<version>")`.
+- **Container Apps canary** — `containerAppCanary((a) =>
+  a.name("api").resourceGroup("rg-prod").image(img).az((z) =>
+  z.subscription("prod")))` from `@zuke/az` — the app's ingress traffic split by
+  revision name (`"traffic"`, whole percents): `stage` pins the traffic to the
+  serving revision by name, deploys the image with `containerapp update`
+  (optionally `.containerName(...)`, `.revisionSuffix(...)`), and checks the new
+  revision is `Provisioned`; `expose` sets `ingress traffic set
+  --revision-weight`; `promote` hands the traffic to the candidate, back through
+  "latest" if it followed it before. The app must be in multiple-revision mode
+  with ingress, serving one revision without labels. Each call checks the app's
+  resource id (the subscription), and expose/promote that the traffic still goes
+  only to the two revisions. Hand-run `rollout.abort` needs
+  `.stable("<revision>")`.
 
 ## Homebrew taps — `@zuke/homebrew`
 
@@ -1907,11 +1896,9 @@ await ChocolateyTasks.publish((s) =>
 
 - The zip is unpacked into the package's `tools`, where choco shims every
   `.exe`; uninstall removes both, so no `chocolateyuninstall.ps1` is rendered.
-- `verify` packs in a temp directory, installs with
-  `--source=<dir>
-  --version=<v> --yes --force`, runs the shim, then always
-  uninstalls and removes the directory (a cleanup error never hides the real
-  one).
+- `verify` packs in a temp directory, installs with `--source=<dir>
+  --version=<v> --yes --force`, runs the shim, then always uninstalls and
+  removes the directory (a cleanup error never hides the real one).
 - choco takes the key only as `--api-key=` (or a key saved by
   `ChocoTasks.apikey((s) => s.add()…)`): it is masked in logs and errors but is
   in the process table during the push — on a shared host save it instead and
@@ -1948,15 +1935,15 @@ compiled to UTC cron(s); a daylight-saving zone also emits a generated guard job
 so only the correct wall-clock firing proceeds. Full on GitHub; Azure gets
 native `schedules:` for UTC/fixed-offset (DST zone errors); GitLab/Bitbucket
 schedules are UI-side and ignored. Numeric fields + whole-hour offsets only,
-else a friendly error.
-`cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
+else a friendly error. `cicd({ provider: "github", pipeline: { triggers: {
+schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
 
 **Deploy jobs, outputs, sparse matrices, path filters** — on a job or an
 `invokes` entry: `environment: "prod" | { name, url }` (the deployment
 environment that protection rules and environment secrets attach to — not
-`env`), `outputs: { name: "${{ steps.x.outputs.y }}" }` (read downstream as
-`${{ needs.<job>.outputs.<name> }}`), `matrixInclude`/`matrixExclude` rows
-(GitHub semantics; include-only rows are the whole matrix). On triggers:
+`env`), `outputs: { name: "${{ steps.x.outputs.y }}" }` (read downstream as `${{
+needs.<job>.outputs.<name> }}`), `matrixInclude`/`matrixExclude` rows (GitHub
+semantics; include-only rows are the whole matrix). On triggers:
 `pushPaths`/`pullRequestPaths: { paths } | { pathsIgnore }`, each needing its
 trigger. A field a provider cannot express is an error, never dropped: `outputs`
 is GitHub-only, `environment` GitHub/GitLab, `pathsIgnore` GitHub/Azure, `paths`
@@ -1977,10 +1964,9 @@ Copy the closest one instead of composing from primitives; each is a full
   gate.
 - **Release a library** (`docs/recipes/release-a-library.md`,
   `examples/release-library`) — `parameter().required()` version, then
-  `GitTasks.add/commit/tag/push` →
-  `GhTasks.releaseCreate((s) =>
-  s.generateNotes().latest())` →
-  `DenoTasks.publish()`, one chain you can stop anywhere.
+  `GitTasks.add/commit/tag/push` → `GhTasks.releaseCreate((s) =>
+  s.generateNotes().latest())` → `DenoTasks.publish()`, one chain you can stop
+  anywhere.
 
 ## Run & inspect
 
@@ -2071,20 +2057,19 @@ descriptor of this build — its `describeCli()` surface (targets, params) plus 
 launch location — into a pluggable `BuildRegistry`. Resolved like the state
 store: `ZUKE_REGISTRY_URL`/`_TOKEN` (HTTP) or `ZUKE_REGISTRY_DIR` (files), a
 `registry()` build override, else `.zuke/builds`. Separate from the run store;
-an HTTP backend shares the `/builds` REST contract beside `/runs`.
-**`zuke mcp
---registry`** then serves the whole catalog — re-read live, so a
-build registered by another process appears as a `run:<buildId>:<target>` tool
-with no restart and runs by spawning its launch location (behind `--allow-run` +
-the same authz). The run tool exposes the registered build's declared
-**parameters** as its input schema and forwards supplied values to the spawned
-build as `--flag=value` arguments — validated against their kinds first (a type
-mismatch is a clean tool error, never a failed subprocess). `.secret()`
-parameters are omitted from the descriptor entirely, so a secret can neither be
-requested nor forwarded; the child resolves it from its own environment /
-`.from()` source. Because the registry names **where** a build is launched from,
-a descriptor whose entry module is **remote** (not a local path or `file:` URL —
-`https:`, `jsr:`, `npm:`, `data:`) is refused unless its origin is listed in
+an HTTP backend shares the `/builds` REST contract beside `/runs`. **`zuke mcp
+--registry`** then serves the whole catalog — re-read live, so a build
+registered by another process appears as a `run:<buildId>:<target>` tool with no
+restart and runs by spawning its launch location (behind `--allow-run` + the
+same authz). The run tool exposes the registered build's declared **parameters**
+as its input schema and forwards supplied values to the spawned build as
+`--flag=value` arguments — validated against their kinds first (a type mismatch
+is a clean tool error, never a failed subprocess). `.secret()` parameters are
+omitted from the descriptor entirely, so a secret can neither be requested nor
+forwarded; the child resolves it from its own environment / `.from()` source.
+Because the registry names **where** a build is launched from, a descriptor
+whose entry module is **remote** (not a local path or `file:` URL — `https:`,
+`jsr:`, `npm:`, `data:`) is refused unless its origin is listed in
 `ZUKE_REGISTRY_LAUNCH_HOSTS` (`*` allows any); the call is denied and audited
 `launch_origin_not_allowed`, before the confirmation prompt, with nothing
 spawned. A `command` location is gated the same way against
@@ -2114,22 +2099,20 @@ sweep over every run needs `operator`; a valid `ZUKE_OPERATOR_TOKEN` grants
 authenticator never mentions `roles`, is not constrained by the policy at all —
 `--allow-run`/`--protect` remain its only gates.
 
-**Forcing a target** (`docs/state.md`):
-`zuke force <run-id> <target> --outcome skipped|succeeded [--reason "…"]`
-settles one target of a live run **without running its body** — ahead of its
-`onlyWhen` conditions and its cache — and records who decided and why under
-`record.overrides`. A forced `succeeded` is compensated by a later cancel (its
-effects were asserted to exist); a forced `skipped` is not. Refused for a target
-that already settled, a terminal run, or one the build protects with
-`override unforceable() { return [this.applyProduction]; }` — target
-**references**, so a rename cannot silently empty the list. The MCP equivalent
-is the `force_target` tool.
+**Forcing a target** (`docs/state.md`): `zuke force <run-id> <target> --outcome
+skipped|succeeded [--reason "…"]` settles one target of a live run **without
+running its body** — ahead of its `onlyWhen` conditions and its cache — and
+records who decided and why under `record.overrides`. A forced `succeeded` is
+compensated by a later cancel (its effects were asserted to exist); a forced
+`skipped` is not. Refused for a target that already settled, a terminal run, or
+one the build protects with `override unforceable() { return
+[this.applyProduction]; }` — target **references**, so a rename cannot silently
+empty the list. The MCP equivalent is the `force_target` tool.
 
-**Authentication** (`docs/mcp.md`): on a shared, multi-user endpoint,
-`override mcpAuth()` returns an `McpAuthenticator` —
-`{ authenticate: async (ctx) => … }` — that either resolves the caller
-(`{ actor, kind?, roles?, via? }`; `kind` defaults `"human"`, `roles` defaults
-none) or refuses with an `McpAuthReject`
+**Authentication** (`docs/mcp.md`): on a shared, multi-user endpoint, `override
+mcpAuth()` returns an `McpAuthenticator` — `{ authenticate: async (ctx) => … }`
+— that either resolves the caller (`{ actor, kind?, roles?, via? }`; `kind`
+defaults `"human"`, `roles` defaults none) or refuses with an `McpAuthReject`
 (`{ status, error, detail?, challenge? }`). `ctx` carries the request `headers`
 and, over HTTP, the `request` itself. `override mcpIdentity()` is the sugar for
 the proxy-header case — a sync hook `(ctx) => ({ actor, via? })` reading a
@@ -2145,14 +2128,14 @@ comma-joined `ZUKE_ACTOR_ROLES` written beside it, so an inherited claim never
 outlives a fresh actor). `roles` are **not** an authorization input — the
 allow-list/`--protect`/operator token still gate a call. Fail-closed: a throw, a
 non-object, an empty actor, or a rejection whose `status` is outside `400`–`499`
-all refuse, each collapsing to a bare `401`
-(`{ status: 401, error: "Unauthorized", challenge: "Bearer" }`), so an
-authenticator can never turn its own refusal into a success. Over HTTP a refusal
-answers that **status** with its `WWW-Authenticate` challenge (the JSON-RPC
-error is still in the body) — previously a `200` — which is how an MCP client
-discovers where to authenticate; either override also satisfies the
-authentication a non-loopback bind requires, in place of `ZUKE_MCP_TOKEN`. The
-minimal seam — TLS/OAuth/header-stripping is the proxy's job.
+all refuse, each collapsing to a bare `401` (`{ status: 401, error:
+"Unauthorized", challenge: "Bearer" }`), so an authenticator can never turn its
+own refusal into a success. Over HTTP a refusal answers that **status** with its
+`WWW-Authenticate` challenge (the JSON-RPC error is still in the body) —
+previously a `200` — which is how an MCP client discovers where to authenticate;
+either override also satisfies the authentication a non-loopback bind requires,
+in place of `ZUKE_MCP_TOKEN`. The minimal seam — TLS/OAuth/header-stripping is
+the proxy's job.
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add
@@ -2164,28 +2147,26 @@ any headers, an Azure SAS URL works as is — `S3CacheStore` for any S3-compatib
 bucket, or `GitHubActionsCacheStore`), or leave it and the executor falls back
 to the `ZUKE_REMOTE_CACHE_*` environment variables (`ZUKE_REMOTE_CACHE_S3_URL`
 plus the `AWS_*` variables for a bucket) — or, on GitHub Actions, to the job's
-own cache service once
-`cicd({ pipeline: { bootstrap: { actionsCache:
-true } } })` (the action's
-`actions-cache` input) exports its credentials to the job; it applies only to
-targets declaring **both** `inputs` and `outputs`. A remote store is best-effort
-— an unreachable one never fails the build. A **restore is confined to the
-target's declared `.outputs(...)`**, and refuses an absolute or `..` path, a
-directory entry, a symlink whose target leaves its output, and anything under
-`.git`/`.zuke` (except `.zuke/tools`, the toolchain's install root). A relative
-link inside an output (`node_modules/.bin/*`) round-trips as a link, so
-`.outputs("node_modules")` caches; a refused archive is a cache miss (rebuild +
-warning), never a build failure, so whoever can write the store can neither
-plant files nor halt the build. `--affected` limits a run to targets touched
-since a git base (great for CI job fan-out).
+own cache service once `cicd({ pipeline: { bootstrap: { actionsCache: true } }
+})` (the action's `actions-cache` input) exports its credentials to the job; it
+applies only to targets declaring **both** `inputs` and `outputs`. A remote
+store is best-effort — an unreachable one never fails the build. A **restore is
+confined to the target's declared `.outputs(...)`**, and refuses an absolute or
+`..` path, a directory entry, a symlink whose target leaves its output, and
+anything under `.git`/`.zuke` (except `.zuke/tools`, the toolchain's install
+root). A relative link inside an output (`node_modules/.bin/*`) round-trips as a
+link, so `.outputs("node_modules")` caches; a refused archive is a cache miss
+(rebuild + warning), never a build failure, so whoever can write the store can
+neither plant files nor halt the build. `--affected` limits a run to targets
+touched since a git base (great for CI job fan-out).
 
 **Telling a client where to authenticate** (`docs/mcp.md`): verifying a token
 only helps a caller that already has one. `override mcpProtectedResource()`
 returns `protectedResource(canonicalUri).authorizationServer(issuer)` (plus
-optional `.scopes(...)`, `.name(...)`, `.documentation(...)`), which makes
-`zuke mcp --http` an OAuth 2.0 **protected resource**: it publishes the RFC 9728
-metadata document and names it in every `WWW-Authenticate` challenge, so
-`claude mcp add --transport http <url>` can discover the identity provider and
+optional `.scopes(...)`, `.name(...)`, `.documentation(...)`), which makes `zuke
+mcp --http` an OAuth 2.0 **protected resource**: it publishes the RFC 9728
+metadata document and names it in every `WWW-Authenticate` challenge, so `claude
+mcp add --transport http <url>` can discover the identity provider and
 authenticate in a browser. Zuke issues no tokens and hosts no `/authorize`,
 `/token` or `/register` — those belong to the provider named here, and
 `mcpAuth()` verifies what it mints. Dynamic client registration is **not**

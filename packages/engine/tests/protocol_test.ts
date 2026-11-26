@@ -110,12 +110,10 @@ test("parseManifest fills every default, so a phase 0 manifest still parses", ()
   assertEquals(
     parseManifest({
       name: "B",
-      targets: [{ name: "a" }, {
-        name: "b",
-        description: "d",
-        dependsOn: ["a"],
-        extra: true,
-      }],
+      targets: [
+        { name: "a" },
+        { name: "b", description: "d", dependsOn: ["a"], extra: true },
+      ],
     }),
     {
       name: "B",
@@ -207,13 +205,10 @@ test("parseManifest carries every target setting, parameter kind, group and conf
   ]);
   const [tag, n, v, s] = full.parameters;
   assertEquals(tag?.kind === "string" ? tag.options : [], ["dev"]);
-  assertEquals([n?.required, v?.flag, s?.secret, s?.env, s?.array], [
-    true,
-    "verbose",
-    true,
-    "S",
-    true,
-  ]);
+  assertEquals(
+    [n?.required, v?.flag, s?.secret, s?.env, s?.array],
+    [true, "verbose", true, "S", true],
+  );
   assertEquals(full.groups, [{ name: "g", members: ["a"] }]);
   assertEquals(full.config, { deadline: "45m", unforceable: ["a"] });
 });
@@ -382,11 +377,10 @@ test("a service target carries its kind, probe flag and timeout, and refuses ano
       readyTimeoutMs: 100,
     }],
   }).targets;
-  assertEquals([db?.kind, db?.ready, db?.readyTimeoutMs], [
-    "service",
-    true,
-    100,
-  ]);
+  assertEquals(
+    [db?.kind, db?.ready, db?.readyTimeoutMs],
+    ["service", true, 100],
+  );
   assertThrows(
     () => parseManifest({ name: "B", targets: [{ name: "x", kind: "job" }] }),
     Error,
