@@ -8,7 +8,7 @@
  * `.toolPath(...)`.
  *
  * The fake is a POSIX shim that runs a TypeScript stand-in with the running
- * `deno` (`Deno.execPath()`), so the test needs nothing else installed. It is
+ * runtime, so the test needs nothing else installed. It is
  * skipped on Windows, where Homebrew does not run either.
  *
  * @module
@@ -17,7 +17,8 @@
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { withEnv } from "../_env.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { makeTempDir } from "../_temp.ts";
+import { Build, EnvTasks, FileTasks, target } from "../../packages/core/mod.ts";
 import { BrewTasks, HomebrewTasks } from "../../packages/homebrew/mod.ts";
 import {
   FAKE_BREW_UNSUPPORTED,
@@ -31,7 +32,7 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew();
-    const dir = Deno.makeTempDirSync({ prefix: "zuke-homebrew-it-" });
+    const dir = await makeTempDir({ prefix: "zuke-homebrew-it-" });
     const file = `${dir}/app.rb`;
     const ran: string[] = [];
     let installed: string[] = [];
@@ -40,7 +41,7 @@ test({
       formula = target().description("render the formula").executes(
         async () => {
           ran.push("formula");
-          await Deno.writeTextFile(
+          await FileTasks.writeText(
             file,
             HomebrewTasks.formula((s) =>
               s.name("app").description("Widget tool").homepage(
@@ -68,7 +69,7 @@ test({
 
     try {
       await withEnv(
-        { ...brew.env, PATH: `${brew.binDir}:${Deno.env.get("PATH") ?? ""}` },
+        { ...brew.env, PATH: `${brew.binDir}:${EnvTasks.get("PATH") ?? ""}` },
         async () => {
           const result = await runCli(Release, ["verify"]);
           assertEquals(result.code, 0, result.err);
@@ -88,14 +89,14 @@ test({
         "info",
       ]);
       const tap = brew.calls()[0].args[2];
-      const copied = Deno.readTextFileSync(
+      const copied = await FileTasks.readText(
         `${brew.root}/${tap}/Formula/app.rb`,
       );
-      assertEquals(copied, Deno.readTextFileSync(file));
+      assertEquals(copied, await FileTasks.readText(file));
       assertEquals(copied.startsWith("class App < Formula\n"), true);
     } finally {
       brew.dispose();
-      Deno.removeSync(dir, { recursive: true });
+      await FileTasks.remove(dir, { recursive: true });
     }
   },
 });
@@ -105,9 +106,9 @@ test({
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew(["test"]);
-    const dir = Deno.makeTempDirSync({ prefix: "zuke-homebrew-it-" });
+    const dir = await makeTempDir({ prefix: "zuke-homebrew-it-" });
     const file = `${dir}/app.rb`;
-    Deno.writeTextFileSync(file, "class App < Formula\nend\n");
+    await FileTasks.writeText(file, "class App < Formula\nend\n");
 
     class Release extends Build {
       verify = target().executes(() =>
@@ -117,7 +118,7 @@ test({
 
     try {
       await withEnv(
-        { ...brew.env, PATH: `${brew.binDir}:${Deno.env.get("PATH") ?? ""}` },
+        { ...brew.env, PATH: `${brew.binDir}:${EnvTasks.get("PATH") ?? ""}` },
         async () => {
           const result = await runCli(Release, ["verify"]);
           assertEquals(result.code, 1);
@@ -127,7 +128,7 @@ test({
       assertEquals(verbs.slice(-2), ["uninstall", "untap"]);
     } finally {
       brew.dispose();
-      Deno.removeSync(dir, { recursive: true });
+      await FileTasks.remove(dir, { recursive: true });
     }
   },
 });

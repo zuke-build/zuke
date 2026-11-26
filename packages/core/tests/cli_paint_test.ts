@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { cliPaint, PLAIN_PAINT } from "../src/cli_paint.ts";
@@ -138,7 +139,8 @@ test("the coloured version panel has the same visible text", () => {
 test("versionFacts reports the running process", () => {
   const facts = versionFacts();
   assertEquals(facts.core, VERSION);
-  assertEquals(facts.runtime, ["deno", Deno.version.deno]);
-  assertEquals(facts.typescript, Deno.version.typescript);
-  assertEquals(facts.platform, `${Deno.build.os}-${Deno.build.arch}`);
+  const runtime = RuntimeTasks.facts();
+  assertEquals(facts.runtime, [runtime.name, runtime.version]);
+  assertEquals(facts.typescript, runtime.typescript);
+  assertEquals(facts.platform, `${RuntimeTasks.os()}-${RuntimeTasks.arch()}`);
 });

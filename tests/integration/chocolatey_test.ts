@@ -9,7 +9,7 @@
  * parameter, so the run's own redactor masks it in what the build prints.
  *
  * The fake is a POSIX shim that runs a TypeScript stand-in with the running
- * `deno` (`Deno.execPath()`), so the test needs nothing else installed. It is
+ * runtime, so the test needs nothing else installed. It is
  * skipped on Windows, which cannot launch the shell shims.
  *
  * @module
@@ -18,7 +18,7 @@
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
 import { withEnv } from "../_env.ts";
-import { Build, parameter, target } from "../../packages/core/mod.ts";
+import { Build, EnvTasks, parameter, target } from "../../packages/core/mod.ts";
 import {
   type ChocolateyPackage,
   type ChocolateyPublishResult,
@@ -85,7 +85,7 @@ test({
       await withEnv(
         {
           ...choco.env,
-          PATH: `${choco.binDir}:${Deno.env.get("PATH") ?? ""}`,
+          PATH: `${choco.binDir}:${EnvTasks.get("PATH") ?? ""}`,
           CHOCO_API_KEY: API_KEY,
           // On an Actions runner the build prints `::add-mask::<secret>` so
           // the runner masks it — the one place the key is meant to appear.
@@ -143,7 +143,7 @@ test({
       await withEnv(
         {
           ...choco.env,
-          PATH: `${choco.binDir}:${Deno.env.get("PATH") ?? ""}`,
+          PATH: `${choco.binDir}:${EnvTasks.get("PATH") ?? ""}`,
         },
         async () => {
           const result = await runCli(Release, ["verify"]);

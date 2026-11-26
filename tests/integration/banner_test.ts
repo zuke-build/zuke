@@ -22,8 +22,11 @@ import { runCli, withStateDir } from "./_harness.ts";
 import {
   Build,
   defaultStateHost,
+  EnvTasks,
   externalSignal,
   FileSystemStateStore,
+  FileTasks,
+  RuntimeTasks,
   target,
 } from "../../packages/core/mod.ts";
 import { execute } from "../../packages/core/src/executor.ts";
@@ -31,7 +34,7 @@ import { discoverTargets } from "../../packages/core/src/build.ts";
 import { VERSION } from "../../packages/core/src/version.ts";
 
 /** The line every run prints, on CI and off it. */
-const IDENTITY = `zuke ${VERSION} · deno `;
+const IDENTITY = `zuke ${VERSION} · ${RuntimeTasks.facts().name} `;
 
 class Quiet extends Build {
   work = target().description("do nothing").executes(() => {});
@@ -42,13 +45,13 @@ async function withNoBanner(
   value: string,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const previous = Deno.env.get("ZUKE_NO_BANNER");
-  Deno.env.set("ZUKE_NO_BANNER", value);
+  const previous = EnvTasks.get("ZUKE_NO_BANNER");
+  EnvTasks.set("ZUKE_NO_BANNER", value);
   try {
     await fn();
   } finally {
-    if (previous === undefined) Deno.env.delete("ZUKE_NO_BANNER");
-    else Deno.env.set("ZUKE_NO_BANNER", previous);
+    if (previous === undefined) EnvTasks.delete("ZUKE_NO_BANNER");
+    else EnvTasks.set("ZUKE_NO_BANNER", previous);
   }
 }
 
@@ -130,16 +133,18 @@ test("integration: a hostile cwd cannot inject a workflow command", async () => 
   // escaping sink: the legacy `##[` marker, which counts anywhere in a line,
   // and a newline in the name, which makes the next physical line start with
   // `::`. Both are why the banner goes through `messages`, not `reporter`.
-  if (Deno.build.os === "windows") return; // Neither name is legal there.
+  if (RuntimeTasks.os() === "windows") return; // Neither name is legal there.
   for (const name of ["##[error]INJECTED", "tail\n::error::INJECTED"]) {
-    const parent = await Deno.makeTempDir({ prefix: "zuke-banner-cwd-" });
+    const parent = await FileTasks.makeTempDirectory((s) =>
+      s.prefix("zuke-banner-cwd-")
+    );
     const hostile = `${parent}/${name}`;
-    const previousCwd = Deno.cwd();
-    const previousActions = Deno.env.get("GITHUB_ACTIONS");
+    const previousCwd = RuntimeTasks.cwd();
+    const previousActions = EnvTasks.get("GITHUB_ACTIONS");
     try {
-      await Deno.mkdir(hostile);
-      Deno.chdir(hostile);
-      Deno.env.set("GITHUB_ACTIONS", "true");
+      await FileTasks.createDirectory(hostile, { recursive: false });
+      RuntimeTasks.chdir(hostile);
+      EnvTasks.set("GITHUB_ACTIONS", "true");
 
       const { out } = await runCli(Quiet, ["work"]);
       assertEquals(out.includes("##[error]"), false, out);
@@ -150,10 +155,10 @@ test("integration: a hostile cwd cannot inject a workflow command", async () => 
         out,
       );
     } finally {
-      Deno.chdir(previousCwd);
-      if (previousActions === undefined) Deno.env.delete("GITHUB_ACTIONS");
-      else Deno.env.set("GITHUB_ACTIONS", previousActions);
-      await Deno.remove(parent, { recursive: true });
+      RuntimeTasks.chdir(previousCwd);
+      if (previousActions === undefined) EnvTasks.delete("GITHUB_ACTIONS");
+      else EnvTasks.set("GITHUB_ACTIONS", previousActions);
+      await FileTasks.remove(parent, { recursive: true });
     }
   }
 });
@@ -190,16 +195,16 @@ async function withPlainEnv(
 ): Promise<void> {
   const saved = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
+    saved.set(name, EnvTasks.get(name));
+    if (value === undefined) EnvTasks.delete(name);
+    else EnvTasks.set(name, value);
   }
   try {
     await fn();
   } finally {
     for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
+      if (value === undefined) EnvTasks.delete(name);
+      else EnvTasks.set(name, value);
     }
   }
 }

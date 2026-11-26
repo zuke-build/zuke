@@ -22,3 +22,10 @@ export const EVAL = deno ? "eval" : "-e";
  * does not.
  */
 export const ARGS = `process.argv.slice(${deno ? 2 : 1})`;
+
+/**
+ * The arguments that make the running runtime run a standalone script file,
+ * one that imports nothing through the import map, with every permission:
+ * they go before the script's path. Node runs a `.ts` file as it is.
+ */
+export const RUN_SCRIPT = deno ? ["run", "--no-config", "--no-lock", "-A"] : [];

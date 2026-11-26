@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * A stand-in for `choco`, run by the running `deno` through the shim
+ * A stand-in for `choco`, run by the running runtime through the shim
  * `tests/_fake_choco.ts` writes. It records every invocation and imitates just
  * enough of Chocolatey for a verification or a publish to run against it:
  *
@@ -20,10 +20,19 @@
  * @module
  */
 
-const log = Deno.env.get("FAKE_CHOCO_LOG") ?? "";
-const bin = Deno.env.get("FAKE_CHOCO_BIN") ?? "";
-const failing = (Deno.env.get("FAKE_CHOCO_FAIL") ?? "").split(",");
-const args = Deno.args;
+import {
+  appendFileSync,
+  chmodSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+
+const log = process.env["FAKE_CHOCO_LOG"] ?? "";
+const bin = process.env["FAKE_CHOCO_BIN"] ?? "";
+const failing = (process.env["FAKE_CHOCO_FAIL"] ?? "").split(",");
+const args = process.argv.slice(2);
 const verb = args[0] ?? "";
 
 /** The value of `--<name>=…` in the argv, if present. */
@@ -32,43 +41,42 @@ function option(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-Deno.writeTextFileSync(
+appendFileSync(
   log,
-  JSON.stringify({ args, cwd: Deno.cwd() }) + "\n",
-  { append: true },
+  JSON.stringify({ args, cwd: process.cwd() }) + "\n",
 );
 
 if (failing.includes(verb)) {
   console.error(`fake choco: ${verb} failed: ${args.join(" ")}`);
-  Deno.exit(1);
+  process.exit(1);
 }
 if (verb === "pack") {
-  const nuspec = Deno.readTextFileSync(args[1] ?? "");
+  const nuspec = readFileSync(args[1] ?? "", "utf8");
   const id = /<id>(.*)<\/id>/.exec(nuspec)?.[1] ?? "";
   const version = /<version>(.*)<\/version>/.exec(nuspec)?.[1] ?? "";
   const out = option("output-directory") ?? ".";
   if (!failing.includes("pack-none")) {
-    Deno.writeTextFileSync(`${out}/${id}.${version}.nupkg`, nuspec);
+    writeFileSync(`${out}/${id}.${version}.nupkg`, nuspec);
   }
   if (failing.includes("pack-two")) {
-    Deno.writeTextFileSync(`${out}/${id}.0.0.1.nupkg`, nuspec);
+    writeFileSync(`${out}/${id}.0.0.1.nupkg`, nuspec);
   }
 } else if (verb === "install") {
   const id = args[1] ?? "";
   const version = option("version") ?? "";
   try {
-    Deno.statSync(`${option("source")}/${id}.${version}.nupkg`);
+    statSync(`${option("source")}/${id}.${version}.nupkg`);
   } catch {
     console.error(`${id} not installed. The package was not found.`);
-    Deno.exit(1);
+    process.exit(1);
   }
   const shim = `${bin}/${id}`;
   const exit = failing.includes("shim") ? "exit 1" : "exit 0";
-  Deno.writeTextFileSync(
+  writeFileSync(
     shim,
     `#!/bin/sh\necho "${id} v${version} $*"\n${exit}\n`,
   );
-  Deno.chmodSync(shim, 0o755);
+  chmodSync(shim, 0o755);
 } else if (verb === "uninstall") {
-  Deno.removeSync(`${bin}/${args[1] ?? ""}`);
+  rmSync(`${bin}/${args[1] ?? ""}`);
 }

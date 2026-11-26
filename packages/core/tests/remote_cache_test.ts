@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { FileTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -441,7 +442,7 @@ test("FileSystemCacheStore.get propagates a non-NotFound read error", async () =
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(dir);
     // Make the artifact path a directory so reading it fails (not NotFound).
-    await Deno.mkdir(`${dir}/busy.tar.gz`);
+    await FileTasks.createDirectory(`${dir}/busy.tar.gz`, { recursive: false });
     const err = await assertRejects(() => store.get("busy"));
     assertEquals(err instanceof Error, true); // a non-NotFound error propagates
   });
@@ -789,7 +790,7 @@ test("HttpCacheStore.get returns an artifact within the cap", async () => {
 });
 
 test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const src = new MemFs();
     src.files.set("dist/app.js", enc("built"));
@@ -799,12 +800,12 @@ test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", a
     // A workspace where a declared output is a link pointing outside it — the
     // `dist -> /tmp/build` shape the docs now warn about.
     const outside = `${dir}/outside.txt`;
-    await Deno.writeTextFile(outside, "untouched");
-    await Deno.mkdir(`${dir}/work/dist`, { recursive: true });
-    await Deno.symlink(outside, `${dir}/work/dist/app.js`);
+    await FileTasks.writeText(outside, "untouched");
+    await FileTasks.createDirectory(`${dir}/work/dist`);
+    await FileTasks.symlink(outside, `${dir}/work/dist/app.js`);
 
-    const cwd = Deno.cwd();
-    Deno.chdir(`${dir}/work`);
+    const cwd = RuntimeTasks.cwd();
+    RuntimeTasks.chdir(`${dir}/work`);
     try {
       const error = await assertRejects(
         () => restoreOutputs(artifact, defaultCacheHost, ["dist"]),
@@ -814,10 +815,10 @@ test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", a
         "refusing to restore over the symlink",
       );
     } finally {
-      Deno.chdir(cwd);
+      RuntimeTasks.chdir(cwd);
     }
     // The file the link pointed at is untouched, which is the actual guarantee.
-    assertEquals(await Deno.readTextFile(outside), "untouched");
+    assertEquals(await FileTasks.readText(outside), "untouched");
   });
 });
 
@@ -1011,41 +1012,43 @@ test("restoreOutputs refuses links on a host that cannot create them", async () 
 });
 
 test("defaultCacheHost round-trips a node_modules .bin link on the real filesystem", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
-    const cwd = Deno.cwd();
+    const cwd = RuntimeTasks.cwd();
     try {
-      await Deno.mkdir(`${dir}/src/node_modules/.bin`, { recursive: true });
-      await Deno.mkdir(`${dir}/src/node_modules/vitest/dist`, {
-        recursive: true,
-      });
-      await Deno.writeTextFile(
+      await FileTasks.createDirectory(`${dir}/src/node_modules/.bin`);
+      await FileTasks.createDirectory(`${dir}/src/node_modules/vitest/dist`);
+      await FileTasks.writeText(
         `${dir}/src/node_modules/vitest/vitest.mjs`,
         "import './dist/cli.js';\n",
       );
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/src/node_modules/vitest/dist/cli.js`,
         "globalThis.ran = true;\n",
       );
-      await Deno.symlink(
+      await FileTasks.symlink(
         "../vitest/vitest.mjs",
         `${dir}/src/node_modules/.bin/vitest`,
       );
-      Deno.chdir(`${dir}/src`);
+      RuntimeTasks.chdir(`${dir}/src`);
       const artifact = await archiveOutputs(["node_modules"], defaultCacheHost);
 
-      await Deno.mkdir(`${dir}/dst`);
-      Deno.chdir(`${dir}/dst`);
+      await FileTasks.createDirectory(`${dir}/dst`, { recursive: false });
+      RuntimeTasks.chdir(`${dir}/dst`);
       await restoreOutputs(artifact, defaultCacheHost, ["node_modules"]);
       assertEquals(
-        await Deno.readLink("node_modules/.bin/vitest"),
+        await FileTasks.readLink("node_modules/.bin/vitest"),
         "../vitest/vitest.mjs",
       );
       // The relative import resolves from the link's target, as after npm ci.
-      await import(`file://${dir}/dst/node_modules/.bin/vitest`);
+      // Through the resolved path: Vitest's module runner resolves an import
+      // beside the link itself, where Node and Deno follow it first.
+      await import(
+        `file://${await FileTasks.realPath("node_modules/.bin/vitest")}`
+      );
       assertEquals(Reflect.get(globalThis, "ran"), true);
     } finally {
-      Deno.chdir(cwd);
+      RuntimeTasks.chdir(cwd);
       Reflect.deleteProperty(globalThis, "ran");
     }
   });
@@ -1217,17 +1220,20 @@ test("archiveOutputs still copies two links to one directory outside the walk", 
 });
 
 test("defaultCacheHost archives an output holding a looping directory link", async () => {
-  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  if (RuntimeTasks.os() === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
-    const cwd = Deno.cwd();
+    const cwd = RuntimeTasks.cwd();
     try {
-      Deno.chdir(dir);
-      await Deno.mkdir("dist");
-      await Deno.writeTextFile("dist/app.js", "built");
+      RuntimeTasks.chdir(dir);
+      await FileTasks.createDirectory("dist", { recursive: false });
+      await FileTasks.writeText("dist/app.js", "built");
       // Absolute: descended until ELOOP, then the upload threw.
-      await Deno.symlink(`${await Deno.realPath(dir)}/dist`, "dist/abs");
+      await FileTasks.symlink(
+        `${await FileTasks.realPath(dir)}/dist`,
+        "dist/abs",
+      );
       // Relative, out and back in: copied once, leaving a dangling link.
-      await Deno.symlink("../dist", "dist/rel");
+      await FileTasks.symlink("../dist", "dist/rel");
       const out = new LinkFs();
       assertEquals(
         await restoreOutputs(
@@ -1239,7 +1245,7 @@ test("defaultCacheHost archives an output holding a looping directory link", asy
       );
       assertEquals(out.links.size, 0);
     } finally {
-      Deno.chdir(cwd);
+      RuntimeTasks.chdir(cwd);
     }
   });
 });
@@ -1299,9 +1305,12 @@ test("FileSystemCacheStore streams an archive in and out", async () => {
       "streamed",
     );
     // Renamed into place: nothing half-written is left beside it.
-    assertEquals([...Deno.readDirSync(`${dir}/cache`)].map((e) => e.name), [
-      "k1.tar.gz",
-    ]);
+    assertEquals(
+      (await FileTasks.readDirectory(`${dir}/cache`)).map((e) => e.name),
+      [
+        "k1.tar.gz",
+      ],
+    );
   });
 });
 
@@ -1318,18 +1327,18 @@ test("FileSystemCacheStore leaves nothing behind when a streamed upload fails", 
     });
     const err = await assertRejects(() => store.putStream("k1", failing));
     assertStringIncludes(err.message, "archive failed");
-    assertEquals([...Deno.readDirSync(`${dir}/cache`)].length, 0);
+    assertEquals((await FileTasks.readDirectory(`${dir}/cache`)).length, 0);
     assertEquals(await store.get("k1"), null);
   });
 });
 
 test("FileSystemCacheStore.getStream reports an error other than a miss", async () => {
   // Windows reports a path through a file as not found, which is a miss.
-  if (Deno.build.os === "windows") return;
+  if (RuntimeTasks.os() === "windows") return;
   await withTemp(async (dir) => {
     // The store directory is a file: opening an entry under it is ENOTDIR,
     // a broken store rather than an absent key.
-    await Deno.writeTextFile(`${dir}/cache`, "not a directory");
+    await FileTasks.writeText(`${dir}/cache`, "not a directory");
     const store = new FileSystemCacheStore(`${dir}/cache`);
     await assertRejects(() => store.getStream("k1"));
   });
@@ -1437,9 +1446,9 @@ test("archiveOutputs leaves install markers out of the archive", async () => {
 });
 
 test("FileSystemCacheStore refuses an entry other users could have written", async () => {
-  if (Deno.build.os === "windows") return; // no owner or mode bits to check
+  if (RuntimeTasks.os() === "windows") return; // no owner or mode bits to check
   await withTemp(async (dir) => {
-    const own = Deno.uid();
+    const own = RuntimeTasks.userId();
     const store = new FileSystemCacheStore(dir, { uid: () => own });
     await store.put("k", enc("payload"));
     // Written as the store writes it, whatever the umask: accepted.
@@ -1454,7 +1463,7 @@ test("FileSystemCacheStore refuses an entry other users could have written", asy
     );
     // Group- or world-writable: refused, by get as well as getStream.
     for (const mode of [0o664, 0o646]) {
-      await Deno.chmod(`${dir}/k.tar.gz`, mode);
+      await FileTasks.chmod(`${dir}/k.tar.gz`, mode);
       assertStringIncludes(
         messageOf(await assertRejects(() => store.get("k"))),
         "other users can write",
@@ -1470,7 +1479,7 @@ test("FileSystemCacheStore skips the owner and mode checks where there is no uid
     assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
     // Windows reports every writable file as mode 666; with no uid that is
     // not a refusal.
-    await Deno.chmod(`${dir}/k.tar.gz`, 0o666).catch(() => {});
+    await FileTasks.chmod(`${dir}/k.tar.gz`, 0o666).catch(() => {});
     assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
   });
 });

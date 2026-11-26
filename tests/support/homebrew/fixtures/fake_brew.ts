@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * A stand-in for `brew`, run by the running `deno` through the shim
+ * A stand-in for `brew`, run by the running runtime through the shim
  * `tests/_fake_brew.ts` writes. It records every invocation and imitates just
  * enough of Homebrew for a verification to run against it:
  *
@@ -16,37 +16,38 @@
  * @module
  */
 
-const log = Deno.env.get("FAKE_BREW_LOG") ?? "";
-const root = Deno.env.get("FAKE_BREW_ROOT") ?? "";
-const failing = (Deno.env.get("FAKE_BREW_FAIL") ?? "").split(",");
-const args = Deno.args;
+import { appendFileSync, mkdirSync, statSync } from "node:fs";
+
+const log = process.env["FAKE_BREW_LOG"] ?? "";
+const root = process.env["FAKE_BREW_ROOT"] ?? "";
+const failing = (process.env["FAKE_BREW_FAIL"] ?? "").split(",");
+const args = process.argv.slice(2);
 const verb = args[0] ?? "";
 const last = args[args.length - 1] ?? "";
 
-Deno.writeTextFileSync(
+appendFileSync(
   log,
   JSON.stringify({
     args,
-    autoUpdate: Deno.env.get("HOMEBREW_NO_AUTO_UPDATE") ?? null,
+    autoUpdate: process.env["HOMEBREW_NO_AUTO_UPDATE"] ?? null,
   }) + "\n",
-  { append: true },
 );
 
 if (failing.includes(verb)) {
   console.error(`fake brew: ${verb} failed`);
-  Deno.exit(1);
+  process.exit(1);
 }
 if (verb === "--repository") {
   console.log(`${root}/${last}`);
 } else if (verb === "tap-new") {
-  Deno.mkdirSync(`${root}/${last}/Formula`, { recursive: true });
+  mkdirSync(`${root}/${last}/Formula`, { recursive: true });
 } else if (verb === "install") {
   const [user, repo, name] = last.split("/");
   try {
-    Deno.statSync(`${root}/${user}/${repo}/Formula/${name}.rb`);
+    statSync(`${root}/${user}/${repo}/Formula/${name}.rb`);
   } catch {
     console.error("Error: No available formula with the name " + last);
-    Deno.exit(1);
+    process.exit(1);
   }
 } else if (verb === "info") {
   console.log(JSON.stringify({
