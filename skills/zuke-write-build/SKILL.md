@@ -1,32 +1,35 @@
 ---
 name: zuke-write-build
-description: Write or edit a Zuke build (build.ts) — the code-first, strongly-typed build system for Deno/TypeScript. Use when adding or changing targets, wiring dependencies, calling a tool wrapper (DenoTasks, NpmTasks, DockerTasks, ...), generating CI, or authoring/refactoring a build.ts build file. For first-time project scaffolding, use the zuke-setup skill instead.
+description: Write or edit a Zuke build (build.ts) — the code-first, strongly-typed build system for TypeScript, on Node or Deno. Use when adding or changing targets, wiring dependencies, calling a tool wrapper (DenoTasks, NpmTasks, DockerTasks, ...), generating CI, or authoring/refactoring a build.ts build file. For first-time project scaffolding, use the zuke-setup skill instead.
 ---
 
 # Write or edit a Zuke build
 
 A build is a class that **extends `Build`**. Each **target is a class field**
 created with `target()` and made runnable with `await run(MyBuild)` at the
-bottom of `build.ts` (no `import.meta.main` guard — `run` no-ops on import).
+bottom of `build.ts` (no `import.meta.main` guard — `run` no-ops on import). The
+build runs on Node, the default for a new project, or on Deno: `zuke.json`'s
+`"runtime"` field says which (`"node"`, or none for Deno). Builds on Deno are
+supported until October 2027; `docs/moving-to-node.md` moves one.
 
 <!-- check -->
 
 ```ts
 import { Build, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class CI extends Build {
-  lint = target()
-    .description("Lint sources")
+  install = target()
+    .description("Clean-install dependencies")
     .executes(async () => {
-      await DenoTasks.lint();
+      await NpmTasks.ci();
     });
 
   test = target()
-    .description("Type-check and test")
-    .dependsOn(this.lint)
+    .description("Run the test script")
+    .dependsOn(this.install)
     .executes(async () => {
-      await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+      await NpmTasks.test();
     });
 
   // A field named `default` runs when no target is named on the CLI.
@@ -38,16 +41,22 @@ await run(CI);
 
 ## Non-negotiable rules
 
-1. **Import `@zuke/*` by bare specifier, and declare it in `deno.json`.** Write
-   `import { DenoTasks } from "@zuke/deno";` and add `"@zuke/deno":
-   "jsr:@zuke/deno@^1"` to the `imports` block of the project's `deno.json` —
-   never an inline `jsr:@zuke/deno@^1` in the import statement. Deno's default
-   lint set (the one that applies when `deno.json` configures no `lint.rules`,
-   which is what `zuke setup` scaffolds) rejects an inline `jsr:` specifier
-   under `no-import-prefix`, so an inlined one fails the project's own `deno
-   task lint`. Pin the caret major in the import map instead, so a future
-   `@zuke` major cannot land unannounced. `zuke setup` already declares
-   `@zuke/core` there; adding a wrapper means adding its entry too.
+1. **Import `@zuke/*` by bare specifier, and declare it in the project's
+   manifest.** Write `import { DockerTasks } from "@zuke/docker";` the same way
+   on both runtimes; `zuke add docker` declares it, and `zuke setup` already
+   declared `@zuke/core`.
+   - **On Node**, `package.json` declares it under its npm alias:
+     `"@zuke/docker": "npm:@zuke-build/docker@^1"`. The `@zuke` scope on npm
+     belongs to someone else, so never install an `@zuke/*` package from npm by
+     that name.
+   - **On Deno**, the `imports` block of `deno.json` maps it: `"@zuke/docker":
+     "jsr:@zuke/docker@^1"`. Never an inline `jsr:@zuke/docker@^1` in the import
+     statement: Deno's default lint set (the one that applies when `deno.json`
+     configures no `lint.rules`, which is what `zuke setup` scaffolds) rejects
+     it under `no-import-prefix`, and Node cannot load one.
+
+   Either way the caret major is pinned in the manifest, so a future `@zuke`
+   major cannot land unannounced.
 2. **Dependencies are `this.<field>` references, never strings.**
    `.dependsOn(this.lint)`, not `.dependsOn("lint")` — so renames and typos are
    compile-time errors.
@@ -60,43 +69,52 @@ await run(CI);
    <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
    package table in [`references/cheatsheet.md`](references/cheatsheet.md) are
    the only ways to answer "does a `@zuke/<tool>` wrapper exist for this CLI?" —
-   per-package `deno doc jsr:@zuke/<pkg>` only describes a package whose name
-   you already know; it cannot tell you a wrapper exists. Whatever runs in an
-   `.executes(...)` body drives an external tool through its namespaced `*Tasks`
-   object, configured with a **settings lambda** that mirrors the real CLI's
-   flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and 30+ more —
-   never a raw `Deno.Command` or shell string. `jsr:@zuke/cmd` (`CmdTasks.exec`)
-   or the `$` shell from `jsr:@zuke/core/shell` is the **last resort**, reached
-   for only once the catalogue confirms no typed wrapper exists — using it for a
-   tool that has a `@zuke/<tool>` package is a **bug**, not a style choice: it
-   discards typed flags, argv purity, and tool resolution. (If a build delegates
-   its side effects to your own tested modules behind injected clients, the
-   wrapper rule still governs whatever those modules run in the target body.)
+   a package's own docs only describe a package whose name you already know;
+   they cannot tell you a wrapper exists. Whatever runs in an `.executes(...)`
+   body drives an external tool through its namespaced `*Tasks` object,
+   configured with a **settings lambda** that mirrors the real CLI's flags —
+   `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and 30+ more — never a
+   raw `Deno.Command`, `node:child_process` or shell string. `@zuke/cmd`
+   (`CmdTasks.exec`) or the `$` shell from `@zuke/core/shell` is the **last
+   resort**, reached for only once the catalogue confirms no typed wrapper
+   exists — using it for a tool that has a `@zuke/<tool>` package is a **bug**,
+   not a style choice: it discards typed flags, argv purity, and tool
+   resolution. (If a build delegates its side effects to your own tested modules
+   behind injected clients, the wrapper rule still governs whatever those
+   modules run in the target body.)
 5. **A body is required**, unless the target is one of the four forms that
    replace it: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, or a
    target declaring only `.effect(...)`. Otherwise set `.executes(...)`; it may
    be sync or async, and its return value is ignored — `.executes(() =>
    DenoTasks.lint())` is fine as-is; never wrap a single wrapper call in an
    `async` block just to discard its result.
+6. **Reach the runtime through `@zuke/core`, never through `Deno.*`.** A build
+   on Node has no `Deno` global. `FileTasks` (files), `EnvTasks` (the
+   environment), `RuntimeTasks` (working directory, platform, arguments, exit)
+   and `ProcessTasks` or `$` (subprocesses) work on both runtimes.
 
 ## Find the exact signature first
 
 Before calling any task or settings method, confirm the real shape — but first
-confirm a wrapper exists at all: `deno doc` needs a package name to target, so
-it cannot answer "does one exist for this tool?"; only the catalogue
-(`llms.txt`'s `## Packages` list or the cheatsheet table below) can.
+confirm a wrapper exists at all: a package's docs need its name, so they cannot
+answer "does one exist for this tool?"; only the catalogue (`llms.txt`'s `##
+Packages` list or the cheatsheet table below) can.
 
-- **One package — prefer this in a consumer repo, once you know its name:**
-  `deno doc jsr:@zuke/<package>` (e.g. `deno doc jsr:@zuke/deno`). It resolves
-  the version the project actually has installed, so it cannot describe an API
-  that version lacks.
+- **One package — prefer this in a consumer repo, once you know its name.** It
+  shows the version the project actually has installed, so it cannot describe an
+  API that version lacks.
+  - On Node: `node_modules/@zuke/<package>/README.md` and its `## API` section,
+    and the package's `.d.ts` files beside it, once `./zuke` or `npm ci` has
+    installed the dependencies.
+  - On Deno: `deno doc jsr:@zuke/<package>` (e.g. `deno doc jsr:@zuke/docker`),
+    or `zuke doc <package>`, which runs it.
 - **Whole surface:** `llms-full.txt` (index: `llms.txt`) — at the repo root in
   the Zuke repo itself. From a consumer repo, fetch
   <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
   Both track `master`, so they can document symbols that are merged but not yet
   in any published release. Use them for breadth — which packages and tasks
-  exist — and confirm a signature with `deno doc` before relying on it.
+  exist — and confirm a signature in the installed package before relying on it.
 - A quick map of the most common methods and task objects is in
   [`references/cheatsheet.md`](references/cheatsheet.md) next to this file —
   read it when wiring targets, then verify specifics against the sources above.
@@ -106,13 +124,13 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 1. Read the existing `build.ts` to learn the targets already declared and their
    order.
 2. Identify the tool you need and look up its `*Tasks` object and settings
-   methods (cheatsheet → `deno doc` / `llms-full.txt`).
+   methods (cheatsheet → the installed package / `llms-full.txt`).
 3. Add or edit the target field. Place it **below** every target it depends on.
    Wire dependencies with `this.<field>`.
 4. Validate with the `zuke` command (it works from any directory inside the
-   project; install it with `deno install -A -g -n zuke jsr:@zuke/cli` if it is
-   missing): `zuke --list` shows it; `zuke <target> --dry-run` previews the
-   plan; `zuke <target>` runs it.
+   project; install it with `npm install -g @zuke-build/cli` if it is missing,
+   or run the project's `./zuke` launcher instead): `zuke --list` shows it;
+   `zuke <target> --dry-run` previews the plan; `zuke <target>` runs it.
 
 ## Common building blocks (see the cheatsheet for details)
 
