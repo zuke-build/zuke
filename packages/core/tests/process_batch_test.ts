@@ -306,6 +306,42 @@ test("a package manager's shim for a Node script is seen through", () => {
   }
 });
 
+test("a bare name on Windows is found through PATHEXT, as Deno finds it", () => {
+  const parent = { SystemRoot: "C:\\Windows" };
+  const prompt = "C:\\Windows\\System32\\cmd.exe";
+  const host = hostWith({
+    "C:\\a\\git.exe": "",
+    "C:\\b\\npm.cmd": "@echo off",
+    "C:\\b\\git.cmd": "@echo off",
+  });
+  const child = { Path: "C:\\a;relative;C:\\b" };
+  // npm is npm.cmd, which Node's own search would never find.
+  assertEquals(invocation("npm", ["&c"], true, parent, child, host), {
+    file: prompt,
+    args: ["/e:ON", "/v:OFF", "/d", "/c", '""C:\\b\\npm.cmd" "&c""'],
+    verbatim: true,
+  });
+  // The first directory with a match wins, and a program there is left to Node.
+  assertEquals(invocation("git", [], true, parent, child, host).file, "git");
+  // PATHEXT decides the extensions and their order.
+  assertEquals(
+    invocation("git", [], true, parent, { ...child, PATHEXT: ".CMD" }, host)
+      .args[4],
+    '""C:\\b\\git.cmd""',
+  );
+  // A name with an extension or a directory is not searched with more.
+  assertEquals(
+    invocation("npm.exe", [], true, parent, child, host).file,
+    "npm.exe",
+  );
+  assertEquals(
+    invocation("a\\npm", [], true, parent, child, host).file,
+    "a\\npm",
+  );
+  // Nothing on PATH leaves the name for Node to report missing.
+  assertEquals(invocation("pnpm", [], true, parent, child, host).file, "pnpm");
+});
+
 test("everything else is started as it is", () => {
   const args = ["a b", "&c", "new\nline"];
   const none = hostWith();

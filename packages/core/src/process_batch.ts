@@ -61,6 +61,30 @@ const UNPASSABLE = /[\r\n\0]/;
  */
 const NODE_NAMES = ["node.com", "node.exe", "node.bat", "node.cmd"];
 
+/** The extensions Windows tries for a bare name when `PATHEXT` is not set. */
+const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+
+/**
+ * The batch file a bare `command` names on Windows, found on the full paths
+ * of `searchPath` with each of `pathext`'s extensions in order, as Deno finds
+ * it, or `command` itself. Node searches `PATH` for `.com` and `.exe` only, so
+ * without this `npm`, which is `npm.cmd`, would not be found. A program the
+ * search finds first is left to Node, which finds it the same way.
+ */
+function namedBatchFile(
+  command: string,
+  searchPath: string | undefined,
+  pathext: string | undefined,
+  isFile: (path: string) => boolean,
+): string {
+  if (/[\\/]/.test(command) || /\.[^.]*$/.test(command)) return command;
+  const names = (pathext ?? DEFAULT_PATHEXT).split(";")
+    .filter((extension) => extension !== "")
+    .map((extension) => `${command}${extension.toLowerCase()}`);
+  const found = onSearchPath(names, searchPath, isFile);
+  return found !== null && isBatchFile(found) ? found : command;
+}
+
 /** What Node is asked to start: a program, its arguments, and how they are passed. */
 export interface Invocation {
   /** The program to start. */
@@ -223,6 +247,9 @@ export interface BatchHost {
 
 /**
  * What Node starts for `command` with `args`.
+ * - On Windows a bare name is found on the child's `PATH` through its
+ *   `PATHEXT`, as Deno finds it, so a batch file such as `npm.cmd` is run as
+ *   one.
  *
  * - Anything that is not a batch file on Windows is started as it is.
  * - A batch file that is only a package manager's shim for a Node script is
@@ -247,13 +274,18 @@ export function invocation(
   child: Readonly<Record<string, string | undefined>>,
   host: BatchHost,
 ): Invocation {
-  if (!windows || !isBatchFile(command)) {
-    return { file: command, args, verbatim: false };
-  }
+  if (!windows) return { file: command, args, verbatim: false };
+  const searchPath = variable(child, "PATH");
+  const resolved = namedBatchFile(
+    command,
+    searchPath,
+    variable(child, "PATHEXT"),
+    host.isFile,
+  );
+  if (!isBatchFile(resolved)) return { file: command, args, verbatim: false };
   // Windows drops dots and spaces from the end of a name; cmd.exe, given the
   // name in quotes, does not, and would not find the file.
-  const named = command.replace(/[. ]+$/, "");
-  const searchPath = variable(child, "PATH");
+  const named = resolved.replace(/[. ]+$/, "");
   const script = resolvedBatchFile(named, searchPath, host.isFile);
   const target = shimTarget(script, host.readText, host.isFile);
   if (target !== null) {
