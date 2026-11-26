@@ -12,7 +12,9 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
+import { withTemp } from "./_temp.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { collectActionPins, SEED_PINS } from "../build/action_pins.ts";
 
@@ -21,9 +23,9 @@ const SHA_B = "b".repeat(40);
 
 /** Write `files` into a fresh temp directory and return its path. */
 async function workflows(files: Record<string, string>): Promise<string> {
-  const dir = await Deno.makeTempDir();
+  const dir = await FileTasks.makeTempDirectory();
   for (const [name, text] of Object.entries(files)) {
-    await Deno.writeTextFile(`${dir}/${name}`, text);
+    await FileTasks.writeText(`${dir}/${name}`, text);
   }
   return dir;
 }
@@ -61,7 +63,7 @@ test("a pinned uses line yields its action, sha, and version", async () => {
       "v4.37.4",
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -75,7 +77,7 @@ test("a pin with no version comment is still collected", async () => {
       version: undefined,
     });
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -93,7 +95,7 @@ test("the file that names the version wins over one that omits it", async () => 
       "v7.0.1",
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -113,7 +115,7 @@ test("two files pinning one action to different SHAs is an error", async () => {
     assertStringIncludes(error.message, "one.yml");
     assertStringIncludes(error.message, "two.yml");
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -136,13 +138,13 @@ test("a floating tag or a short sha is not treated as a pin", async () => {
     // A commented-out line is not a `uses:` step.
     assertEquals(pins.has("actions/stale"), false);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
 test("a missing workflow directory yields no pins rather than throwing", async () => {
-  const dir = await Deno.makeTempDir();
-  await Deno.remove(dir);
+  const dir = await FileTasks.makeTempDirectory();
+  await FileTasks.remove(dir);
   // Generating into a repository with no workflows yet must fall back to the
   // seed, not fail.
   assertEquals(pinsFrom(dir).size, 0);
@@ -161,7 +163,7 @@ test("non-YAML files in the directory are ignored", async () => {
       true,
     );
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await FileTasks.remove(dir, { recursive: true });
   }
 });
 
@@ -195,7 +197,7 @@ test("no declared workflow hardcodes an action SHA", async () => {
   // package) silently reverts a bot's bump on the next run. It had already
   // happened here — `integrationCi` pinned three actions by hand, and
   // @zuke/ai's constant had to be updated to match what Dependabot set.
-  const build = await Deno.readTextFile("build.ts");
+  const build = await FileTasks.readText("build.ts");
   const literals = build.split("\n")
     .map((line, i) => ({ line, no: i + 1 }))
     .filter(({ line }) => /["'][\w.-]+\/[\w.\-/]+@[0-9a-f]{40}["']/.test(line));
@@ -220,10 +222,10 @@ test("every generated workflow pin carries its version comment", async () => {
   // Dependabot rewrites the SHA and the `# vX.Y.Z` beside it together, and its
   // metadata tracks that version. A generated file that dropped the comment
   // would leave the bump with no version to report.
-  for await (const entry of Deno.readDir(".github/workflows")) {
+  for (const entry of await FileTasks.readDirectory(".github/workflows")) {
     if (!entry.isFile || !/\.ya?ml$/.test(entry.name)) continue;
     if (NO_VERSION_COMMENTS.has(entry.name)) continue;
-    const text = await Deno.readTextFile(`.github/workflows/${entry.name}`);
+    const text = await FileTasks.readText(`.github/workflows/${entry.name}`);
     for (const line of text.split("\n")) {
       if (!/^\s*(?:-\s+)?uses:/.test(line)) continue;
       assertEquals(
@@ -235,81 +237,75 @@ test("every generated workflow pin carries its version comment", async () => {
   }
 });
 
-test("the action.yml manifest outranks a generated workflow", () => {
+test("the action.yml manifest outranks a generated workflow", async () => {
   // The point of the manifest: the generator never writes it, so a bump landing
   // there cannot be undone by regenerating. A workflow disagreeing with it is
   // not a conflict — it is a file about to be rewritten.
-  const dir = Deno.makeTempDirSync();
-  const manifest = `${dir}/action.yml`;
-  Deno.writeTextFileSync(
-    manifest,
-    `runs:\n  steps:\n    - uses: actions/checkout@${SHA_B} # v9.9.9\n`,
-  );
-  const workflows = Deno.makeTempDirSync();
-  Deno.writeTextFileSync(
-    `${workflows}/ci.yml`,
-    `      - uses: actions/checkout@${SHA_A} # v7.0.1\n`,
-  );
-  try {
+  await withTemp(async (dir) => {
+    const manifest = `${dir}/action.yml`;
+    await FileTasks.writeText(
+      manifest,
+      `runs:\n  steps:\n    - uses: actions/checkout@${SHA_B} # v9.9.9\n`,
+    );
+    const workflows = `${dir}/workflows`;
+    await FileTasks.createDirectory(workflows);
+    await FileTasks.writeText(
+      `${workflows}/ci.yml`,
+      `      - uses: actions/checkout@${SHA_A} # v7.0.1\n`,
+    );
     const pins = collectActionPins(workflows, manifest);
     assertEquals(
       pins.get("actions/checkout")?.ref,
       `actions/checkout@${SHA_B}`,
     );
     assertEquals(pins.get("actions/checkout")?.version, "v9.9.9");
-  } finally {
-    Deno.removeSync(dir, { recursive: true });
-    Deno.removeSync(workflows, { recursive: true });
-  }
+  });
 });
 
-test("a manifest pin silences the disagreement between two workflows", () => {
+test("a manifest pin silences the disagreement between two workflows", async () => {
   // With an authoritative source there is nothing to disagree about — the
   // half-applied-bump error is for when no such source names the action.
-  const dir = Deno.makeTempDirSync();
-  const manifest = `${dir}/action.yml`;
-  Deno.writeTextFileSync(manifest, `    - uses: actions/checkout@${SHA_B}\n`);
-  const workflows = Deno.makeTempDirSync();
-  Deno.writeTextFileSync(
-    `${workflows}/a.yml`,
-    `  - uses: actions/checkout@${SHA_A}\n`,
-  );
-  Deno.writeTextFileSync(
-    `${workflows}/b.yml`,
-    `  - uses: actions/checkout@${"c".repeat(40)}\n`,
-  );
-  try {
+  await withTemp(async (dir) => {
+    const manifest = `${dir}/action.yml`;
+    await FileTasks.writeText(
+      manifest,
+      `    - uses: actions/checkout@${SHA_B}\n`,
+    );
+    const workflows = `${dir}/workflows`;
+    await FileTasks.createDirectory(workflows);
+    await FileTasks.writeText(
+      `${workflows}/a.yml`,
+      `  - uses: actions/checkout@${SHA_A}\n`,
+    );
+    await FileTasks.writeText(
+      `${workflows}/b.yml`,
+      `  - uses: actions/checkout@${"c".repeat(40)}\n`,
+    );
     assertEquals(
       collectActionPins(workflows, manifest).get("actions/checkout")?.ref,
       `actions/checkout@${SHA_B}`,
     );
-  } finally {
-    Deno.removeSync(dir, { recursive: true });
-    Deno.removeSync(workflows, { recursive: true });
-  }
+  });
 });
 
-test("an absent manifest falls back to the workflows", () => {
-  const workflows = Deno.makeTempDirSync();
-  Deno.writeTextFileSync(
-    `${workflows}/a.yml`,
-    `  - uses: actions/checkout@${SHA_A}\n`,
-  );
-  try {
+test("an absent manifest falls back to the workflows", async () => {
+  await withTemp(async (workflows) => {
+    await FileTasks.writeText(
+      `${workflows}/a.yml`,
+      `  - uses: actions/checkout@${SHA_A}\n`,
+    );
     assertEquals(
       collectActionPins(workflows, `${workflows}/missing.yml`)
         .get("actions/checkout")?.ref,
       `actions/checkout@${SHA_A}`,
     );
-  } finally {
-    Deno.removeSync(workflows, { recursive: true });
-  }
+  });
 });
 
-test("the committed action.yml pins every action the build uses", () => {
+test("the committed action.yml pins every action the build uses", async () => {
   // The manifest is only a useful source for actions it actually names, so a
   // new pinned action must be added there rather than left to the workflows.
-  const manifest = Deno.readTextFileSync("action.yml");
+  const manifest = await FileTasks.readText("action.yml");
   for (const action of ["step-security/harden-runner", "actions/checkout"]) {
     assertStringIncludes(manifest, `uses: ${action}@`);
   }

@@ -11,6 +11,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
@@ -95,11 +96,11 @@ test("collect: reads and aggregates marked snippets across files in order", asyn
   await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
     const b = `${dir}/b.md`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       a,
       [CHECK_MARKER, "```ts", "const a = 1;", "```"].join("\n"),
     );
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       b,
       [CHECK_MARKER, "```ts", "const b = 2;", "```"].join("\n"),
     );
@@ -112,7 +113,7 @@ test("collect: reads and aggregates marked snippets across files in order", asyn
 test("check: no marked snippets means no work and no failures", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
-    await Deno.writeTextFile(md, "```ts\nconst broken: number = 'x';\n```");
+    await FileTasks.writeText(md, "```ts\nconst broken: number = 'x';\n```");
     let called = false;
     const spy: SnippetChecker = () => {
       called = true;
@@ -126,7 +127,7 @@ test("check: no marked snippets means no work and no failures", async () => {
 test("check: a failing snippet is reported with its source location, temp path reduced", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       md,
       [CHECK_MARKER, "```ts", "const a = 1;", "```"].join("\n"),
     );
@@ -149,7 +150,7 @@ test("check: a failing snippet is reported with its source location, temp path r
 test("check: every snippet is checked in one run, and a clean run stops there", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       md,
       [
         CHECK_MARKER,
@@ -177,7 +178,7 @@ test("check: every snippet is checked in one run, and a clean run stops there", 
 test("check: a failed batch is re-checked per snippet, naming only the failing one", async () => {
   await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       md,
       [
         CHECK_MARKER,
@@ -236,42 +237,47 @@ test("format: renders every failure by source location above its detail", () => 
   assertStringIncludes(message, "<!-- check -->");
 });
 
-test("check (real deno): the pilot's wrong order fails, the correct order passes", async () => {
-  await withTemp(async (dir) => {
-    const md = `${dir}/params.md`;
-    await Deno.writeTextFile(
-      md,
-      [
-        CHECK_MARKER,
-        "```ts",
-        'import { Build, parameter, run } from "jsr:@zuke/core";',
-        "class Good extends Build {",
-        '  repos = parameter("r").required().array();',
-        "}",
-        "await run(Good);",
-        "```",
-        "",
-        CHECK_MARKER,
-        "```ts",
-        'import { Build, parameter, run } from "jsr:@zuke/core";',
-        "class Bad extends Build {",
-        '  repos = parameter("r").array().required();',
-        "}",
-        "await run(Bad);",
-        "```",
-      ].join("\n"),
-    );
-    const failures = await checkSnippets([md]); // real deno check
-    assertEquals(failures.length, 1); // only the wrong-order block fails
-    assertEquals(failures[0].file, md);
-    assertEquals(failures[0].line, 11); // the second (Bad) block's fence line
-    assertStringIncludes(failures[0].detail, "snippet.ts"); // temp path reduced
-    assertEquals(failures[0].detail.includes(dir), false);
-    // No random temp-dir name leaks — neither the scratch dir prefix nor the
-    // raw temp filename survive (the `Check <relative>` progress line is off).
-    assertEquals(failures[0].detail.includes(".snippets-"), false);
-    assertEquals(failures[0].detail.includes("snippet_"), false);
-  });
+test({
+  name:
+    "check (real deno): the pilot's wrong order fails, the correct order passes",
+  denoOnly: "runs a real deno check",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const md = `${dir}/params.md`;
+      await FileTasks.writeText(
+        md,
+        [
+          CHECK_MARKER,
+          "```ts",
+          'import { Build, parameter, run } from "jsr:@zuke/core";',
+          "class Good extends Build {",
+          '  repos = parameter("r").required().array();',
+          "}",
+          "await run(Good);",
+          "```",
+          "",
+          CHECK_MARKER,
+          "```ts",
+          'import { Build, parameter, run } from "jsr:@zuke/core";',
+          "class Bad extends Build {",
+          '  repos = parameter("r").array().required();',
+          "}",
+          "await run(Bad);",
+          "```",
+        ].join("\n"),
+      );
+      const failures = await checkSnippets([md]); // real deno check
+      assertEquals(failures.length, 1); // only the wrong-order block fails
+      assertEquals(failures[0].file, md);
+      assertEquals(failures[0].line, 11); // the second (Bad) block's fence line
+      assertStringIncludes(failures[0].detail, "snippet.ts"); // temp path reduced
+      assertEquals(failures[0].detail.includes(dir), false);
+      // No random temp-dir name leaks — neither the scratch dir prefix nor the
+      // raw temp filename survive (the `Check <relative>` progress line is off).
+      assertEquals(failures[0].detail.includes(".snippets-"), false);
+      assertEquals(failures[0].detail.includes("snippet_"), false);
+    });
+  },
 });
 
 // --- the inline-specifier guard ---
@@ -344,8 +350,8 @@ test("inline: collect aggregates across files in order", async () => {
   await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
     const b = `${dir}/b.md`;
-    await Deno.writeTextFile(a, 'import { A } from "jsr:@zuke/core";');
-    await Deno.writeTextFile(b, 'import { B } from "@zuke/deno";');
+    await FileTasks.writeText(a, 'import { A } from "jsr:@zuke/core";');
+    await FileTasks.writeText(b, 'import { B } from "@zuke/deno";');
     const found = await collectInlineSpecifiers([a, b]);
     assertEquals(found.length, 1);
     assertEquals(found[0].file, a);

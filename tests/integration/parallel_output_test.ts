@@ -13,11 +13,13 @@
 
 import { test } from "../_testing.ts";
 import { assertEquals } from "../_assert.ts";
-import { Build, group, target } from "../../packages/core/mod.ts";
+import { Build, group, RuntimeTasks, target } from "../../packages/core/mod.ts";
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Plugin } from "../../packages/core/src/plugin.ts";
 import { flushInFlightOutput } from "../../packages/core/src/scheduler.ts";
 import { $ } from "../../packages/core/src/shell.ts";
+import { captureStdio } from "../_console.ts";
+import { ARGS, EVAL } from "../_eval.ts";
 
 /** What the run in progress has printed so far, readable from a target body. */
 const printed: string[] = [];
@@ -30,27 +32,19 @@ async function transcript(
 ): Promise<{ code: number; lines: string[] }> {
   const parts = printed;
   parts.length = 0;
-  const decoder = new TextDecoder();
   const origLog = console.log;
   const origErr = console.error;
-  const origOut = Deno.stdout.writeSync;
-  const origStderr = Deno.stderr.writeSync;
-  const raw = (p: Uint8Array) => {
-    parts.push(decoder.decode(p));
-    return p.length;
-  };
   console.log = (...a: unknown[]) => void parts.push(a.join(" ") + "\n");
   console.error = (...a: unknown[]) => void parts.push(a.join(" ") + "\n");
-  Deno.stdout.writeSync = raw;
-  Deno.stderr.writeSync = raw;
   try {
-    const code = await main(BuildClass, args, options);
+    const code = await captureStdio(
+      (text) => void parts.push(text),
+      () => main(BuildClass, args, options),
+    );
     return { code, lines: parts.join("").split("\n") };
   } finally {
     console.log = origLog;
     console.error = origErr;
-    Deno.stdout.writeSync = origOut;
-    Deno.stderr.writeSync = origStderr;
   }
 }
 
@@ -65,8 +59,8 @@ function lineOf(lines: string[], re: RegExp): number {
 function echoLater(text: string, ms: number) {
   // Values go in as argv, so the evaluated code is a constant.
   const code =
-    `await new Promise((r) => setTimeout(r, Number(Deno.args[1]))); console.log(Deno.args[0]);`;
-  return $`${Deno.execPath()} eval ${code} ${text} ${String(ms)}`;
+    `const [text, ms] = ${ARGS}; setTimeout(() => console.log(text), Number(ms));`;
+  return $`${RuntimeTasks.execPath()} ${EVAL} ${code} ${text} ${String(ms)}`;
 }
 
 class GroupedBuild extends Build {
@@ -245,7 +239,7 @@ class ConsoleAndServiceBuild extends Build {
   slow = target().partOf(this.checks).executes(async () => {
     console.log("SLOW-LOG");
     const code = `console.log("SVC-OUT");`;
-    const service = $`${Deno.execPath()} eval ${code}`.spawn();
+    const service = $`${RuntimeTasks.execPath()} ${EVAL} ${code}`.spawn();
     await service.status;
     await new Promise((r) => setTimeout(r, 400));
   });

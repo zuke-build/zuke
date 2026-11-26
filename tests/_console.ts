@@ -10,6 +10,9 @@
  * @module
  */
 
+import process from "node:process";
+import { RuntimeTasks } from "../packages/core/mod.ts";
+
 /**
  * Install `log`/`warn`/`error` as the console writers, returning the function
  * that restores the originals. Pass the current `console.<name>` for a channel
@@ -80,5 +83,51 @@ export async function silence(fn: () => Promise<unknown>): Promise<void> {
     await fn();
   } finally {
     restore();
+  }
+}
+
+/**
+ * Run `fn` with every byte the process writes to its stdout and stderr handed
+ * to `push` as text instead, through whichever writer the runtime gives core:
+ * Deno's `writeSync`, or a Node stream's `write`. The writers are put back
+ * afterwards, on the failure path too.
+ */
+export async function captureStdio<T>(
+  push: (text: string) => void,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const decoder = new TextDecoder();
+  const text = (chunk: unknown) =>
+    typeof chunk === "string"
+      ? chunk
+      : chunk instanceof Uint8Array
+      ? decoder.decode(chunk)
+      : String(chunk);
+  if (RuntimeTasks.facts().name === "deno") {
+    const saved = [Deno.stdout.writeSync, Deno.stderr.writeSync];
+    const raw = (bytes: Uint8Array) => {
+      push(text(bytes));
+      return bytes.length;
+    };
+    Deno.stdout.writeSync = raw;
+    Deno.stderr.writeSync = raw;
+    try {
+      return await fn();
+    } finally {
+      [Deno.stdout.writeSync, Deno.stderr.writeSync] = saved;
+    }
+  }
+  const streams = [process.stdout, process.stderr];
+  const saved = streams.map((stream) => Reflect.get(stream, "write"));
+  for (const stream of streams) {
+    Reflect.set(stream, "write", (chunk: unknown) => {
+      push(text(chunk));
+      return true;
+    });
+  }
+  try {
+    return await fn();
+  } finally {
+    streams.forEach((stream, i) => Reflect.set(stream, "write", saved[i]));
   }
 }

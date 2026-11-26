@@ -13,8 +13,11 @@ import {
   absolutePath,
   Build,
   cicd,
+  EnvTasks,
+  FileTasks,
   group,
   type Plugin,
+  RuntimeTasks,
   target,
 } from "../mod.ts";
 import {
@@ -325,8 +328,8 @@ test("main doc resolves a relative spec to an absolute path before running", asy
     // into the specifier, where it would show up in any error echoing it.
     // Expressed through the same helper the resolver uses, because on Windows
     // the cwd has backslashes and the normalised result does not.
-    absolutePath(Deno.cwd(), "mod.ts").path,
-    absolutePath(Deno.cwd(), "src/lib.ts").path,
+    absolutePath(RuntimeTasks.cwd(), "mod.ts").path,
+    absolutePath(RuntimeTasks.cwd(), "src/lib.ts").path,
     "npm:cowsay",
     "/abs/mod.ts",
     "C:/mods/mod.ts",
@@ -866,7 +869,7 @@ test("main completions install wires up each shell and is idempotent", async () 
     const fish = await install("fish");
     assertStringIncludes(fish.out.join("\n"), "Open a new shell");
 
-    const script = await Deno.readTextFile(
+    const script = await FileTasks.readText(
       `${home}/.config/zuke/completions/zuke.bash`,
     );
     assertStringIncludes(script, "_zuke_complete");
@@ -875,7 +878,7 @@ test("main completions install wires up each shell and is idempotent", async () 
 
 test("main completions install reports a failure as exit 1", async () => {
   // A regular file standing in for the home dir makes directory creation fail.
-  const file = await Deno.makeTempFile();
+  const file = await FileTasks.makeTempFile();
   try {
     const { code, err } = await capture(() =>
       main(Demo, ["completions", "install", "zsh"], {
@@ -885,7 +888,7 @@ test("main completions install reports a failure as exit 1", async () => {
     assertEquals(code, 1);
     assertEquals(err.length > 0, true);
   } finally {
-    await Deno.remove(file);
+    await FileTasks.remove(file);
   }
 });
 
@@ -918,14 +921,14 @@ test("main resolves a parameter flag and runs the target", async () => {
 
 test("main fails with exit 1 when a required parameter is missing", async () => {
   // Ensure the value can't leak in from the ambient environment.
-  const saved = Deno.env.get("ENVIRONMENT");
-  Deno.env.delete("ENVIRONMENT");
+  const saved = EnvTasks.get("ENVIRONMENT");
+  EnvTasks.delete("ENVIRONMENT");
   try {
     const { code, err } = await capture(() => main(Parameterised, ["greet"]));
     assertEquals(code, 1);
     assertEquals(err.join("\n").includes("--environment is required"), true);
   } finally {
-    if (saved !== undefined) Deno.env.set("ENVIRONMENT", saved);
+    if (saved !== undefined) EnvTasks.set("ENVIRONMENT", saved);
   }
 });
 
@@ -1023,54 +1026,63 @@ test("main returns 1 when an executed target fails", async () => {
 /** Sentinel thrown by the stubbed `process.exit` so control returns to the test. */
 class ExitSignal extends Error {}
 
-test("run() drives main and sets the process exit code", async () => {
-  const origExit = process.exit;
-  let captured: number | undefined;
-  process.exit = (code?: number): never => {
-    captured = code ?? 0;
-    throw new ExitSignal();
-  };
-  const origLog = console.log;
-  console.log = () => {};
-  try {
-    await run(Demo, { args: ["--list"] });
-  } catch (e) {
-    if (!(e instanceof ExitSignal)) throw e;
-  } finally {
-    process.exit = origExit;
-    console.log = origLog;
-  }
-  assertEquals(captured, 0);
+test({
+  name: "run() drives main and sets the process exit code",
+  denoOnly:
+    "runs only as Deno's main module, and under Vitest the entry is Vitest's",
+  fn: async () => {
+    const origExit = process.exit;
+    let captured: number | undefined;
+    process.exit = (code?: number): never => {
+      captured = code ?? 0;
+      throw new ExitSignal();
+    };
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      await run(Demo, { args: ["--list"] });
+    } catch (e) {
+      if (!(e instanceof ExitSignal)) throw e;
+    } finally {
+      process.exit = origExit;
+      console.log = origLog;
+    }
+    assertEquals(captured, 0);
+  },
 });
 
-test("run() is a no-op when its module isn't the program entry", async () => {
-  // Simulate the build file being imported (e.g. under test) rather than run
-  // directly: point Deno.mainModule at a different module than this caller.
-  const origExit = process.exit;
-  const mainDesc = Object.getOwnPropertyDescriptor(Deno, "mainModule");
-  let exited = false;
-  let ran = false;
-  process.exit = (_code?: number): never => {
-    exited = true;
-    throw new ExitSignal();
-  };
-  Object.defineProperty(Deno, "mainModule", {
-    value: "file:///somewhere/else.ts",
-    configurable: true,
-  });
-  class Demo2 extends Build {
-    go = target().executes(() => void (ran = true));
-  }
-  try {
-    await run(Demo2, { args: ["go"] });
-  } finally {
-    process.exit = origExit;
-    if (mainDesc !== undefined) {
-      Object.defineProperty(Deno, "mainModule", mainDesc);
+test({
+  name: "run() is a no-op when its module isn't the program entry",
+  denoOnly: "stubs Deno.mainModule",
+  fn: async () => {
+    // Simulate the build file being imported (e.g. under test) rather than run
+    // directly: point Deno.mainModule at a different module than this caller.
+    const origExit = process.exit;
+    const mainDesc = Object.getOwnPropertyDescriptor(Deno, "mainModule");
+    let exited = false;
+    let ran = false;
+    process.exit = (_code?: number): never => {
+      exited = true;
+      throw new ExitSignal();
+    };
+    Object.defineProperty(Deno, "mainModule", {
+      value: "file:///somewhere/else.ts",
+      configurable: true,
+    });
+    class Demo2 extends Build {
+      go = target().executes(() => void (ran = true));
     }
-  }
-  assertEquals(exited, false);
-  assertEquals(ran, false);
+    try {
+      await run(Demo2, { args: ["go"] });
+    } finally {
+      process.exit = origExit;
+      if (mainDesc !== undefined) {
+        Object.defineProperty(Deno, "mainModule", mainDesc);
+      }
+    }
+    assertEquals(exited, false);
+    assertEquals(ran, false);
+  },
 });
 
 test("main honours --skip", async () => {
@@ -1104,14 +1116,14 @@ class CiBuild extends Build {
 
 /** Run `fn` with the process cwd set to a fresh temp dir, then clean up. */
 async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  const prev = Deno.cwd();
-  Deno.chdir(dir);
+  const dir = await FileTasks.makeTempDirectory();
+  const prev = RuntimeTasks.cwd();
+  RuntimeTasks.chdir(dir);
   try {
     await fn(dir);
   } finally {
-    Deno.chdir(prev);
-    await Deno.remove(dir, { recursive: true });
+    RuntimeTasks.chdir(prev);
+    await FileTasks.remove(dir, { recursive: true });
   }
 }
 
@@ -1126,7 +1138,7 @@ test("main: generate-ci writes the declared CI file", async () => {
   await inTempDir(async (dir) => {
     const { code, out } = await capture(() => main(CiBuild, ["generate-ci"]));
     assertEquals(code, 0);
-    const content = await Deno.readTextFile(
+    const content = await FileTasks.readText(
       `${dir}/.github/workflows/zuke.yml`,
     );
     assertStringIncludes(content, "name: CI");
@@ -1155,12 +1167,12 @@ test("main: running a target keeps a current CI file in sync", async () => {
     // Pre-write the expected content so the on-run sync is a no-op regardless
     // of whether the tests themselves run on CI (check) or locally (write).
     const expected = new CiBuild().ci.render();
-    await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
-    await Deno.writeTextFile(`${dir}/.github/workflows/zuke.yml`, expected);
+    await FileTasks.createDirectory(`${dir}/.github/workflows`);
+    await FileTasks.writeText(`${dir}/.github/workflows/zuke.yml`, expected);
     const { code } = await capture(() => main(CiBuild, ["build"]));
     assertEquals(code, 0);
     assertEquals(
-      await Deno.readTextFile(`${dir}/.github/workflows/zuke.yml`),
+      await FileTasks.readText(`${dir}/.github/workflows/zuke.yml`),
       expected,
     );
   });
@@ -1168,15 +1180,15 @@ test("main: running a target keeps a current CI file in sync", async () => {
 
 test("main: running a target fails on CI when the CI file has drifted", async () => {
   await inTempDir(async () => {
-    const prev = Deno.env.get("GITHUB_ACTIONS");
-    Deno.env.set("GITHUB_ACTIONS", "true"); // force isCI() → check mode
+    const prev = EnvTasks.get("GITHUB_ACTIONS");
+    EnvTasks.set("GITHUB_ACTIONS", "true"); // force isCI() → check mode
     try {
       const { code, err } = await capture(() => main(CiBuild, ["build"]));
       assertEquals(code, 1); // file is missing → stale → build fails
       assertEquals(err.some((l) => l.includes("out of date")), true);
     } finally {
-      if (prev === undefined) Deno.env.delete("GITHUB_ACTIONS");
-      else Deno.env.set("GITHUB_ACTIONS", prev);
+      if (prev === undefined) EnvTasks.delete("GITHUB_ACTIONS");
+      else EnvTasks.set("GITHUB_ACTIONS", prev);
     }
   });
 });
@@ -1194,9 +1206,9 @@ test("main: --dry-run does not regenerate CI files", async () => {
 async function assertRejectsNotFound(path: string): Promise<void> {
   let missing = false;
   try {
-    await Deno.readTextFile(path);
+    await FileTasks.readText(path);
   } catch (error) {
-    missing = error instanceof Deno.errors.NotFound;
+    missing = FileTasks.isNotFound(error);
   }
   assertEquals(missing, true);
 }
@@ -1217,27 +1229,32 @@ test("main forwards plugins to the build lifecycle", async () => {
   assertEquals(seen.includes("build:passed"), true);
 });
 
-test("run forwards args and plugins to main", async () => {
-  const seen: string[] = [];
-  const plugin: Plugin = { onFinish: () => void seen.push("finished") };
-  const origExit = process.exit;
-  const origLog = console.log;
-  let code: number | undefined;
-  process.exit = (c?: number): never => {
-    code = c;
-    throw new ExitSignal();
-  };
-  console.log = () => {};
-  try {
-    await run(Demo, { args: ["build"], plugins: [plugin] });
-  } catch (e) {
-    if (!(e instanceof ExitSignal)) throw e;
-  } finally {
-    process.exit = origExit;
-    console.log = origLog;
-  }
-  assertEquals(code, 0);
-  assertEquals(seen, ["finished"]);
+test({
+  name: "run forwards args and plugins to main",
+  denoOnly:
+    "runs only as Deno's main module, and under Vitest the entry is Vitest's",
+  fn: async () => {
+    const seen: string[] = [];
+    const plugin: Plugin = { onFinish: () => void seen.push("finished") };
+    const origExit = process.exit;
+    const origLog = console.log;
+    let code: number | undefined;
+    process.exit = (c?: number): never => {
+      code = c;
+      throw new ExitSignal();
+    };
+    console.log = () => {};
+    try {
+      await run(Demo, { args: ["build"], plugins: [plugin] });
+    } catch (e) {
+      if (!(e instanceof ExitSignal)) throw e;
+    } finally {
+      process.exit = origExit;
+      console.log = origLog;
+    }
+    assertEquals(code, 0);
+    assertEquals(seen, ["finished"]);
+  },
 });
 
 test("parseArgs reads the inline = forms of --signal and --data", () => {
@@ -1289,8 +1306,8 @@ test("main: resume rejects invalid --data JSON without echoing it", async () => 
 
 test("main: mcp --http refuses a non-loopback bind without a token", async () => {
   // The refusal happens before any socket is bound, so the test stays hermetic.
-  const saved = Deno.env.get("ZUKE_MCP_TOKEN");
-  Deno.env.delete("ZUKE_MCP_TOKEN");
+  const saved = EnvTasks.get("ZUKE_MCP_TOKEN");
+  EnvTasks.delete("ZUKE_MCP_TOKEN");
   try {
     const { code, err } = await capture(() =>
       main(Demo, ["mcp", "--http", "0.0.0.0:8123"])
@@ -1298,7 +1315,7 @@ test("main: mcp --http refuses a non-loopback bind without a token", async () =>
     assertEquals(code, 1);
     assertStringIncludes(err.join("\n"), "refusing to bind");
   } finally {
-    if (saved !== undefined) Deno.env.set("ZUKE_MCP_TOKEN", saved);
+    if (saved !== undefined) EnvTasks.set("ZUKE_MCP_TOKEN", saved);
   }
 });
 
@@ -1364,27 +1381,33 @@ test("main: cancel exits 1 when a compensation fails", async () => {
   });
 });
 
-test("run() defaults to the process's arguments when no args option is given", async () => {
-  const origArgv = process.argv;
-  const origExit = process.exit;
-  const origLog = console.log;
-  let captured: number | undefined;
-  process.argv = [...origArgv.slice(0, 2), "--list"];
-  process.exit = (code?: number): never => {
-    captured = code ?? 0;
-    throw new ExitSignal();
-  };
-  console.log = () => {};
-  try {
-    await run(Demo); // no options at all: the arguments come from the process
-  } catch (e) {
-    if (!(e instanceof ExitSignal)) throw e;
-  } finally {
-    process.exit = origExit;
-    process.argv = origArgv;
-    console.log = origLog;
-  }
-  assertEquals(captured, 0);
+test({
+  name:
+    "run() defaults to the process's arguments when no args option is given",
+  denoOnly:
+    "runs only as Deno's main module, and under Vitest the entry is Vitest's",
+  fn: async () => {
+    const origArgv = process.argv;
+    const origExit = process.exit;
+    const origLog = console.log;
+    let captured: number | undefined;
+    process.argv = [...origArgv.slice(0, 2), "--list"];
+    process.exit = (code?: number): never => {
+      captured = code ?? 0;
+      throw new ExitSignal();
+    };
+    console.log = () => {};
+    try {
+      await run(Demo); // no options at all: the arguments come from the process
+    } catch (e) {
+      if (!(e instanceof ExitSignal)) throw e;
+    } finally {
+      process.exit = origExit;
+      process.argv = origArgv;
+      console.log = origLog;
+    }
+    assertEquals(captured, 0);
+  },
 });
 
 test("main: --no-remote-cache flows through and the run still passes", async () => {
@@ -1608,7 +1631,8 @@ test("--version is the rich panel on a terminal, and bare otherwise", async () =
   assertEquals(rich.code, 0);
   const panel = stripAnsi(rich.out.join("\n"));
   assertStringIncludes(panel, " zuke ");
-  assertStringIncludes(panel, `core        ${VERSION}`);
+  // The padding follows the longest label, which is typescript on Deno.
+  assertEquals(new RegExp(`core +${VERSION}`).test(panel), true, panel);
 
   for (
     const [args, terminal] of [

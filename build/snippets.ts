@@ -22,7 +22,7 @@
  * @module
  */
 
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 
 /** The marker line that opts the following ```ts fence into type-checking. */
@@ -162,7 +162,9 @@ export async function checkSnippets(
 ): Promise<SnippetFailure[]> {
   const snippets = await collectCheckedSnippets(files);
   if (snippets.length === 0) return [];
-  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".snippets-" });
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.dir(RuntimeTasks.cwd()).prefix(".snippets-")
+  );
   const failures: SnippetFailure[] = [];
   try {
     const paths = snippets.map((_, i) => `${dir}/snippet_${i}.ts`);
