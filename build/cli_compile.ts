@@ -170,7 +170,9 @@ export async function assertReportsVersion(
   binary: AbsolutePath,
   version: string,
 ): Promise<void> {
-  const scratch = await Deno.makeTempDir({ prefix: "zuke-smoke-" });
+  const scratch = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-smoke-")
+  );
   try {
     const reported = (await $`${binary.path} --version`.cwd(scratch).env({
       ZUKE_PLAIN: "1",
@@ -182,6 +184,6 @@ export async function assertReportsVersion(
       );
     }
   } finally {
-    await Deno.remove(scratch, { recursive: true });
+    await FileTasks.remove(scratch, { recursive: true });
   }
 }

@@ -19,7 +19,8 @@ import {
   writeFileEnsuringDir,
   writeTextEnsuringDir,
 } from "../src/internal.ts";
-import { withTemp } from "../../../tests/_temp.ts";
+import { withTemp, withTempCwd } from "../../../tests/_temp.ts";
+import { EnvTasks, FileTasks } from "../mod.ts";
 
 test("messageOf reads an Error's message, else stringifies", () => {
   assertEquals(messageOf(new Error("boom")), "boom");
@@ -88,41 +89,39 @@ test("a parentless path is written where it is, with no mkdir", async () => {
   // `slash > 0`, not `!== -1`: a bare name has no parent to create, and a
   // root-level path's parent is the root, which already exists. Either would
   // otherwise `Deno.mkdir("")` and throw.
-  const cwd = Deno.cwd();
-  const root = await Deno.makeTempDir();
-  Deno.chdir(root);
-  try {
+  await withTempCwd(async (root) => {
     await writeTextEnsuringDir("bare.txt", "here");
     assertEquals(await readTextOrNull(`${root}/bare.txt`), "here");
-  } finally {
-    Deno.chdir(cwd);
-    await Deno.remove(root, { recursive: true });
-  }
+  });
 });
 
 test("defaultReadEnv reads a set variable through the process env", () => {
-  Deno.env.set("ZUKE_INTERNAL_TEST", "value");
+  EnvTasks.set("ZUKE_INTERNAL_TEST", "value");
   try {
     assertEquals(defaultReadEnv("ZUKE_INTERNAL_TEST"), "value");
   } finally {
-    Deno.env.delete("ZUKE_INTERNAL_TEST");
+    EnvTasks.delete("ZUKE_INTERNAL_TEST");
   }
   assertEquals(defaultReadEnv("ZUKE_INTERNAL_TEST_UNSET"), undefined);
 });
 
-test("defaultReadEnv returns undefined when env access is denied (throws)", () => {
-  // The whole point of the try/catch: a denied --allow-env must yield undefined,
-  // not a thrown PermissionDenied. Stub Deno.env.get to throw, as the test suite
-  // itself runs with -A and can't otherwise reach the catch branch.
-  const original = Deno.env.get;
-  Deno.env.get = () => {
-    throw new Deno.errors.PermissionDenied("env access denied");
-  };
-  try {
-    assertEquals(defaultReadEnv("ANYTHING"), undefined);
-  } finally {
-    Deno.env.get = original;
-  }
+test({
+  name: "defaultReadEnv returns undefined when env access is denied (throws)",
+  denoOnly: "stubs Deno.env.get, which only Deno has",
+  fn: () => {
+    // The whole point of the try/catch: a denied --allow-env must yield undefined,
+    // not a thrown PermissionDenied. Stub Deno.env.get to throw, as the test suite
+    // itself runs with -A and can't otherwise reach the catch branch.
+    const original = Deno.env.get;
+    Deno.env.get = () => {
+      throw new Deno.errors.PermissionDenied("env access denied");
+    };
+    try {
+      assertEquals(defaultReadEnv("ANYTHING"), undefined);
+    } finally {
+      Deno.env.get = original;
+    }
+  },
 });
 
 test("runWithTimeout without a bound runs fn to completion", async () => {
@@ -209,34 +208,24 @@ function coded(code: string): Error {
   return Object.assign(new Error(code), { code });
 }
 
-test("the error checks read the code every runtime sets, and still know Deno's classes", async () => {
+test("the error checks read the code every runtime sets", async () => {
   // What the file system really throws.
-  const missing = await Deno.stat(`${await Deno.makeTempDir()}/nope`).catch((
-    e: unknown,
-  ) => e);
-  assertEquals(isNotFound(missing), true);
-  const dir = await Deno.makeTempDir();
-  const exists = await Deno.mkdir(dir).catch((e: unknown) => e);
-  assertEquals(isAlreadyExists(exists), true);
-  assertEquals(isNotFound(exists), false);
-  await Deno.remove(dir);
+  await withTemp(async (dir) => {
+    const missing = await FileTasks.stat(`${dir}/nope`).catch((e: unknown) =>
+      e
+    );
+    assertEquals(isNotFound(missing), true);
+    const exists = await FileTasks.writeText(dir, "", (s) => s.createNew())
+      .catch((e: unknown) => e);
+    assertEquals(isAlreadyExists(exists), true);
+    assertEquals(isNotFound(exists), false);
+  });
 
   // A coded error with no Deno class, as another runtime throws.
   assertEquals(isNotFound(coded("ENOENT")), true);
   assertEquals(isAlreadyExists(coded("EEXIST")), true);
   assertEquals(isPermissionDenied(coded("EACCES")), true);
   assertEquals(isPermissionDenied(coded("EPERM")), true);
-
-  // A Deno error built by hand carries no code, and is still recognised.
-  assertEquals(isNotFound(new Deno.errors.NotFound("x")), true);
-  assertEquals(isAlreadyExists(new Deno.errors.AlreadyExists("x")), true);
-  assertEquals(isPermissionDenied(new Deno.errors.PermissionDenied("x")), true);
-
-  // An error of Deno's own is judged by its class alone, whatever its code.
-  const mislabelled = Object.assign(new Deno.errors.InvalidData("x"), {
-    code: "ENOENT",
-  });
-  assertEquals(isNotFound(mislabelled), false);
 
   // Each check answers for its own code only, and never for a non-error.
   assertEquals(isNotFound(coded("EEXIST")), false);
@@ -248,4 +237,24 @@ test("the error checks read the code every runtime sets, and still know Deno's c
   for (const value of [undefined, null, "ENOENT", { code: "ENOENT" }]) {
     assertEquals(isNotFound(value), false);
   }
+});
+
+test({
+  name: "the error checks still know Deno's own error classes",
+  denoOnly: "builds Deno's error classes, which only Deno has",
+  fn: () => {
+    // A Deno error built by hand carries no code, and is still recognised.
+    assertEquals(isNotFound(new Deno.errors.NotFound("x")), true);
+    assertEquals(isAlreadyExists(new Deno.errors.AlreadyExists("x")), true);
+    assertEquals(
+      isPermissionDenied(new Deno.errors.PermissionDenied("x")),
+      true,
+    );
+
+    // An error of Deno's own is judged by its class alone, whatever its code.
+    const mislabelled = Object.assign(new Deno.errors.InvalidData("x"), {
+      code: "ENOENT",
+    });
+    assertEquals(isNotFound(mislabelled), false);
+  },
 });

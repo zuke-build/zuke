@@ -29,6 +29,15 @@ test("StreamTasks.toFile writes every chunk", async () => {
   });
 });
 
+test("StreamTasks.toFile with append adds to the file", async () => {
+  await withTemp(async (dir) => {
+    const path = `${dir}/out.bin`;
+    await StreamTasks.toFile(path, streamOf([1]), (s) => s.append());
+    await StreamTasks.toFile(path, streamOf([2], [3]), (s) => s.append());
+    assertEquals([...await FileTasks.readBytes(path)], [1, 2, 3]);
+  });
+});
+
 test("StreamTasks.toFile with createNew leaves an existing file", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/out.bin`;

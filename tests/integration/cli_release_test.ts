@@ -17,12 +17,15 @@ import { withTemp, withTempCwd } from "../_temp.ts";
 import {
   absolutePath,
   Build,
+  FileTasks,
   gunzip,
+  RuntimeTasks,
   sha256Hex,
   target,
   untar,
   unzip,
 } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 import { ChocolateyVerifySettings } from "@zuke/chocolatey";
 import { HomebrewVerifySettings } from "@zuke/homebrew";
 import { runCli } from "./_harness.ts";
@@ -52,8 +55,8 @@ test("a release run plans, packages, and verifies the formula and package that p
     for (
       const triple of [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE]
     ) {
-      await Deno.mkdir(`${bin}/${triple}`, { recursive: true });
-      await Deno.writeTextFile(binaryPath(bin, triple), `zuke for ${triple}`);
+      await FileTasks.createDirectory(`${bin}/${triple}`);
+      await FileTasks.writeText(binaryPath(bin, triple), `zuke for ${triple}`);
     }
     // GitHub, as the release looks once `package`'s output is attached and
     // the draft published: it serves the manifest and archives this run wrote.
@@ -62,7 +65,9 @@ test("a release run plans, packages, and verifies the formula and package that p
       const url = input instanceof Request ? input.url : String(input);
       for (const name of published) {
         if (url === releaseAssetUrl(VERSION, name)) {
-          return new Response(await Deno.readFile(`${release}/${name}`));
+          return new Response(
+            new Uint8Array(await FileTasks.readBytes(`${release}/${name}`)),
+          );
         }
       }
       return new Response("", { status: 404 });
@@ -121,7 +126,7 @@ test("a release run plans, packages, and verifies the formula and package that p
               // Stand in for `brew install`: fetch each archive the formula
               // names and check it against the sha256 the formula pins.
               const settings = configure(new HomebrewVerifySettings());
-              const formula = await Deno.readTextFile(
+              const formula = await FileTasks.readText(
                 settings.formulaFile_ ?? "",
               );
               const pinned = [
@@ -153,7 +158,7 @@ test("a release run plans, packages, and verifies the formula and package that p
     assertEquals(result.code, 0, result.err);
     // The plan ran before anything was published, so everything was owed.
     assertEquals(
-      await Deno.readTextFile(outputs),
+      await FileTasks.readText(outputs),
       "build=true\ntap=true\nchocolatey=true\n",
     );
     assertEquals(
@@ -164,11 +169,11 @@ test("a release run plans, packages, and verifies the formula and package that p
       ].sort(),
     );
     const manifest = parseChecksums(
-      await Deno.readTextFile(`${release}/${CHECKSUMS}`),
+      await FileTasks.readText(`${release}/${CHECKSUMS}`),
     );
     assertEquals(manifest.size, CLI_TARGETS.length + 1);
     assertStringIncludes(
-      await Deno.readTextFile(`${dir}/zuke.rb`),
+      await FileTasks.readText(`${dir}/zuke.rb`),
       "class Zuke < Formula",
     );
 
@@ -177,7 +182,7 @@ test("a release run plans, packages, and verifies the formula and package that p
     const again = await runCli(ReleaseRun, ["plan"]);
     assertEquals(again.code, 0, again.err);
     assertStringIncludes(
-      await Deno.readTextFile(outputs),
+      await FileTasks.readText(outputs),
       "build=false\ntap=true\nchocolatey=true\n",
     );
   });
@@ -186,20 +191,21 @@ test("a release run plans, packages, and verifies the formula and package that p
 test("a signing run checks the signed binary it names relative to the checkout", async () => {
   // As cliSign does: the binaries directory is relative to the build's
   // working directory, while the version check runs from a temporary one.
-  if (Deno.build.os === "windows") return;
+  if (RuntimeTasks.os() === "windows") return;
   await withTempCwd(async () => {
     const triple = "aarch64-apple-darwin";
-    await Deno.mkdir(`dist/cli/bin/${triple}`, { recursive: true });
-    await Deno.symlink(Deno.execPath(), binaryPath("dist/cli/bin", triple));
-    const { stdout } = await new Deno.Command(Deno.execPath(), {
-      args: ["--version"],
-    }).output();
-    const version = new TextDecoder().decode(stdout).split("\n")[0];
+    await FileTasks.createDirectory(`dist/cli/bin/${triple}`);
+    await FileTasks.symlink(
+      RuntimeTasks.execPath(),
+      binaryPath("dist/cli/bin", triple),
+    );
+    const version =
+      (await $`${RuntimeTasks.execPath()} --version`.text()).split("\n")[0];
 
     class SignRun extends Build {
       smoke = target().executes(async () => {
         await assertReportsVersion(
-          absolutePath(Deno.cwd(), binaryPath("dist/cli/bin", triple)),
+          absolutePath(RuntimeTasks.cwd(), binaryPath("dist/cli/bin", triple)),
           version,
         );
       });

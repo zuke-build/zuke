@@ -28,6 +28,19 @@ test("writeBytes with createNew refuses an existing file", async () => {
   });
 });
 
+test("writeText with append adds to a file, creating it when missing", async () => {
+  await withTemp(async (dir) => {
+    const path = `${dir}/out.txt`;
+    await FileTasks.writeText(path, "a\n", (s) => s.append());
+    await FileTasks.writeText(path, "b\n", (s) => s.append());
+    assertEquals(await FileTasks.readText(path), "a\nb\n");
+    await assertRejects(() =>
+      FileTasks.writeText(path, "c\n", (s) => s.append().createNew())
+    );
+    assertEquals(await FileTasks.readText(path), "a\nb\n");
+  });
+});
+
 test("writeText applies the mode it is given", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/secret.txt`;

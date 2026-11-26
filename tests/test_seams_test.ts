@@ -25,6 +25,11 @@ import { codeOnly } from "./_runtime_neutral.ts";
 
 /** Tests that hand core a runtime's own objects, or stub the runtime. */
 const BOUNDARY = new Set([
+  // Their Deno-only tests compare core's answers with Deno's own, stub
+  // Deno.env, or build Deno's error classes.
+  "packages/core/tests/internal_test.ts",
+  "packages/core/tests/runtime_test.ts",
+  "packages/core/tests/signal_test.ts",
   // Stubs `process.exit` to see the CLI's exit code.
   "packages/core/tests/cli_test.ts",
   // Feed core's servers, streams and stdio Node's sockets and streams.

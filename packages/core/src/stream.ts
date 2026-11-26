@@ -40,6 +40,6 @@ export const StreamTasks: StreamTasksApi = {
     configure: Configure<WriteSettings> = (s) => s,
   ): Promise<void> {
     const s = configure(new WriteSettings());
-    return writeStream(String(path), data, s.mode_, s.createNew_);
+    return writeStream(String(path), data, s.mode_, s.createNew_, s.append_);
   },
 };

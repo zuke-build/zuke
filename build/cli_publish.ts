@@ -21,7 +21,13 @@ import {
   type CodesignVerifySettings,
 } from "@zuke/apple";
 import { ConsoleTasks } from "@zuke/console";
-import { gunzip, untar } from "@zuke/core";
+import {
+  FileTasks,
+  gunzip,
+  type HostOs,
+  RuntimeTasks,
+  untar,
+} from "@zuke/core";
 import {
   type GhReleaseEditSettings,
   type GhReleaseEntry,
@@ -94,7 +100,7 @@ export async function uploadCliRelease(options: UploadOptions): Promise<void> {
   const tag = cliReleaseTag(version);
   // gh names an asset after its file, so the bundle is copied to its name.
   const bundle = `${dir}/${attestationName(version)}`;
-  await Deno.copyFile(attestation, bundle);
+  await FileTasks.copy(attestation, bundle);
   const files = [
     ...CLI_TARGETS.map((target) => `${dir}/${archiveName(version, target)}`),
     `${dir}/${windowsArchiveName(version)}`,
@@ -175,7 +181,7 @@ export async function writeCliFormula(
   fetcher: Fetch,
 ): Promise<string> {
   const formula = cliFormula(version, await fetchChecksums(version, fetcher));
-  await Deno.writeTextFile(path, formula);
+  await FileTasks.writeText(path, formula);
   return formula;
 }
 
@@ -208,7 +214,9 @@ export async function verifyMacSignature(
   fetcher: Fetch = fetch,
   codesign: SignatureTools = CODESIGN,
 ): Promise<void> {
-  const scratch = await Deno.makeTempDir({ prefix: "zuke-signature-" });
+  const scratch = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-signature-")
+  );
   try {
     for (const target of MACOS_TARGETS) {
       const url = releaseAssetUrl(version, archiveName(version, target));
@@ -225,7 +233,7 @@ export async function verifyMacSignature(
         throw new Error(`${url} holds no ${CLI_BINARY}`);
       }
       const binary = `${scratch}/${target.triple}`;
-      await Deno.writeFile(binary, member.data);
+      await FileTasks.writeBytes(binary, member.data);
       await codesign.verify((s) => s.strict().verbose(2).file(binary));
       const display = await codesign.display((s) => s.verbose(4).file(binary));
       if (
@@ -243,7 +251,7 @@ export async function verifyMacSignature(
       );
     }
   } finally {
-    await Deno.remove(scratch, { recursive: true });
+    await FileTasks.remove(scratch, { recursive: true });
   }
 }
 
@@ -256,7 +264,7 @@ export interface VerifyHost {
   /** Where the checksums are fetched from. */
   readonly fetch: Fetch;
   /** The operating system, which decides whether signatures are checked. */
-  readonly os: typeof Deno.build.os;
+  readonly os: HostOs;
 }
 
 /** The real {@link VerifyHost}. */
@@ -264,7 +272,7 @@ export const defaultVerifyHost: VerifyHost = {
   homebrew: HomebrewTasks,
   signatures: (version) => verifyMacSignature(version),
   fetch,
-  os: Deno.build.os,
+  os: RuntimeTasks.os(),
 };
 
 /**

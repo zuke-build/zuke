@@ -24,12 +24,14 @@ import {
   appendJobSummary,
   Build,
   discoverTargets,
+  EnvTasks,
   FileTasks,
   glob,
   isCI,
   parameter,
   repoRoot,
   run,
+  RuntimeTasks,
   target,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
@@ -427,7 +429,29 @@ class ZukeBuild extends Build {
     .description("Run the test suite on Node with Vitest (ported files)")
     .executes(async () => {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
-      await VitestTasks.run((s) => s.reporter("dot"));
+      // A `deno` that only fails goes first on PATH, so a test that quietly
+      // needs Deno fails here rather than passing because the build runs on it.
+      // A shell-free spawn on Windows looks for deno.exe, which this stub is
+      // not, so the lane would pass there with the very dependency it hunts.
+      if (RuntimeTasks.os() === "windows") {
+        throw new Error(
+          "nodeTest hides Deno behind a POSIX stub; run it on Linux or macOS.",
+        );
+      }
+      const stub = await FileTasks.makeTempDirectory((s) =>
+        s.prefix("zuke-no-deno-")
+      );
+      try {
+        await FileTasks.writeText(
+          `${stub}/deno`,
+          "#!/bin/sh\nexit 127\n",
+          (s) => s.mode(0o755),
+        );
+        const path = `${stub}:${EnvTasks.get("PATH") ?? ""}`;
+        await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
+      } finally {
+        await FileTasks.remove(stub, { recursive: true });
+      }
     });
 
   // The subprocess e2e suite (tests/e2e/), kept OUT of `test`/`ci` so the fast
