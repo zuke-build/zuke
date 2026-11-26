@@ -385,8 +385,7 @@ those seams, not to every test:
 
 The exceptions are the tests whose subject is the boundary itself (core's own
 file, stream and stdio layers), and fixture scripts that a test runs as a
-subprocess. Files still on `tests/node_pending.json` are being ported and follow
-the rule as they leave it.
+subprocess.
 
 A test that needs Deno itself, because it runs `deno publish` or `deno run`, or
 checks Deno's permissions, says why with `denoOnly`, and the Node lane skips it.

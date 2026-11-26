@@ -3,22 +3,22 @@
 
 /**
  * The Node lane's test run: every `*_test.ts` of the packages and of
- * `tests/`, registered through `tests/_testing.ts`, except the
- * files `tests/node_pending.json` lists. Those still call Deno's APIs
- * directly, and each leaves the list once it is ported; the Deno lane runs
- * every file meanwhile.
+ * `tests/`, registered through `tests/_testing.ts`.
  */
 
-import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 
-const pending: string[] = JSON.parse(
-  readFileSync(new URL("./tests/node_pending.json", import.meta.url), "utf8"),
-);
-
 export default defineConfig({
+  resolve: {
+    alias: [{
+      // The examples import `jsr:@zuke/<name>@<range>`, which Deno resolves to
+      // the workspace member; Node takes the same member from node_modules.
+      find: /^jsr:@zuke\/([a-z0-9-]+)@[^/]+(\/.*)?$/,
+      replacement: "@zuke/$1$2",
+    }],
+  },
   test: {
     include: ["packages/*/tests/**/*_test.ts", "tests/**/*_test.ts"],
-    exclude: ["**/node_modules/**", ...pending],
+    exclude: ["**/node_modules/**"],
   },
 });

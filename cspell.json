@@ -410,7 +410,6 @@
     "ponytail"
   ],
   "ignorePaths": [
-    "tests/node_pending.json",
     "cspell.json",
     "build/npm_toolchain/package-lock.json",
     "cov_profile/",
