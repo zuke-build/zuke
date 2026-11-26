@@ -24,8 +24,14 @@ export const EVAL = deno ? "eval" : "-e";
 export const ARGS = `process.argv.slice(${deno ? 2 : 1})`;
 
 /**
- * The arguments that make the running runtime run a standalone script file,
- * one that imports nothing through the import map, with every permission:
- * they go before the script's path. Node runs a `.ts` file as it is.
+ * The arguments that make the running runtime run a script file with every
+ * permission: they go before the script's path. Node runs a `.ts` file as it
+ * is, resolving `@zuke/*` through the workspace's `node_modules`.
  */
-export const RUN_SCRIPT = deno ? ["run", "--no-config", "--no-lock", "-A"] : [];
+export const RUN = deno ? ["run", "-A"] : [];
+
+/**
+ * {@link RUN}, for a standalone script, one that imports nothing through the
+ * import map, so Deno neither reads the workspace's config nor its lock.
+ */
+export const RUN_SCRIPT = deno ? [...RUN, "--no-config", "--no-lock"] : RUN;

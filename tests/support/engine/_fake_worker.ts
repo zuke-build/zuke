@@ -39,6 +39,8 @@
  * @module
  */
 
+import { appendFileSync, statSync, writeFileSync } from "node:fs";
+import process from "node:process";
 import { Peer, RpcFailure } from "../../../packages/engine/src/peer.ts";
 import { NetTasks } from "../../../packages/core/mod.ts";
 import { isRecord } from "../../../packages/engine/src/protocol.ts";
@@ -63,19 +65,19 @@ interface Script {
   sleepMs: number;
 }
 
-const GENERATION_FILE = Deno.env.get("ZUKE_FAKE_GENERATION_FILE");
+const GENERATION_FILE = process.env["ZUKE_FAKE_GENERATION_FILE"];
 let replacement = false;
 if (GENERATION_FILE !== undefined) {
   try {
-    Deno.statSync(GENERATION_FILE);
+    statSync(GENERATION_FILE);
     replacement = true;
   } catch {
-    Deno.writeTextFileSync(GENERATION_FILE, "started");
+    writeFileSync(GENERATION_FILE, "started");
   }
 }
 const PLAN: unknown = JSON.parse(
-  (replacement ? Deno.env.get("ZUKE_FAKE_RESPAWN_PLAN") : undefined) ??
-    Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}",
+  (replacement ? process.env["ZUKE_FAKE_RESPAWN_PLAN"] : undefined) ??
+    process.env["ZUKE_FAKE_PLAN"] ?? "{}",
 );
 const SCRIPTS = new Map<string, Script>();
 if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
@@ -205,7 +207,7 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
     );
   }
   await callAll(peer, name, s);
-  if (s.crashExit !== undefined) Deno.exit(s.crashExit);
+  if (s.crashExit !== undefined) process.exit(s.crashExit);
   if (s.hangup) {
     // The socket goes, the process stays: what the engine must stop itself.
     hangingUp = true;
@@ -224,16 +226,16 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
 
 /** Set by a `hangup` body: the connection ends but the process must not. */
 let hangingUp = false;
-const HANGUP_FILE = Deno.env.get("ZUKE_FAKE_HANGUP_FILE");
-if (HANGUP_FILE !== undefined && Deno.build.os !== "windows") {
+const HANGUP_FILE = process.env["ZUKE_FAKE_HANGUP_FILE"];
+if (HANGUP_FILE !== undefined && process.platform !== "win32") {
   // Record that the engine stopped this process, then go.
-  Deno.addSignalListener("SIGTERM", () => {
-    Deno.writeTextFileSync(HANGUP_FILE, "terminated");
-    Deno.exit(0);
+  process.on("SIGTERM", () => {
+    writeFileSync(HANGUP_FILE, "terminated");
+    process.exit(0);
   });
 }
 
-const [, port] = (Deno.env.get("ZUKE_ENGINE_ADDR") ?? "").split(":");
+const [, port] = (process.env["ZUKE_ENGINE_ADDR"] ?? "").split(":");
 const conn = await NetTasks.connect(Number(port));
 const peer = new Peer(conn);
 peer.on("build.describe", () => PLAN);
@@ -291,7 +293,7 @@ peer.on("run.exit", (params) => {
     }`,
   );
   peer.close();
-  Deno.exit(0);
+  process.exit(0);
 });
 peer.on("build.onStart", hook("onStart", () => ""));
 peer.on("build.onTargetStart", hook("onTargetStart", (p) => ` ${targetOf(p)}`));
@@ -311,25 +313,25 @@ peer.on(
 );
 peer.on("run.cancel", () => {});
 const serving = peer.serve();
-const EXIT_FILE = Deno.env.get("ZUKE_FAKE_EXIT_FILE");
+const EXIT_FILE = process.env["ZUKE_FAKE_EXIT_FILE"];
 /** Record how far this worker's end has got, for a test watching it go. */
 function stage(what: string): void {
-  if (EXIT_FILE !== undefined) Deno.writeTextFileSync(EXIT_FILE, what);
+  if (EXIT_FILE !== undefined) writeFileSync(EXIT_FILE, what);
 }
-const STARTED_FILE = Deno.env.get("ZUKE_FAKE_STARTED_FILE");
+const STARTED_FILE = process.env["ZUKE_FAKE_STARTED_FILE"];
 if (STARTED_FILE !== undefined) {
-  Deno.writeTextFileSync(STARTED_FILE, `${Deno.pid}\n`, { append: true });
+  appendFileSync(STARTED_FILE, `${process.pid}\n`);
 }
 console.log("fake worker started");
-Deno.env.set("ZUKE_FAKE_ENV_MARK", "from-worker");
+process.env.ZUKE_FAKE_ENV_MARK = "from-worker";
 try {
   await peer.request("hello", {
     sdk: "zuke-fake",
     protocol: 1,
-    token: Deno.env.get("ZUKE_FAKE_BAD_TOKEN") ??
-      Deno.env.get("ZUKE_ENGINE_TOKEN"),
-    env: Deno.env.toObject(),
-    cwd: Deno.cwd(),
+    token: process.env["ZUKE_FAKE_BAD_TOKEN"] ??
+      process.env["ZUKE_ENGINE_TOKEN"],
+    env: { ...process.env },
+    cwd: process.cwd(),
   });
   stage("serving");
   await serving;
@@ -339,6 +341,6 @@ try {
   // the end, unless this worker is the one that hung up and is to be stopped.
   if (!hangingUp) {
     stage("exited");
-    Deno.exit(0);
+    process.exit(0);
   }
 }
