@@ -27,7 +27,11 @@ import { codeOnly } from "./_runtime_neutral.ts";
 const BOUNDARY = new Set([
   // Their Deno-only tests compare core's answers with Deno's own, stub
   // Deno.env, or build Deno's error classes.
+  "packages/core/tests/ambient_output_test.ts",
+  "packages/core/tests/fs_test.ts",
   "packages/core/tests/internal_test.ts",
+  "packages/core/tests/process_test.ts",
+  "packages/core/tests/runtime_tasks_test.ts",
   "packages/core/tests/runtime_test.ts",
   "packages/core/tests/signal_test.ts",
   // Stubs `process.exit` to see the CLI's exit code.

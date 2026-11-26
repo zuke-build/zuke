@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { EnvTasks, RuntimeTasks } from "../mod.ts";
 import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
@@ -8,6 +9,7 @@ import {
   assertThrows,
 } from "../../../tests/_assert.ts";
 import { FileTasks } from "../src/file.ts";
+import { isAlreadyExists, isNotFound } from "../src/internal.ts";
 import { withTemp } from "../../../tests/_temp.ts";
 
 /** Run `fn` with HOME/USERPROFILE set to `values`, restoring them afterwards. */
@@ -16,11 +18,11 @@ function withHomeEnv(
   fn: () => void,
 ): void {
   const saved = {
-    HOME: Deno.env.get("HOME"),
-    USERPROFILE: Deno.env.get("USERPROFILE"),
+    HOME: EnvTasks.get("HOME"),
+    USERPROFILE: EnvTasks.get("USERPROFILE"),
   };
   const apply = (name: "HOME" | "USERPROFILE", value: string | undefined) =>
-    value === undefined ? Deno.env.delete(name) : Deno.env.set(name, value);
+    value === undefined ? EnvTasks.delete(name) : EnvTasks.set(name, value);
   try {
     apply("HOME", values.HOME);
     apply("USERPROFILE", values.USERPROFILE);
@@ -72,13 +74,13 @@ test("createDirectory without recursive fails on a missing parent", async () => 
 test("cleanDirectory empties contents but keeps the directory", async () => {
   await withTemp(async (dir) => {
     const target = `${dir}/build`;
-    await Deno.mkdir(`${target}/nested`, { recursive: true });
-    await Deno.writeTextFile(`${target}/file.txt`, "x");
-    await Deno.writeTextFile(`${target}/nested/deep.txt`, "y");
+    await FileTasks.createDirectory(`${target}/nested`);
+    await FileTasks.writeText(`${target}/file.txt`, "x");
+    await FileTasks.writeText(`${target}/nested/deep.txt`, "y");
     await FileTasks.cleanDirectory(target);
     assertEquals(await FileTasks.exists(target), true);
     const left = [];
-    for await (const e of Deno.readDir(target)) left.push(e.name);
+    for (const e of await FileTasks.readDirectory(target)) left.push(e.name);
     assertEquals(left, []);
   });
 });
@@ -93,7 +95,7 @@ test("cleanDirectory is a no-op for a missing directory", async () => {
 test("cleanDirectory rethrows non-NotFound errors", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/a-file`;
-    await Deno.writeTextFile(file, "x");
+    await FileTasks.writeText(file, "x");
     // readDir on a file is not a NotFound error, so it must propagate.
     await assertRejects(() => FileTasks.cleanDirectory(file));
   });
@@ -102,20 +104,20 @@ test("cleanDirectory rethrows non-NotFound errors", async () => {
 test("remove deletes and reports, tolerating a missing target", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/note.txt`;
-    await Deno.writeTextFile(file, "x");
+    await FileTasks.writeText(file, "x");
     assertEquals(await FileTasks.remove(file), true);
     assertEquals(await FileTasks.remove(file), false);
 
     const tree = `${dir}/tree`;
-    await Deno.mkdir(`${tree}/sub`, { recursive: true });
+    await FileTasks.createDirectory(`${tree}/sub`);
     assertEquals(await FileTasks.remove(tree, { recursive: true }), true);
   });
 });
 
 test("remove rethrows non-NotFound errors", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/full`);
-    await Deno.writeTextFile(`${dir}/full/a.txt`, "a");
+    await FileTasks.createDirectory(`${dir}/full`, { recursive: false });
+    await FileTasks.writeText(`${dir}/full/a.txt`, "a");
     // Removing a non-empty directory without recursive is not NotFound.
     await assertRejects(() => FileTasks.remove(`${dir}/full`));
   });
@@ -123,44 +125,43 @@ test("remove rethrows non-NotFound errors", async () => {
 
 test("copy duplicates a single file", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/src.txt`, "hello");
+    await FileTasks.writeText(`${dir}/src.txt`, "hello");
     await FileTasks.copy(`${dir}/src.txt`, `${dir}/dst.txt`);
-    assertEquals(await Deno.readTextFile(`${dir}/dst.txt`), "hello");
+    assertEquals(await FileTasks.readText(`${dir}/dst.txt`), "hello");
   });
 });
 
 test("copy recurses through a directory tree", async () => {
   await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/src/inner`, { recursive: true });
-    await Deno.writeTextFile(`${dir}/src/top.txt`, "t");
-    await Deno.writeTextFile(`${dir}/src/inner/deep.txt`, "d");
+    await FileTasks.createDirectory(`${dir}/src/inner`);
+    await FileTasks.writeText(`${dir}/src/top.txt`, "t");
+    await FileTasks.writeText(`${dir}/src/inner/deep.txt`, "d");
     await FileTasks.copy(`${dir}/src`, `${dir}/out`);
-    assertEquals(await Deno.readTextFile(`${dir}/out/top.txt`), "t");
-    assertEquals(await Deno.readTextFile(`${dir}/out/inner/deep.txt`), "d");
+    assertEquals(await FileTasks.readText(`${dir}/out/top.txt`), "t");
+    assertEquals(await FileTasks.readText(`${dir}/out/inner/deep.txt`), "d");
   });
 });
 
 test("copy with overwrite false refuses an existing destination", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/a.txt`, "a");
-    await Deno.writeTextFile(`${dir}/b.txt`, "b");
-    await assertRejects(
-      () =>
-        FileTasks.copy(`${dir}/a.txt`, `${dir}/b.txt`, { overwrite: false }),
-      Deno.errors.AlreadyExists,
+    await FileTasks.writeText(`${dir}/a.txt`, "a");
+    await FileTasks.writeText(`${dir}/b.txt`, "b");
+    const taken = await assertRejects(() =>
+      FileTasks.copy(`${dir}/a.txt`, `${dir}/b.txt`, { overwrite: false })
     );
+    assertEquals(isAlreadyExists(taken), true);
     // Default overwrite replaces it.
     await FileTasks.copy(`${dir}/a.txt`, `${dir}/b.txt`);
-    assertEquals(await Deno.readTextFile(`${dir}/b.txt`), "a");
+    assertEquals(await FileTasks.readText(`${dir}/b.txt`), "a");
   });
 });
 
 test("move renames a path", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/from.txt`, "m");
+    await FileTasks.writeText(`${dir}/from.txt`, "m");
     await FileTasks.move(`${dir}/from.txt`, `${dir}/to.txt`);
     assertEquals(await FileTasks.exists(`${dir}/from.txt`), false);
-    assertEquals(await Deno.readTextFile(`${dir}/to.txt`), "m");
+    assertEquals(await FileTasks.readText(`${dir}/to.txt`), "m");
   });
 });
 
@@ -173,7 +174,7 @@ test("readText and writeText round-trip", async () => {
 
 test("readJson parses a JSON file", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(
+    await FileTasks.writeText(
       `${dir}/d.json`,
       JSON.stringify({ version: "1.0" }),
     );
@@ -187,14 +188,14 @@ test("readJson parses a JSON file", async () => {
 // Creating a symlink is a privileged operation on Windows unless Developer
 // Mode is on, so the link tests are POSIX-only — the same line the tar
 // extractor's symlink tests draw.
-const SYMLINKS_UNPRIVILEGED = Deno.build.os !== "windows";
+const SYMLINKS_UNPRIVILEGED = RuntimeTasks.os() !== "windows";
 
 test({
   name: "symlink creates a link readLink reads back verbatim",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/real.txt`, "linked");
+      await FileTasks.writeText(`${dir}/real.txt`, "linked");
       await FileTasks.symlink(`${dir}/real.txt`, `${dir}/link.txt`);
       assertEquals(await FileTasks.readText(`${dir}/link.txt`), "linked");
       assertEquals(
@@ -212,8 +213,8 @@ test({
     // The relative target is what makes a link between sibling checkouts
     // survive both being moved together, so it must not be rewritten.
     await withTemp(async (dir) => {
-      await Deno.mkdir(`${dir}/group`);
-      await Deno.writeTextFile(`${dir}/real.txt`, "sibling");
+      await FileTasks.createDirectory(`${dir}/group`, { recursive: false });
+      await FileTasks.writeText(`${dir}/real.txt`, "sibling");
       await FileTasks.symlink("../real.txt", `${dir}/group/link.txt`);
       assertEquals(
         await FileTasks.readLink(`${dir}/group/link.txt`),
@@ -233,13 +234,13 @@ test({
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/one.txt`, "one");
-      await Deno.writeTextFile(`${dir}/two.txt`, "two");
+      await FileTasks.writeText(`${dir}/one.txt`, "one");
+      await FileTasks.writeText(`${dir}/two.txt`, "two");
       await FileTasks.symlink(`${dir}/one.txt`, `${dir}/link.txt`);
-      await assertRejects(
-        () => FileTasks.symlink(`${dir}/two.txt`, `${dir}/link.txt`),
-        Deno.errors.AlreadyExists,
+      const taken = await assertRejects(() =>
+        FileTasks.symlink(`${dir}/two.txt`, `${dir}/link.txt`)
       );
+      assertEquals(isAlreadyExists(taken), true);
       assertEquals(
         await FileTasks.readLink(`${dir}/link.txt`),
         `${dir}/one.txt`,
@@ -264,8 +265,8 @@ test({
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/target.txt`, "t");
-      await Deno.writeTextFile(`${dir}/occupied`, "a plain file");
+      await FileTasks.writeText(`${dir}/target.txt`, "t");
+      await FileTasks.writeText(`${dir}/occupied`, "a plain file");
       await FileTasks.symlink(`${dir}/target.txt`, `${dir}/occupied`, {
         force: true,
       });
@@ -277,23 +278,23 @@ test({
       // A directory is reported, not removed — empty or not. force replaces a
       // link or a file; losing a directory to a link request is not a thing a
       // build should do quietly, and the atomic rename refuses it outright.
-      await Deno.mkdir(`${dir}/tree`);
-      await Deno.writeTextFile(`${dir}/tree/kept.txt`, "kept");
+      await FileTasks.createDirectory(`${dir}/tree`, { recursive: false });
+      await FileTasks.writeText(`${dir}/tree/kept.txt`, "kept");
       await assertRejects(() =>
         FileTasks.symlink(`${dir}/target.txt`, `${dir}/tree`, { force: true })
       );
       assertEquals(await FileTasks.readText(`${dir}/tree/kept.txt`), "kept");
 
-      await Deno.mkdir(`${dir}/bare`);
+      await FileTasks.createDirectory(`${dir}/bare`, { recursive: false });
       await assertRejects(() =>
         FileTasks.symlink(`${dir}/target.txt`, `${dir}/bare`, { force: true })
       );
-      assertEquals((await Deno.lstat(`${dir}/bare`)).isDirectory, true);
+      assertEquals((await FileTasks.lstat(`${dir}/bare`)).isDirectory, true);
 
       // A refused publish leaves nothing behind: the link written under a temp
       // name is taken back out before the failure is reported.
       const leftovers: string[] = [];
-      for await (const entry of Deno.readDir(dir)) {
+      for (const entry of await FileTasks.readDirectory(dir)) {
         if (entry.name.includes(".zuke-symlink-")) leftovers.push(entry.name);
       }
       assertEquals(leftovers, []);
@@ -310,8 +311,8 @@ test({
     // Reading between every replacement is as close as an in-process test gets
     // to that, and it would catch a regression to unlink-first immediately.
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/one.txt`, "one");
-      await Deno.writeTextFile(`${dir}/two.txt`, "two");
+      await FileTasks.writeText(`${dir}/one.txt`, "one");
+      await FileTasks.writeText(`${dir}/two.txt`, "two");
       await FileTasks.symlink(`${dir}/one.txt`, `${dir}/link.txt`);
       const seen: string[] = [];
       for (let i = 0; i < 5; i++) {
@@ -331,9 +332,9 @@ test({
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.mkdir(`${dir}/first`);
-      await Deno.mkdir(`${dir}/second`);
-      await Deno.writeTextFile(`${dir}/second/inside.txt`, "in");
+      await FileTasks.createDirectory(`${dir}/first`, { recursive: false });
+      await FileTasks.createDirectory(`${dir}/second`, { recursive: false });
+      await FileTasks.writeText(`${dir}/second/inside.txt`, "in");
       await FileTasks.symlink(`${dir}/first`, `${dir}/link`, { type: "dir" });
       await FileTasks.symlink(`${dir}/second`, `${dir}/link`, {
         type: "dir",
@@ -349,7 +350,7 @@ test({
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(`${dir}/plain.txt`, "p");
+      await FileTasks.writeText(`${dir}/plain.txt`, "p");
       await assertRejects(() => FileTasks.readLink(`${dir}/plain.txt`));
     });
   },
@@ -362,13 +363,12 @@ test({
     // A missing parent directory is a NotFound, which force has no business
     // swallowing — the caller asked for a link somewhere that does not exist.
     await withTemp(async (dir) => {
-      await assertRejects(
-        () =>
-          FileTasks.symlink(`${dir}/t.txt`, `${dir}/absent/link.txt`, {
-            force: true,
-          }),
-        Deno.errors.NotFound,
+      const missing = await assertRejects(() =>
+        FileTasks.symlink(`${dir}/t.txt`, `${dir}/absent/link.txt`, {
+          force: true,
+        })
       );
+      assertEquals(isNotFound(missing), true);
     });
   },
 });

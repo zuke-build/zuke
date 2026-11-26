@@ -5,6 +5,7 @@ import { test } from "../../../tests/_testing.ts";
 import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { connect, createServer } from "node:net";
 import { FileTasks } from "../src/file.ts";
+import { RuntimeTasks } from "../src/runtime_tasks.ts";
 import { listenerOf, NetTasks } from "../src/net.ts";
 import { StreamTasks } from "../src/stream.ts";
 import { withTemp } from "../../../tests/_temp.ts";
@@ -56,10 +57,7 @@ async function textOf(stream: ReadableStream<Uint8Array>): Promise<string> {
 
 test("NetTasks carries bytes both ways over an accepted connection", async () => {
   const listener = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: listener.port,
-  });
+  const client = await NetTasks.connect(listener.port);
   const server = await listener.accept();
   listener.close();
   await client.write(new TextEncoder().encode("ping"));
@@ -73,10 +71,7 @@ test("NetTasks carries bytes both ways over an accepted connection", async () =>
 
 test("NetTasks queues a connection that arrives before accept", async () => {
   const listener = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: listener.port,
-  });
+  const client = await NetTasks.connect(listener.port);
   await new Promise((resolve) => setTimeout(resolve, 50));
   const server = await listener.accept();
   server.close();
@@ -95,10 +90,7 @@ test("NetTasks rejects a waiting accept on close, and drops unaccepted connectio
   await assertRejects(() => waiting);
 
   const second = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: second.port,
-  });
+  const client = await NetTasks.connect(second.port);
   await new Promise((resolve) => setTimeout(resolve, 50));
   second.close();
   // The listener destroyed the connection nobody accepted; reading to the
@@ -119,10 +111,7 @@ test("NetTasks fails to listen on a port already taken", async () => {
 
 test("NetTasks closes the connection when its reading is cancelled", async () => {
   const listener = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: listener.port,
-  });
+  const client = await NetTasks.connect(listener.port);
   const server = await listener.accept();
   listener.close();
   const reader = server.readable.getReader();
@@ -145,17 +134,12 @@ test("NetTasks errors what it reads when the other side resets", async () => {
 
 test("NetTasks pauses a fast sender until its bytes are read", async () => {
   const listener = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: listener.port,
-  });
+  const client = await NetTasks.connect(listener.port);
   const server = await listener.accept();
   listener.close();
   const size = 8 * 1024 * 1024;
   const sent = (async () => {
-    const bytes = new Uint8Array(size);
-    // A write may take only part of what it is given.
-    for (let at = 0; at < size;) at += await client.write(bytes.subarray(at));
+    await client.write(new Uint8Array(size));
     await client.closeWrite();
   })();
   // Nothing is read for a while, so the stream fills and the socket pauses.
@@ -191,7 +175,7 @@ test("StreamTasks.toFile applies the mode it is given", async () => {
     const info = await FileTasks.stat(path);
     assertEquals(
       info.mode === null ? null : info.mode & 0o777,
-      Deno.build.os === "windows" ? null : 0o600,
+      RuntimeTasks.os() === "windows" ? null : 0o600,
     );
   });
 });
@@ -212,10 +196,7 @@ test("NetTasks survives a queued connection reset before it is accepted", async 
 
 test("NetTasks closeWrite settles on a connection already closed", async () => {
   const listener = await NetTasks.listen();
-  const client = await Deno.connect({
-    hostname: "127.0.0.1",
-    port: listener.port,
-  });
+  const client = await NetTasks.connect(listener.port);
   const server = await listener.accept();
   listener.close();
   await client.write(new Uint8Array([1]));
