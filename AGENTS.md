@@ -185,13 +185,14 @@ every SDK, and every change must keep it:
    `deno task ci` (which delegates to `./zuke ci`, the same gate CI runs) before
    committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced
-   twice in CI: the gate's `nodeTest` target runs the suite on Vitest with the
-   thresholds in `vitest.config.ts`, and the Deno lane runs the `coverage`
-   target, whose `DenoTasks.coverage` `.threshold()` parses the lcov report and
-   fails the build (locally, `deno task cov`). Both also hold each file to a 50%
-   line floor; Node's leaves out `build/`, whose tests are mostly Deno-only. New
-   code needs new tests in the same change — see [**Testing**](#testing) for the
-   required layers (always unit + integration; e2e for bigger features).
+   twice in CI, on Linux, where the whole suite runs: the gate's `nodeTest`
+   target runs the suite on Vitest with the thresholds in `vitest.config.ts`,
+   and the Deno lane runs the `coverage` target, whose `DenoTasks.coverage`
+   `.threshold()` parses the lcov report and fails the build (locally, `deno
+   task cov`). Both also hold each file to a 50% line floor; Node's leaves out
+   `build/`, whose tests are mostly Deno-only. New code needs new tests in the
+   same change — see [**Testing**](#testing) for the required layers (always
+   unit + integration; e2e for bigger features).
 4. **Document every public symbol — JSDoc on ALL of it.** A JSDoc comment is
    required on every exported symbol **and on every public member of an exported
    class or interface**: methods, fields (including the trailing-underscore

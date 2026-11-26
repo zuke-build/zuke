@@ -453,15 +453,22 @@ class ZukeBuild extends Build {
   // npm workspace installed from its lock, then Vitest over every test file,
   // with the thresholds vitest.config.ts sets. The Deno lane runs `test`.
   nodeTest = target()
-    .description("Run the test suite on Node with the 95% coverage gate")
+    .description(
+      "Run the test suite on Node, with the 95% coverage gate on Linux",
+    )
     .dependsOn(this.npmInstall)
     .executes(async () => {
       // HERMETIC_ENV as the Deno `test` target gives its shards, so no test
       // build restores outputs from, or writes a summary to, the job's own.
+      // Coverage is gated on Linux, where the whole suite runs: macOS and
+      // Windows skip some files' tests, so a threshold there would measure the
+      // platform, as the Deno lane's does.
+      const gated = RuntimeTasks.os() === "linux";
       const run = (env: Record<string, string>) =>
-        VitestTasks.run((s) =>
-          s.coverage().reporter("dot").env({ ...HERMETIC_ENV, ...env })
-        );
+        VitestTasks.run((s) => {
+          const tests = s.reporter("dot").env({ ...HERMETIC_ENV, ...env });
+          return gated ? tests.coverage() : tests;
+        });
       // A `deno` that only fails goes first on PATH, so a test that quietly
       // needs Deno fails here rather than passing because the build runs on it.
       // shortcut: a shell-free spawn on Windows looks for deno.exe, which this
