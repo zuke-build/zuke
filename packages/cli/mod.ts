@@ -24,6 +24,7 @@ import { assertBuildFileName, NEW_BUILD_FILE } from "./src/build_file.ts";
 import {
   defaultHost,
   existingBuildFile,
+  existingRuntime,
   type McpSetupOptions,
   runSetup,
   type SdkSetupOptions,
@@ -174,7 +175,7 @@ export interface SetupFlags {
    * runs, in place of a `zuke.ts`. Unset: a TypeScript build.
    */
   sdk?: string;
-  /** The runtime of a TypeScript build (`--runtime deno|node`). Unset: Deno, asked when interactive. */
+  /** The runtime of a TypeScript build (`--runtime deno|node`). Unset: the project's own, else Node; asked when interactive. */
   runtime?: string;
   /**
    * The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
@@ -464,7 +465,8 @@ Setup options:
   --name <Class>          Build class name (default: MyBuild)
   --build-file <name>     TypeScript build file name (default: build.ts, or the project's own)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
-  --runtime deno|node     Runtime of a TypeScript build (default: deno); node scaffolds a package.json and Node launchers
+  --runtime deno|node     Runtime of a TypeScript build (default: node, or the project's own); node scaffolds a
+                          package.json and Node launchers, and converts a Deno project in place
   --sdk python            Scaffold a build.py and launchers that run the zuke binary (no Deno)
   --zuke <version>        The zuke release those launchers run (default: this one)
   --mcp                   Also write .mcp.json registering the build's MCP server
@@ -591,6 +593,17 @@ async function askBuildFile(
   throw new Error(refusal);
 }
 
+/**
+ * The runtime `zuke setup` picks when `--runtime` does not: the project's
+ * own, so a re-run never converts it, and Node for a new project.
+ */
+async function defaultRuntime(
+  dir: string,
+  host: SetupHost,
+): Promise<ProjectRuntime> {
+  return await existingRuntime(dir, host) ?? "node";
+}
+
 /** Run the `setup` subcommand. */
 async function commandSetup(
   args: string[],
@@ -623,7 +636,10 @@ async function commandSetup(
       force = prompter.confirm("Overwrite existing files if present?");
     }
     if (sdk === undefined && runtime === undefined) {
-      const answer = prompter.ask("Runtime (deno or node)", "deno").trim();
+      const answer = prompter.ask(
+        "Runtime (deno or node)",
+        await defaultRuntime(dir, host),
+      ).trim();
       if (!isRuntime(answer)) {
         throw new Error(
           `zuke setup: unknown runtime "${answer}" — answer deno or node.`,
@@ -632,6 +648,7 @@ async function commandSetup(
       runtime = answer;
     }
   }
+  if (sdk === undefined) runtime ??= await defaultRuntime(dir, host);
   // A Node launcher always bootstraps and names no Deno, so it is not asked.
   const bootstrapDeno = runtime === "node" ? undefined : resolveBootstrapDeno(
     flags,

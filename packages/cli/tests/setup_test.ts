@@ -1437,3 +1437,149 @@ test("runSetup refuses --runtime node with --sdk, and treats deno as today's set
   assertEquals(host.files.has("package.json"), false);
   assertEquals(host.files.get("zuke.json")?.includes("runtime"), false);
 });
+
+/** A Deno project as `zuke setup` leaves it: build, zuke.json, deno.json, launchers. */
+function denoProject(build = 'import { Build } from "@zuke/core";\n') {
+  return new FakeHost({
+    "build.ts": build,
+    "zuke.json": JSON.stringify({ name: "Acme", build: "build.ts", extra: 1 }),
+    "deno.json": JSON.stringify({
+      imports: {
+        "@zuke/core": "jsr:@zuke/core@^1",
+        "@zuke/docker": "jsr:@zuke/docker@^1",
+        "@zuke/core/shell": "jsr:@zuke/core@^1/shell",
+        "@std/yaml": "jsr:@std/yaml@^1",
+      },
+    }),
+    zuke: "old deno launcher",
+    "zuke.ps1": "old deno launcher",
+  });
+}
+
+test("runSetup --runtime node converts a Deno project in place, without --force", async () => {
+  const host = denoProject();
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Other", runtime: "node" },
+    host,
+  );
+  assertEquals(result.manualSteps, []);
+  // zuke.json keeps its own fields and gains the runtime.
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
+    name: "Acme",
+    build: "build.ts",
+    extra: 1,
+    runtime: "node",
+  });
+  for (const launcher of ["zuke", "zuke.ps1"]) {
+    const text = host.files.get(launcher) ?? "";
+    assertEquals(/deno/i.test(text), false, launcher);
+    assertEquals(
+      result.files.find((f) => f.path === launcher)?.status,
+      "overwritten",
+    );
+  }
+  // Every @zuke package deno.json imported, through its npm alias.
+  assertEquals(JSON.parse(host.files.get("package.json") ?? "").dependencies, {
+    "@zuke/core": NODE_CORE,
+    "@zuke/docker": "npm:@zuke-build/docker@^1",
+  });
+  // The build file and deno.json are the project's own, and kept.
+  assertEquals(
+    host.files.get("build.ts"),
+    'import { Build } from "@zuke/core";\n',
+  );
+  assertStringIncludes(host.files.get("deno.json") ?? "", "@std/yaml");
+  assertEquals(result.notes.length, 1);
+  assertStringIncludes(result.notes[0], "@std/yaml");
+  assertEquals(result.notes[0].includes("@zuke/core/shell"), true);
+});
+
+test("runSetup --runtime node converting asks for the jsr: imports Node cannot load", async () => {
+  const host = denoProject('import { Build } from "jsr:@zuke/core@^1";\n');
+  host.files.delete("deno.json");
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(result.manualSteps.length, 1);
+  assertStringIncludes(result.manualSteps[0], "jsr:");
+  // With no deno.json there is nothing to note, and only @zuke/core to add.
+  assertEquals(result.notes, []);
+  assertEquals(JSON.parse(host.files.get("package.json") ?? "").dependencies, {
+    "@zuke/core": NODE_CORE,
+  });
+});
+
+test("runSetup --runtime node converting a build with no zuke.json writes a Node one", async () => {
+  const host = new FakeHost({ "zuke.ts": 'import "@zuke/core";\n' });
+  await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
+    name: "A",
+    runtime: "node",
+  });
+  assertEquals(host.files.get("zuke.ts"), 'import "@zuke/core";\n');
+});
+
+test("runSetup --runtime node refuses to convert a zuke.json it cannot merge into", async () => {
+  for (const text of ["[1]", "{ nope"]) {
+    const broken = denoProject();
+    broken.files.set("zuke.json", text);
+    await assertRejects(
+      () =>
+        runSetup(
+          { dir: ".", force: false, name: "A", runtime: "node" },
+          broken,
+        ),
+      Error,
+      "not a JSON object",
+    );
+    assertEquals(broken.files.get("zuke.json"), text);
+  }
+  const linked = denoProject();
+  linked.symlinks.add("zuke.json");
+  await assertRejects(
+    () =>
+      runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, linked),
+    Error,
+    "symbolic link",
+  );
+});
+
+test("runSetup refuses to move a Node project back to Deno", async () => {
+  const host = new FakeHost({
+    "build.ts": 'import "@zuke/core";\n',
+    "zuke.json": JSON.stringify({ name: "A", runtime: "node" }),
+  });
+  for (const runtime of ["deno", undefined] as const) {
+    await assertRejects(
+      () => runSetup({ dir: ".", force: false, name: "A", runtime }, host),
+      Error,
+      "does not move it back to Deno",
+    );
+  }
+  assertEquals(host.files.has("deno.json"), false);
+  // Re-running it on Node is fine, and converts nothing.
+  const again = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(
+    again.files.find((f) => f.path === "zuke.json")?.status,
+    "skipped",
+  );
+});
+
+test("runSetup --runtime node converting reads past a deno.json it cannot parse, and a jsr: in a comment", async () => {
+  const host = denoProject(
+    '// once imported jsr:@zuke/core\nimport "@zuke/core";\n',
+  );
+  host.files.set("deno.json", "{ // jsonc\n}");
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(result.manualSteps, []);
+  assertEquals(result.notes.length, 1);
+  assertStringIncludes(result.notes[0], "Remove it once nothing else uses it");
+  assertEquals(host.files.get("deno.json"), "{ // jsonc\n}");
+});

@@ -105,3 +105,51 @@ test("zuke setup creates the --dir it is given when it is not there yet", async 
     await FileTasks.remove(root, { recursive: true });
   }
 });
+
+test("zuke setup defaults a new project to Node, and converts a Deno one in place", async () => {
+  const root = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-node-")
+  );
+  try {
+    const lines: string[] = [];
+    const run = (args: string[]) =>
+      main(["setup", "--yes", ...args], quietHost(lines), defaultPrompter);
+    // No --runtime in an empty directory: a Node project.
+    const fresh = `${root}/fresh`;
+    assertEquals(await run(["--dir", fresh]), 0, lines.join("\n"));
+    assertEquals(
+      runtimeNamed(await FileTasks.readText(`${fresh}/zuke.json`)),
+      "node",
+    );
+    assertEquals(await FileTasks.exists(`${fresh}/deno.json`), false);
+
+    // A Deno project stays on Deno when re-run without --runtime ...
+    const deno = `${root}/deno`;
+    assertEquals(await run(["--runtime", "deno", "--dir", deno]), 0);
+    assertEquals(await run(["--dir", deno]), 0, lines.join("\n"));
+    assertEquals(
+      runtimeNamed(await FileTasks.readText(`${deno}/zuke.json`)),
+      "deno",
+    );
+    assertEquals(await FileTasks.exists(`${deno}/package.json`), false);
+
+    // ... and moves to Node in place when asked, its build file kept.
+    const build = await FileTasks.readText(`${deno}/build.ts`);
+    assertEquals(await run(["--runtime", "node", "--dir", deno]), 0);
+    assertEquals(
+      runtimeNamed(await FileTasks.readText(`${deno}/zuke.json`)),
+      "node",
+    );
+    assertEquals(await FileTasks.readText(`${deno}/build.ts`), build);
+    assertEquals(
+      /deno/i.test(await FileTasks.readText(`${deno}/zuke`)),
+      false,
+    );
+    assertEquals(
+      JSON.parse(await FileTasks.readText(`${deno}/package.json`)).dependencies,
+      { "@zuke/core": "npm:@zuke-build/core@^1" },
+    );
+  } finally {
+    await FileTasks.remove(root, { recursive: true });
+  }
+});

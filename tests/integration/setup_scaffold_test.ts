@@ -38,7 +38,7 @@ async function scaffold(): Promise<{
   };
   try {
     const code = await main(
-      ["setup", "--yes", "--name", "Foo", "--dir", dir],
+      ["setup", "--yes", "--runtime", "deno", "--name", "Foo", "--dir", dir],
       host,
     );
     const files = new Map<string, string>();
@@ -137,7 +137,7 @@ test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone"
       log: (message: string) => void lines.push(message),
     };
     const code = await main(
-      ["setup", "--yes", "--name", "Foo", "--dir", dir],
+      ["setup", "--yes", "--runtime", "deno", "--name", "Foo", "--dir", dir],
       host,
     );
 
@@ -166,7 +166,17 @@ async function setupIn(
     log: (message: string) => void lines.push(message),
   };
   const code = await main(
-    ["setup", "--yes", "--name", "Foo", "--dir", dir, ...extra],
+    [
+      "setup",
+      "--yes",
+      "--runtime",
+      "deno",
+      "--name",
+      "Foo",
+      "--dir",
+      dir,
+      ...extra,
+    ],
     host,
   );
   return { code, log: lines.join("\n") };
