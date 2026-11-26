@@ -17,18 +17,25 @@ import {
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
-/** Everything `stream` has been given so far, as text. */
-function drained(stream: PassThrough): string {
-  const chunk: unknown = stream.read();
-  return chunk instanceof Uint8Array ? new TextDecoder().decode(chunk) : "";
+/**
+ * Everything `stream` has been given, as text. The stream is ended and read to
+ * its end, since a runtime may hand a write to the readable side only later.
+ */
+async function drained(stream: PassThrough): Promise<string> {
+  stream.end();
+  let text = "";
+  for await (const chunk of stream) {
+    text += chunk instanceof Uint8Array ? new TextDecoder().decode(chunk) : "";
+  }
+  return text;
 }
 
-test("a queued writer returns at once and keeps the order", () => {
+test("a queued writer returns at once and keeps the order", async () => {
   const stream = new PassThrough();
   const writer = queuedWriter(stream);
   assertEquals(writer.writeSync(bytes("one ")), 4);
   assertEquals(writer.writeSync(bytes("two")), 3);
-  assertEquals(drained(stream), "one two");
+  assertEquals(await drained(stream), "one two");
 });
 
 test("a writer copies what it is given, so the caller may reuse it", async () => {
@@ -39,7 +46,7 @@ test("a writer copies what it is given, so the caller may reuse it", async () =>
   const awaited = awaitedWriter(stream).write(reused);
   reused.set(bytes("third"));
   assertEquals(await awaited, 5);
-  assertEquals(drained(stream), "first" + "again");
+  assertEquals(await drained(stream), "first" + "again");
 });
 
 test("an awaited write resolves only once the bytes before it have gone", async () => {
