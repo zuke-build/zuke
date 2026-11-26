@@ -395,15 +395,9 @@ class ZukeBuild extends Build {
 
   spell = target()
     .description("Spell-check the repository (cspell)")
+    .dependsOn(this.npmInstall)
     .executes(async () => {
-      const cspell = await installCli(
-        "npm:cspell@9",
-        "cspell",
-        (s) => s.allow("read").allow("env").allow("sys"),
-      );
-      await CspellTasks.lint((s) =>
-        s.toolPath(cspell).files("**").noProgress()
-      );
+      await CspellTasks.lint((s) => s.files("**").noProgress());
     });
 
   check = target()
@@ -559,8 +553,8 @@ class ZukeBuild extends Build {
     .description("Provision the pinned scanner binaries into .zuke/tools")
     .cacheKey(() =>
       [
-        Deno.build.os,
-        Deno.build.arch,
+        RuntimeTasks.os(),
+        RuntimeTasks.arch(),
         CODECOV_CLI_VERSION,
         ZIZMOR_VERSION,
         ACTIONLINT_VERSION,
@@ -569,7 +563,7 @@ class ZukeBuild extends Build {
     )
     .outputs(
       ...["codecov", "zizmor", "actionlint", "gitleaks"].flatMap((name) => {
-        const bin = Deno.build.os === "windows" ? `${name}.exe` : name;
+        const bin = RuntimeTasks.os() === "windows" ? `${name}.exe` : name;
         return [`.zuke/tools/${bin}`, `.zuke/tools/${bin}.install.json`];
       }),
     )
@@ -931,7 +925,7 @@ class ZukeBuild extends Build {
       const verdict = await checkPluginVersionBump(
         defaultGitHistory(),
         base,
-        (path) => Deno.readTextFile(path).catch(() => null),
+        (path) => FileTasks.readText(path).catch(() => null),
       );
       // Unlike the rest of the gate this needs history, so it can genuinely be
       // unable to run — and on CI that inability is itself the failure. The
@@ -1060,7 +1054,7 @@ class ZukeBuild extends Build {
       // (`GITHUB_BASE_REF` is set only there) the scan is scoped to the commits
       // under review; a push to the default branch and the weekly schedule still
       // walk the whole history, so nothing stops being covered.
-      const prBase = Deno.env.get("GITHUB_BASE_REF");
+      const prBase = EnvTasks.get("GITHUB_BASE_REF");
       // On a pull request, refuse a diff that changes what the scanners look
       // for. They read their rules from the working tree, so a branch that adds
       // a config chooses the scan that judges it. This is visibility, not a
@@ -1095,7 +1089,9 @@ class ZukeBuild extends Build {
       // fingerprint of each finding but not the secret itself, which is what
       // makes a failure diagnosable from the uploaded artifact instead of only
       // from a bare count in the log.
-      const gitleaksConfig = await Deno.makeTempFile({ suffix: ".toml" });
+      const gitleaksConfig = await FileTasks.makeTempFile((s) =>
+        s.suffix(".toml")
+      );
       try {
         await FileTasks.writeText(gitleaksConfig, GITLEAKS_CONFIG);
         await gate(
@@ -1110,7 +1106,7 @@ class ZukeBuild extends Build {
           }),
         );
       } finally {
-        await Deno.remove(gitleaksConfig).catch(() => {});
+        await FileTasks.remove(gitleaksConfig).catch(() => {});
       }
       // osv-scanner is omitted here: it has no extractor for Deno's lockfile.
       // The @zuke/security wrapper still ships it for projects with npm/cargo/
@@ -1219,7 +1215,7 @@ class ZukeBuild extends Build {
         const bin = consumer(
           "node_modules",
           ".bin",
-          Deno.build.os === "windows" ? "zuke.cmd" : "zuke",
+          RuntimeTasks.os() === "windows" ? "zuke.cmd" : "zuke",
         );
         const version = await $`${bin} --version`.cwd(consumer);
         const cli = await FileTasks.readJson("packages/cli/deno.json");
@@ -1393,7 +1389,7 @@ class ZukeBuild extends Build {
       // `ZUKE_REVIEW_PR` takes over: the reviewer fetches that pull request's
       // merge and diffs it against the base it was merged onto, and nothing
       // from this checkout — the default branch — is reviewed.
-      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+      .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       // Deeper review: judge against this file's documented conventions (read
       // from the diff base, so a PR can't rewrite the rules it's judged by),
@@ -1640,7 +1636,7 @@ class ZukeBuild extends Build {
           "`Deno.*` or global-`fetch` dependency where an injectable seam " +
           "(`StateHost`, `EnvReader`, an injected `fetch`) exists.",
       )
-      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+      .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       // Same conventions document and discussion loop as the security review —
       // refuted quality findings stay dismissed instead of looping, too. The
@@ -1780,8 +1776,8 @@ class ZukeBuild extends Build {
         "cut releases",
         "it mints the app's release token",
       );
-      const token = Deno.env.get("GITHUB_TOKEN");
-      const repo = Deno.env.get("GITHUB_REPOSITORY");
+      const token = EnvTasks.get("GITHUB_TOKEN");
+      const repo = EnvTasks.get("GITHUB_REPOSITORY");
       if (token === undefined || repo === undefined) {
         throw new Error(
           "release requires GITHUB_TOKEN and GITHUB_REPOSITORY in the env.",
@@ -1799,12 +1795,12 @@ class ZukeBuild extends Build {
       let releaseToken: string;
       try {
         releaseToken = await mintReleaseToken({
-          appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
-          privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+          appId: EnvTasks.get("ZUKE_BUILD_APP_ID"),
+          privateKey: EnvTasks.get("ZUKE_BUILD_APP_KEY"),
           repo,
         });
       } finally {
-        Deno.env.delete("ZUKE_BUILD_APP_KEY");
+        EnvTasks.delete("ZUKE_BUILD_APP_KEY");
       }
       const bin = await installCli(
         "npm:release-please@16.18.0",
@@ -1920,7 +1916,7 @@ class ZukeBuild extends Build {
       // release contract, and a throw here would redden the job after the
       // releases already exist — skipping the JSR publish that `needs` this
       // job. A warning plus the next run's top-up is the right trade.
-      const scratch = await Deno.makeTempDir();
+      const scratch = await FileTasks.makeTempDirectory();
       try {
         const archive = `${scratch}/zuke.tar.gz`;
         const packed = await buildGeminiArchive(archive);
@@ -1945,7 +1941,7 @@ class ZukeBuild extends Build {
             }`,
         );
       } finally {
-        await Deno.remove(scratch, { recursive: true });
+        await FileTasks.remove(scratch, { recursive: true });
       }
     });
 
@@ -1961,7 +1957,7 @@ class ZukeBuild extends Build {
         (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text();
 
       const actionRepo = (): string => {
-        const repo = Deno.env.get("GITHUB_REPOSITORY");
+        const repo = EnvTasks.get("GITHUB_REPOSITORY");
         if (repo === undefined) {
           throw new Error(
             "actionRelease needs GITHUB_REPOSITORY on CI: the tags and the " +
@@ -1980,8 +1976,8 @@ class ZukeBuild extends Build {
       let minted: string | undefined;
       const apiToken = async (): Promise<string> => {
         if (minted !== undefined) return minted;
-        const appId = Deno.env.get("ZUKE_BUILD_APP_ID");
-        const privateKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
+        const appId = EnvTasks.get("ZUKE_BUILD_APP_ID");
+        const privateKey = EnvTasks.get("ZUKE_BUILD_APP_KEY");
         if (!appId || !privateKey) {
           throw new Error(
             "actionRelease needs ZUKE_BUILD_APP_ID and ZUKE_BUILD_APP_KEY on " +
@@ -2195,14 +2191,14 @@ class ZukeBuild extends Build {
       // Deno merges rather than replaces the environment, so it would inherit
       // a long-lived private key it has no use for — `generate-ci` writes
       // workflow files from the pin and talks to nothing.
-      const appKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
-      if (appKey !== undefined) Deno.env.delete("ZUKE_BUILD_APP_KEY");
+      const appKey = EnvTasks.get("ZUKE_BUILD_APP_KEY");
+      if (appKey !== undefined) EnvTasks.delete("ZUKE_BUILD_APP_KEY");
       try {
         await DenoTasks.run((s) =>
           s.allowAll().frozen().script("build.ts").scriptArgs("generate-ci")
         );
       } finally {
-        if (appKey !== undefined) Deno.env.set("ZUKE_BUILD_APP_KEY", appKey);
+        if (appKey !== undefined) EnvTasks.set("ZUKE_BUILD_APP_KEY", appKey);
       }
       const version = result.released;
 
@@ -2478,7 +2474,7 @@ class ZukeBuild extends Build {
         }
         await compileCliBinaries(
           version,
-          absolutePath(Deno.cwd(), CLI_BIN_DIR),
+          absolutePath(RuntimeTasks.cwd(), CLI_BIN_DIR),
           binaryEntry(entry),
         );
       }
@@ -2490,12 +2486,12 @@ class ZukeBuild extends Build {
       const version = await localVersion("cli");
       await signMacBinaries(
         CLI_BIN_DIR,
-        signingCredentials((name) => Deno.env.get(name)),
+        signingCredentials((name) => EnvTasks.get(name)),
       );
       // The runner is Apple silicon: run the signed arm64 binary itself.
       await assertReportsVersion(
         absolutePath(
-          Deno.cwd(),
+          RuntimeTasks.cwd(),
           binaryPath(CLI_BIN_DIR, "aarch64-apple-darwin"),
         ),
         version,
@@ -2520,9 +2516,9 @@ class ZukeBuild extends Build {
         "release, then publish it",
     )
     .executes(async () => {
-      const attestation = Deno.env.get("CLI_ATTESTATION_BUNDLE");
+      const attestation = EnvTasks.get("CLI_ATTESTATION_BUNDLE");
       // gh reads GITHUB_TOKEN itself; checked here to fail with a clear message.
-      if (!Deno.env.get("GITHUB_TOKEN") || !attestation) {
+      if (!EnvTasks.get("GITHUB_TOKEN") || !attestation) {
         throw new Error(
           "cliUpload needs GITHUB_TOKEN and CLI_ATTESTATION_BUNDLE (the " +
             "attest-build-provenance step's bundle-path) in the env.",
@@ -2538,7 +2534,7 @@ class ZukeBuild extends Build {
   cliFormulaVerify = target()
     .description("Install the CLI's formula with the real brew and test it")
     .executes(async () => {
-      await Deno.mkdir("dist/cli", { recursive: true });
+      await FileTasks.createDirectory("dist/cli");
       await verifyCliFormula(await localVersion("cli"), CLI_FORMULA_FILE);
     });
 
@@ -2550,8 +2546,8 @@ class ZukeBuild extends Build {
         "it mints a token that writes the tap",
       );
       const credentials = resolveAppCredentials({
-        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
-        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+        appId: EnvTasks.get("ZUKE_BUILD_APP_ID"),
+        privateKey: EnvTasks.get("ZUKE_BUILD_APP_KEY"),
       });
       if (credentials === null) {
         throw new Error(
@@ -2575,8 +2571,8 @@ class ZukeBuild extends Build {
         "it mints a token that runs another repository's workflow",
       );
       const credentials = resolveAppCredentials({
-        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
-        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+        appId: EnvTasks.get("ZUKE_BUILD_APP_ID"),
+        privateKey: EnvTasks.get("ZUKE_BUILD_APP_KEY"),
       });
       if (credentials === null) {
         throw new Error(
@@ -2602,7 +2598,7 @@ class ZukeBuild extends Build {
       "Push the CLI's Chocolatey package to the community repository",
     )
     .executes(async () => {
-      const apiKey = Deno.env.get("CHOCOLATEY_API_KEY");
+      const apiKey = EnvTasks.get("CHOCOLATEY_API_KEY");
       if (!apiKey) {
         throw new Error(
           "cliChocolatey needs CHOCOLATEY_API_KEY: the community " +

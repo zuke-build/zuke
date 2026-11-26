@@ -7,7 +7,7 @@ arrow points from a dependency to the target that depends on it, so a target
 runs after everything that points at it. This is the same graph `./zuke graph`
 prints as text and `./zuke graph --output=html` renders interactively.
 
-66 target(s), 43 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+66 target(s), 44 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -81,6 +81,7 @@ flowchart TD
   t65["default"]
   t2 --> t3
   t2 --> t5
+  t2 --> t6
   t1 --> t7
   t2 --> t8
   t7 --> t9
@@ -134,7 +135,7 @@ flowchart TD
 | `format`               | Check formatting (dprint check)                                                                                               | `npmInstall`                                                                                                                                                                                                                                                                                                                                                                          |
 | `lint`                 | Lint the workspace (deno lint)                                                                                                | —                                                                                                                                                                                                                                                                                                                                                                                     |
 | `oxlint`               | Lint the workspace with Oxlint                                                                                                | `npmInstall`                                                                                                                                                                                                                                                                                                                                                                          |
-| `spell`                | Spell-check the repository (cspell)                                                                                           | —                                                                                                                                                                                                                                                                                                                                                                                     |
+| `spell`                | Spell-check the repository (cspell)                                                                                           | `npmInstall`                                                                                                                                                                                                                                                                                                                                                                          |
 | `check`                | Type-check the whole workspace                                                                                                | `restore`                                                                                                                                                                                                                                                                                                                                                                             |
 | `tsc`                  | Type-check the workspace with tsc                                                                                             | `npmInstall`                                                                                                                                                                                                                                                                                                                                                                          |
 | `test`                 | Run the test suite with coverage                                                                                              | `check`                                                                                                                                                                                                                                                                                                                                                                               |

@@ -31,6 +31,7 @@ import {
   isPublicMember,
 } from "./api_reference.ts";
 import { packageEntrypoints, PACKAGES } from "./packages.ts";
+import { provisionedDeno } from "./deno_tool.ts";
 
 /** Where the spec is committed: published with `@zuke/engine`. */
 export const TOOL_SPEC_PATH = "packages/engine/spec/tools.json";
@@ -730,10 +731,19 @@ export function packageOf(
   return { name, summary: firstSentence(root), tasks: carried, settings: out };
 }
 
-/** The `deno doc --json` output of the given entrypoints. */
-export async function docRootOf(paths: readonly string[]): Promise<DocRoot> {
+/**
+ * The `deno doc --json` output of the given entrypoints.
+ *
+ * @param paths The entrypoints to document.
+ * @param deno The Deno to run; the provisioned pin unless a test injects one.
+ */
+export async function docRootOf(
+  paths: readonly string[],
+  deno: () => Promise<string> = provisionedDeno,
+): Promise<DocRoot> {
+  const path = await deno();
   const { stdout } = await DenoTasks.doc((s) =>
-    s.paths(...paths).json().env({ NO_COLOR: "1" }).quiet()
+    s.toolPath(path).paths(...paths).json().env({ NO_COLOR: "1" }).quiet()
   );
   const root: DocRoot = JSON.parse(stdout);
   return root;
@@ -742,11 +752,12 @@ export async function docRootOf(paths: readonly string[]): Promise<DocRoot> {
 /** The spec of every wrapper package, read from the workspace. */
 export async function toolSpec(
   packages: readonly string[] = WRAPPER_PACKAGES,
+  deno: () => Promise<string> = provisionedDeno,
 ): Promise<ToolSpec> {
-  const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+  const tooling = await docRootOf([TOOLING_ENTRYPOINT], deno);
   const out: SpecPackage[] = [];
   for (const pkg of packages) {
-    const root = await docRootOf(await packageEntrypoints(pkg));
+    const root = await docRootOf(await packageEntrypoints(pkg), deno);
     const described = packageOf(pkg, root, tooling);
     if (described !== undefined) out.push(described);
   }

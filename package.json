@@ -12,6 +12,7 @@
     "@types/deno": "2.7.0",
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "5.1.0",
+    "cspell": "9.8.0",
     "dprint": "0.64.3",
     "oxlint": "1.93.0",
     "typescript": "7.0.2",

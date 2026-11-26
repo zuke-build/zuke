@@ -16,7 +16,12 @@
  * {@link TOOLS_ROOT} that also holds the generated tsconfig. Every machine that runs the gate has Node and npm.
  */
 
-import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
+import {
+  type AbsolutePath,
+  FileTasks,
+  repoRoot,
+  RuntimeTasks,
+} from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
 import { TscTasks } from "@zuke/tsc";
 import {
@@ -126,7 +131,7 @@ export async function buildNpm(
       2,
     ),
   );
-  const onWindows = Deno.build.os === "windows";
+  const onWindows = RuntimeTasks.os() === "windows";
   await TscTasks.tsc((s) =>
     s.toolPath(tools("node_modules", ".bin", onWindows ? "tsc.cmd" : "tsc"))
       .project(config)
