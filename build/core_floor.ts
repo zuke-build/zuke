@@ -33,7 +33,7 @@
  */
 
 import { DenoTasks } from "@zuke/deno";
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 
 /** The dependency whose declared floor is verified. */
 export const CORE_PACKAGE = "@zuke/core";
@@ -251,12 +251,14 @@ export function formatFloorFailures(results: readonly FloorResult[]): string[] {
  */
 export async function checkCoreFloors(
   packages: readonly string[],
-  readText: (path: string) => string = Deno.readTextFileSync,
+  readText: (path: string) => Promise<string> = FileTasks.readText,
 ): Promise<FloorResult[]> {
   const results: FloorResult[] = [];
-  const siblings = workspaceSiblings(packages, Deno.cwd());
+  const siblings = workspaceSiblings(packages, RuntimeTasks.cwd());
   for (const pkg of packages) {
-    const floor = readCoreFloor(pkg, readText);
+    // An unreadable config, like an unparsable one, makes no claim to check.
+    const text = await readText(`packages/${pkg}/deno.json`).catch(() => "");
+    const floor = readCoreFloor(pkg, () => text);
     if (floor === undefined) continue;
     const pinned = exactFloorSpecifier(floor.specifier);
     if (pinned === undefined) {
@@ -283,7 +285,9 @@ export async function checkCoreFloors(
       });
       continue;
     }
-    const dir = await Deno.makeTempDir({ prefix: `zuke-floor-${pkg}-` });
+    const dir = await FileTasks.makeTempDirectory((s) =>
+      s.prefix(`zuke-floor-${pkg}-`)
+    );
     try {
       const config = `${dir}/deno.json`;
       await FileTasks.writeText(config, floorConfig(floor, pinned, siblings));
@@ -302,7 +306,7 @@ export async function checkCoreFloors(
           : `${output.stderr}\n${output.stdout}`.trim(),
       });
     } finally {
-      await Deno.remove(dir, { recursive: true });
+      await FileTasks.remove(dir, { recursive: true });
     }
   }
   return results;

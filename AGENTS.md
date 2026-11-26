@@ -117,9 +117,9 @@ regenerate them in the same PR.
   so the suite runs with zero network access. This is a claim about the
   **published packages** — every `packages/*/deno.json` — and it is enforced by
   them declaring none. The build layer is separate and does have dependencies:
-  cspell and release-please are installed from npm on demand by `installCli`,
-  and the root `deno.json` imports `@std/yaml` for `build/`. Nothing under
-  `packages/` may import any of them.
+  cspell is pinned in the npm workspace like dprint, release-please is installed
+  from npm on demand by `installCli`, and the root `deno.json` imports
+  `@std/yaml` for `build/`. Nothing under `packages/` may import any of them.
 
 ### TypeScript 7 / `tsgo`
 

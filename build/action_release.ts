@@ -24,7 +24,7 @@
  * @module
  */
 
-import { isCI } from "@zuke/core";
+import { EnvTasks, isCI } from "@zuke/core";
 import { parse as parseYaml } from "@std/yaml";
 
 import actionVersion from "./action_version.json" with { type: "json" };
@@ -418,7 +418,7 @@ export interface RunRef {
 export function assertCiOnReleaseBranch(
   action: string,
   why: string,
-  run: RunRef = { ci: isCI(), ref: Deno.env.get("GITHUB_REF") },
+  run: RunRef = { ci: isCI(), ref: EnvTasks.get("GITHUB_REF") },
 ): void {
   if (!run.ci) return;
   const heads = "refs/heads/";

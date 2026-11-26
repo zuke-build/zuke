@@ -6,7 +6,12 @@
  * CLI installer, and the timeout-guarded JSR publish for one package.
  */
 
-import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
+import {
+  type AbsolutePath,
+  FileTasks,
+  repoRoot,
+  RuntimeTasks,
+} from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
 import { delay } from "../packages/core/src/internal.ts";
 import { DenoRunSettings, DenoTasks } from "@zuke/deno";
@@ -66,13 +71,13 @@ export async function installCli(
   name: string,
   permit: (s: DenoRunSettings) => DenoRunSettings,
 ): Promise<AbsolutePath> {
-  const onWindows = Deno.build.os === "windows";
+  const onWindows = RuntimeTasks.os() === "windows";
   const argv = permit(new DenoRunSettings().frozen()).script(module).argv();
   const launcher = TOOLS_ROOT("bin", onWindows ? `${name}.cmd` : name);
   await FileTasks.createDirectory(TOOLS_ROOT("bin"));
   await FileTasks.writeText(launcher, launcherScript(argv, onWindows));
   // The generated launcher has to be executable to be spawned as a tool path.
-  if (!onWindows) await Deno.chmod(String(launcher), 0o755);
+  if (!onWindows) await FileTasks.chmod(String(launcher), 0o755);
   return launcher;
 }
 

@@ -10,7 +10,7 @@
  * @module
  */
 
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { test } from "./_testing.ts";
 import { assertEquals } from "./_assert.ts";
 import type { DocTsType } from "../build/api_reference.ts";
@@ -27,6 +27,9 @@ import {
   toolingOf,
   toolSpec,
 } from "../build/tool_spec.ts";
+
+/** The Deno running these Deno-only tests, so none of them downloads the pin. */
+const runningDeno = () => Promise.resolve(RuntimeTasks.execPath());
 
 const FIXTURES = "tests/fixtures/tool_spec";
 
@@ -163,9 +166,9 @@ test({
   name: "packageOf: the fixture wrappers read to their golden parts",
   denoOnly: "reads the wrappers through deno doc",
   fn: async () => {
-    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT], runningDeno);
     for (const name of ["widget", "tally", "relay"]) {
-      const root = await docRootOf([`${FIXTURES}/${name}.ts`]);
+      const root = await docRootOf([`${FIXTURES}/${name}.ts`], runningDeno);
       assertEquals(packageOf(name, root, tooling), await golden(name), name);
     }
   },
@@ -175,7 +178,7 @@ test({
   name: "packageOf: a root without tasks is no part of the spec",
   denoOnly: "reads the wrappers through deno doc",
   fn: async () => {
-    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT], runningDeno);
     assertEquals(
       packageOf("empty", { version: 1, nodes: {} }, tooling),
       undefined,
@@ -189,7 +192,7 @@ test({
     "packageOf: an extends entry that names no interface it can read adds nothing",
   denoOnly: "reads the wrappers through deno doc",
   fn: async () => {
-    const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+    const tooling = await docRootOf([TOOLING_ENTRYPOINT], runningDeno);
     const method = (name: string) => ({
       name,
       kind: "method",
@@ -238,7 +241,9 @@ test({
     "toolingOf: the base settings, their public setters, no reserved member",
   denoOnly: "reads the wrappers through deno doc",
   fn: async () => {
-    const tooling = toolingOf(await docRootOf([TOOLING_ENTRYPOINT]));
+    const tooling = toolingOf(
+      await docRootOf([TOOLING_ENTRYPOINT], runningDeno),
+    );
     const names = tooling.map((s) => s.name);
     assert(names.includes("ToolSettings"), names.join(","));
     assert(names.includes("DynamicToolSettings"), names.join(","));
@@ -267,7 +272,7 @@ test({
   name: "toolSpec: the workspace's wrappers, rendered as the committed file is",
   denoOnly: "reads the wrappers through deno doc",
   fn: async () => {
-    const spec = await toolSpec(["deno", "docker"]);
+    const spec = await toolSpec(["deno", "docker"], runningDeno);
     assertEquals(spec.spec, TOOL_SPEC_VERSION);
     assertEquals(spec.packages.map((p) => p.name), ["deno", "docker"]);
     const deno = spec.packages[0];

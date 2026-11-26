@@ -36,6 +36,7 @@
  * @module
  */
 
+import { EnvTasks } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
 import { isNewerSemver } from "./semver.ts";
 
@@ -334,7 +335,7 @@ export function defaultGitHistory(): GitHistory {
  * checkout has — `GITHUB_BASE_REF` is a bare branch name.
  */
 export function resolveBaseRef(
-  readEnv: (name: string) => string | undefined = Deno.env.get,
+  readEnv: (name: string) => string | undefined = EnvTasks.get,
 ): string {
   const explicit = readEnv("ZUKE_PLUGIN_BASE_REF");
   if (explicit !== undefined && explicit !== "") return explicit;
