@@ -27,7 +27,7 @@ import {
   UntrustedBuildError,
 } from "../src/dispatch.ts";
 import { EMBEDDED_ENGINE_ENV } from "../src/embedded_engine.ts";
-import { CONFIG_FILE } from "@zuke/core";
+import { CONFIG_FILE, EnvTasks, FileTasks, RuntimeTasks } from "@zuke/core";
 import { withTemp } from "../../../tests/_temp.ts";
 import { withEnv } from "../../../tests/_env.ts";
 
@@ -700,6 +700,7 @@ test("the binary never falls back to Deno for a hosted build it cannot serve", a
     launcher: null,
     engine: "2.0.0",
   };
+  // The binary and a Deno-installed zuke both run on Deno, whatever runs this.
   const refusal = "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run " +
     "zuke.json's 2.0.0. Install a zuke release that carries it " +
     "(https://github.com/zuke-build/zuke/blob/master/docs/install.md), run " +
@@ -709,7 +710,7 @@ test("the binary never falls back to Deno for a hosted build it cannot serve", a
   await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
     // No launcher to go to (every root on Windows).
     await assertRejects(
-      () => runBuild(runner, unserved, ["ci"], undefined, EMBEDDED),
+      () => runBuild(runner, unserved, ["ci"], undefined, EMBEDDED, "deno"),
       Error,
       refusal,
     );
@@ -724,6 +725,7 @@ test("the binary never falls back to Deno for a hosted build it cannot serve", a
           ["ci"],
           undefined,
           EMBEDDED,
+          "deno",
         ),
       Error,
       refusal,
@@ -739,6 +741,9 @@ test("the binary never falls back to Deno for a hosted build it cannot serve", a
       },
       unserved,
       ["ci"],
+      undefined,
+      undefined,
+      "deno",
     );
   });
   assertEquals(calls, [[
@@ -918,7 +923,7 @@ test("the no-lock notice names the lockfile", () => {
 
 test("defaultBuildProbe answers from the real filesystem", async () => {
   await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
+    await FileTasks.writeText(`${dir}/zuke.json`, "{}\n");
     assertEquals(await defaultBuildProbe.exists(`${dir}/zuke.json`), true);
     assertEquals(await defaultBuildProbe.readText(`${dir}/zuke.json`), "{}\n");
     assertEquals(await defaultBuildProbe.exists(`${dir}/deno.lock`), false);
@@ -932,38 +937,47 @@ test("defaultBuildProbe answers from the real filesystem", async () => {
     assertEquals(await defaultBuildProbe.ownership(`${dir}/deno.json`), null);
     assertEquals(
       await defaultBuildProbe.realPath(dir),
-      await Deno.realPath(dir),
+      await FileTasks.realPath(dir),
     );
-  }, { prefix: "zuke-dispatch-" });
-});
-
-test("defaultBuildRunner runs the given deno argv from the root and returns its code", async () => {
-  await withTemp(async (dir) => {
-    // A self-contained script proves the runner's contract without a build:
-    // it runs from `dir` (the cwd it reports) and exits with the code we set.
-    await Deno.writeTextFile(
-      `${dir}/${BUILD_FILE}`,
-      "await Deno.writeTextFile('probe.txt', Deno.cwd());\nDeno.exit(7);\n",
-    );
-    const code = await defaultBuildRunner(dir, ["run", "-A", BUILD_FILE]);
-    assertEquals(code, 7);
-    // The script's relative write landed in the root, i.e. cwd was `dir`.
-    const seen = await Deno.readTextFile(`${dir}/probe.txt`);
-    assertEquals(await Deno.realPath(seen), await Deno.realPath(dir));
   }, { prefix: "zuke-dispatch-" });
 });
 
 test({
   name:
-    "defaultBuildRunner runs a launcher program from the root with the args",
-  ignore: Deno.build.os === "windows",
+    "defaultBuildRunner runs the given deno argv from the root and returns its code",
+  denoOnly:
+    "runs a script with deno run, the program defaultBuildRunner starts with no launcher",
   fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(
+      // A self-contained script proves the runner's contract without a build:
+      // it runs from `dir` (the cwd it reports) and exits with the code we set.
+      await FileTasks.writeText(
+        `${dir}/${BUILD_FILE}`,
+        "await Deno.writeTextFile('probe.txt', Deno.cwd());\nDeno.exit(7);\n",
+      );
+      const code = await defaultBuildRunner(dir, ["run", "-A", BUILD_FILE]);
+      assertEquals(code, 7);
+      // The script's relative write landed in the root, i.e. cwd was `dir`.
+      const seen = await FileTasks.readText(`${dir}/probe.txt`);
+      assertEquals(
+        await FileTasks.realPath(seen),
+        await FileTasks.realPath(dir),
+      );
+    }, { prefix: "zuke-dispatch-" });
+  },
+});
+
+test({
+  name:
+    "defaultBuildRunner runs a launcher program from the root with the args",
+  ignore: RuntimeTasks.os() === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await FileTasks.writeText(
         `${dir}/${LAUNCHER_FILE}`,
         `#!/bin/sh\npwd > probe.txt\necho "$${FORWARDED_ENV}" >> probe.txt\n` +
           `printf '%s\\n' "$@" >> probe.txt\nexit 5\n`,
-        { mode: 0o755 },
+        (s) => s.mode(0o755),
       );
       const code = await defaultBuildRunner(
         dir,
@@ -972,84 +986,101 @@ test({
       );
       assertEquals(code, 5);
       const [cwd, forwarded, ...args] =
-        (await Deno.readTextFile(`${dir}/probe.txt`)).trimEnd().split("\n");
-      assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
+        (await FileTasks.readText(`${dir}/probe.txt`)).trimEnd().split("\n");
+      assertEquals(
+        await FileTasks.realPath(cwd),
+        await FileTasks.realPath(dir),
+      );
       assertEquals(forwarded, "1");
       assertEquals(args, ["ci", "--parallel"]);
     }, { prefix: "zuke-dispatch-" });
   },
 });
 
-test("defaultBuildRunner gives the child a PATH even when the parent has none", async () => {
-  const inherited = Deno.env.get("PATH");
-  try {
-    Deno.env.delete("PATH");
+test({
+  name:
+    "defaultBuildRunner gives the child a PATH even when the parent has none",
+  denoOnly:
+    "runs a script with deno run, the program defaultBuildRunner starts with no launcher",
+  fn: async () => {
+    const inherited = EnvTasks.get("PATH");
+    try {
+      EnvTasks.delete("PATH");
+      await withTemp(async (dir) => {
+        await FileTasks.writeText(
+          `${dir}/${BUILD_FILE}`,
+          "await Deno.writeTextFile('path.txt', Deno.env.get('PATH') ?? '');\n",
+        );
+        assertEquals(
+          await defaultBuildRunner(dir, ["run", "-A", BUILD_FILE]),
+          0,
+        );
+        const path = await FileTasks.readText(`${dir}/path.txt`);
+        // Just the running Deno's directory: no separator, nothing else.
+        const separator = RuntimeTasks.os() === "windows" ? ";" : ":";
+        assertEquals(path.includes(separator), false);
+        assertEquals(path.length > 0, true);
+      }, { prefix: "zuke-dispatch-" });
+    } finally {
+      if (inherited !== undefined) EnvTasks.set("PATH", inherited);
+    }
+  },
+});
+
+test({
+  name: "defaultBuildRunner puts the running Deno first on the child's PATH",
+  denoOnly:
+    "runs a script with deno run, the program defaultBuildRunner starts with no launcher",
+  fn: async () => {
     await withTemp(async (dir) => {
-      await Deno.writeTextFile(
+      await FileTasks.writeText(
         `${dir}/${BUILD_FILE}`,
         "await Deno.writeTextFile('path.txt', Deno.env.get('PATH') ?? '');\n",
       );
       assertEquals(await defaultBuildRunner(dir, ["run", "-A", BUILD_FILE]), 0);
-      const path = await Deno.readTextFile(`${dir}/path.txt`);
-      // Just the running Deno's directory: no separator, nothing else.
-      const separator = Deno.build.os === "windows" ? ";" : ":";
-      assertEquals(path.includes(separator), false);
-      assertEquals(path.length > 0, true);
+      const path = await FileTasks.readText(`${dir}/path.txt`);
+      const separator = RuntimeTasks.os() === "windows" ? ";" : ":";
+      const [first, ...rest] = path.split(separator);
+      const binDir = RuntimeTasks.execPath().replaceAll("\\", "/").replace(
+        /\/[^/]+$/,
+        "",
+      );
+      assertEquals(first, binDir);
+      // The inherited PATH follows, so nothing the user had is lost.
+      const inherited = EnvTasks.get("PATH") ?? "";
+      assertEquals(rest.join(separator), inherited);
     }, { prefix: "zuke-dispatch-" });
-  } finally {
-    if (inherited !== undefined) Deno.env.set("PATH", inherited);
-  }
-});
-
-test("defaultBuildRunner puts the running Deno first on the child's PATH", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(
-      `${dir}/${BUILD_FILE}`,
-      "await Deno.writeTextFile('path.txt', Deno.env.get('PATH') ?? '');\n",
-    );
-    assertEquals(await defaultBuildRunner(dir, ["run", "-A", BUILD_FILE]), 0);
-    const path = await Deno.readTextFile(`${dir}/path.txt`);
-    const separator = Deno.build.os === "windows" ? ";" : ":";
-    const [first, ...rest] = path.split(separator);
-    const binDir = Deno.execPath().replaceAll("\\", "/").replace(
-      /\/[^/]+$/,
-      "",
-    );
-    assertEquals(first, binDir);
-    // The inherited PATH follows, so nothing the user had is lost.
-    const inherited = Deno.env.get("PATH") ?? "";
-    assertEquals(rest.join(separator), inherited);
-  }, { prefix: "zuke-dispatch-" });
+  },
 });
 
 test({
   name:
     "a symlinked shared launcher runs by its path under the root, building this repo",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       // repo/zuke -> ../shared/zuke, the launcher several repos share. Like
       // the real launchers it finds the project from the path it was called
       // by, so it records that directory.
-      await Deno.mkdir(`${dir}/shared`);
-      await Deno.mkdir(`${dir}/repo`);
-      await Deno.writeTextFile(
+      await FileTasks.createDirectory(`${dir}/shared`, { recursive: false });
+      await FileTasks.createDirectory(`${dir}/repo`, { recursive: false });
+      await FileTasks.writeText(
         `${dir}/shared/${LAUNCHER_FILE}`,
         `#!/bin/sh\ncd "$(dirname "$0")" && pwd > "$ZUKE_PROBE_OUT"\n`,
-        { mode: 0o755 },
+        (s) => s.mode(0o755),
       );
-      await Deno.symlink(
+      await FileTasks.symlink(
         `../shared/${LAUNCHER_FILE}`,
         `${dir}/repo/${LAUNCHER_FILE}`,
       );
-      await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
-      await Deno.writeTextFile(`${dir}/repo/${BUILD_FILE}`, "");
+      await FileTasks.writeText(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+      await FileTasks.writeText(`${dir}/repo/${BUILD_FILE}`, "");
 
       const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
-      const root = await Deno.realPath(`${dir}/repo`);
+      const root = await FileTasks.realPath(`${dir}/repo`);
       assertEquals(found?.launcher, `${found?.root}/${LAUNCHER_FILE}`);
-      assertEquals(await Deno.realPath(found?.root ?? ""), root);
+      assertEquals(await FileTasks.realPath(found?.root ?? ""), root);
 
       const out = `${dir}/probe.txt`;
       await withEnv({ ZUKE_PROBE_OUT: out }, async () => {
@@ -1057,8 +1088,8 @@ test({
         assertEquals(await runBuild(defaultBuildRunner, found, ["ci"]), 0);
       });
       // The launcher saw the repo, not the shared directory it lives in.
-      const seen = (await Deno.readTextFile(out)).trim();
-      assertEquals(await Deno.realPath(seen), root);
+      const seen = (await FileTasks.readText(out)).trim();
+      assertEquals(await FileTasks.realPath(seen), root);
     }, { prefix: "zuke-dispatch-" });
   },
 });
@@ -1066,21 +1097,29 @@ test({
 test({
   name:
     "a launcher reached through a chain of links falls back to deno run, never the chain",
-  ignore: Deno.build.os === "windows",
+  ignore: RuntimeTasks.os() === "windows",
   fn: async () => {
     await withTemp(async (dir) => {
       // repo/zuke -> hop/link -> mine/zuke. The gate judges mine/, but running
       // the chain re-resolves hop/link, which someone else could re-point.
       for (const sub of ["repo", "hop", "mine"]) {
-        await Deno.mkdir(`${dir}/${sub}`);
+        await FileTasks.createDirectory(`${dir}/${sub}`, { recursive: false });
       }
-      await Deno.writeTextFile(`${dir}/mine/${LAUNCHER_FILE}`, "#!/bin/sh\n", {
-        mode: 0o755,
-      });
-      await Deno.symlink(`${dir}/mine/${LAUNCHER_FILE}`, `${dir}/hop/link`);
-      await Deno.symlink(`${dir}/hop/link`, `${dir}/repo/${LAUNCHER_FILE}`);
-      await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
-      await Deno.writeTextFile(`${dir}/repo/${BUILD_FILE}`, "");
+      await FileTasks.writeText(
+        `${dir}/mine/${LAUNCHER_FILE}`,
+        "#!/bin/sh\n",
+        (s) => s.mode(0o755),
+      );
+      await FileTasks.symlink(
+        `${dir}/mine/${LAUNCHER_FILE}`,
+        `${dir}/hop/link`,
+      );
+      await FileTasks.symlink(
+        `${dir}/hop/link`,
+        `${dir}/repo/${LAUNCHER_FILE}`,
+      );
+      await FileTasks.writeText(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+      await FileTasks.writeText(`${dir}/repo/${BUILD_FILE}`, "");
       const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
       assertEquals(found?.launcher, null);
       // A plain file is no link at all.
