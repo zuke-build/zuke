@@ -14,14 +14,25 @@ import { type AbsolutePath, ToolTasks } from "@zuke/core";
 import { denoTool } from "./scanners.ts";
 import { TOOLS_ROOT } from "./publish.ts";
 
-let installed: Promise<AbsolutePath> | undefined;
+/**
+ * Share one install across every caller: targets run in parallel, and two
+ * installs would race to write the same file. A failed install rejects every
+ * caller of the run rather than being retried.
+ */
+export function sharedInstall(
+  install: () => Promise<AbsolutePath>,
+): () => Promise<string> {
+  let installed: Promise<AbsolutePath> | undefined;
+  return async () => {
+    installed ??= install();
+    return (await installed).path;
+  };
+}
 
 /**
  * The path of the pinned Deno, downloaded, checksum-verified and cached on
- * first use. The install is shared by every caller in the run, since targets
- * run in parallel and two installs would race to write the same file.
+ * first use, once per run.
  */
-export async function provisionedDeno(): Promise<string> {
-  installed ??= ToolTasks.install((s) => denoTool(s).destDir(TOOLS_ROOT));
-  return (await installed).path;
-}
+export const provisionedDeno: () => Promise<string> = sharedInstall(() =>
+  ToolTasks.install((s) => denoTool(s).destDir(TOOLS_ROOT))
+);
