@@ -116,12 +116,18 @@ export function launcherScript(argv: string[], onWindows: boolean): string {
  * backstop; for the strongest "published == committed source" guarantee (which
  * provenance otherwise gives) drop it once a real release confirms the publish
  * tree is clean. See SECURITY.md.
+ *
+ * @param pkg The package directory under `packages/`.
+ * @param deno The Deno to run; the provisioned pin unless a test injects one.
  */
-export async function publishPackage(pkg: string): Promise<boolean> {
-  const deno = await provisionedDeno();
+export async function publishPackage(
+  pkg: string,
+  deno: () => Promise<string> = provisionedDeno,
+): Promise<boolean> {
+  const path = await deno();
   try {
     await DenoTasks.publish((s) =>
-      s.toolPath(deno).allowDirty().cwd(`packages/${pkg}`)
+      s.toolPath(path).allowDirty().cwd(`packages/${pkg}`)
         .killAfter(PUBLISH_TIMEOUT_MS)
     );
     return true;

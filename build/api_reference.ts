@@ -353,14 +353,18 @@ export function transformPackage(dir: string, root: DocRoot): ApiPackage {
  * Run `deno doc --json` on every package's entrypoints and reshape the output
  * into the website's `api.json` package list. `JSON.parse` yields the doc
  * schema (typed via {@link DocRoot}), narrowed defensively downstream.
+ *
+ * @param deno The Deno to run; the provisioned pin unless a test injects one.
  */
-async function collectApiJson(): Promise<ApiPackage[]> {
+export async function collectApiJson(
+  deno: () => Promise<string> = provisionedDeno,
+): Promise<ApiPackage[]> {
   const packages: ApiPackage[] = [];
   for (const dir of PACKAGES) {
     const entrypoints = await packageEntrypoints(dir);
-    const deno = await provisionedDeno();
+    const path = await deno();
     const { stdout } = await DenoTasks.doc((s) =>
-      s.toolPath(deno).paths(...entrypoints).json().env({ NO_COLOR: "1" })
+      s.toolPath(path).paths(...entrypoints).json().env({ NO_COLOR: "1" })
         .quiet()
     );
     const root: DocRoot = JSON.parse(stdout);
