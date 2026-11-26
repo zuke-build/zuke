@@ -184,12 +184,14 @@ every SDK, and every change must keep it:
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
    `deno task ci` (which delegates to `./zuke ci`, the same gate CI runs) before
    committing; it must be green.
-3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
-   the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
-   the lcov report and fails the build), wired up in the `cov` task / `zuke
-   coverage` target and in CI. New code needs new tests in the same change — see
-   [**Testing**](#testing) for the required layers (always unit + integration;
-   e2e for bigger features).
+3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced
+   twice in CI: the gate's `nodeTest` target runs the suite on Vitest with the
+   thresholds in `vitest.config.ts`, and the Deno lane runs the `coverage`
+   target, whose `DenoTasks.coverage` `.threshold()` parses the lcov report and
+   fails the build (locally, `deno task cov`). Both also hold each file to a 50%
+   line floor; Node's leaves out `build/`, whose tests are mostly Deno-only. New
+   code needs new tests in the same change — see [**Testing**](#testing) for the
+   required layers (always unit + integration; e2e for bigger features).
 4. **Document every public symbol — JSDoc on ALL of it.** A JSDoc comment is
    required on every exported symbol **and on every public member of an exported
    class or interface**: methods, fields (including the trailing-underscore
@@ -422,10 +424,9 @@ Mark the test, not its file: the rest of the file still runs on both runtimes.
    records). Fixtures are small `Build` subclasses defined inside the test,
    recording execution into a local array. Prove the executor / graph / params /
    CLI / wait-resume-state flow works as a whole, not just a unit seam. These
-   are ordinary `*_test.ts` files, so they run in the **normal `deno test`
-   lane** — every `deno task test` / `ci`, on all three OSes (Ubuntu via
-   ci.yml's `ci` job, macOS and Windows via its `test` job's matrix) — and count
-   toward coverage.
+   are ordinary `*_test.ts` files, so they run in the **normal test lanes** — on
+   Node in the gate (ci.yml's `ci` and `gate` jobs) and on Deno in its `test`
+   job, each on all three OSes — and count toward coverage.
 
 3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing
    an in-process test cannot prove: genuine **inter-process** behaviour (e.g.
@@ -476,11 +477,15 @@ the three test layers above and the "read every reviewer comment" rule below.
 
 `deno task ci` is `deno run -A --frozen build.ts ci` — the exact gate the `ci`
 job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
-can drift from it. `build.ts`'s `ci` target depends on: `format` (`dprint
-check`), `lint` (`deno lint`), `oxlint`, `tsc`, `spell` (cspell), `coverage`
-(type-check, then the test suite with the 95% coverage gate), `coverageUpload`
-(skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
-`snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
+can drift from it. CI runs that gate on Node (#993), on all three OSes, after
+`npm ci` installs the workspace: `node build.ts ci`. Its Deno steps fetch the
+pinned Deno themselves (`build/deno_tool.ts`), and the `Tests` jobs are the Deno
+lane: `./zuke coverage`, which is `deno check`, the whole suite on Deno and
+Deno's coverage gate, on the same three OSes. `build.ts`'s `ci` target depends
+on: `format` (`dprint check`), `lint` (`deno lint`), `oxlint`, `tsc`, `spell`
+(cspell), `nodeTest` (the suite on Vitest with the 95% coverage gate),
+`coverageUpload` (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`,
+`docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
 `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`,
 `prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `build.ts`'s
 `ci` target for the current, authoritative list — this is a snapshot, not a

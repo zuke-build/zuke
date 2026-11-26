@@ -14,6 +14,7 @@
 
 import { glob } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
+import { provisionedDeno } from "./deno_tool.ts";
 import { denoCheck, type SnippetChecker } from "./snippets.ts";
 
 /** Where the example builds live. */
@@ -69,9 +70,10 @@ async function runExampleBuild(
   dir: string,
   args: string[],
 ): Promise<ExampleVerdict> {
+  const deno = await provisionedDeno();
   const out = await DenoTasks.run((s) =>
-    s.allowAll().frozen().script("build.ts").scriptArgs(...args).cwd(dir)
-      .quiet().noThrow()
+    s.toolPath(deno).allowAll().frozen().script("build.ts").scriptArgs(...args)
+      .cwd(dir).quiet().noThrow()
   );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 }

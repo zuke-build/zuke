@@ -3,6 +3,7 @@ node_modules/
 /cov_profile/
 /cov.lcov
 /html_cov/
+/coverage/
 
 # Build output (example builds produce this)
 /dist/

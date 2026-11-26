@@ -20,7 +20,7 @@
  * @module
  */
 
-import { cicd, type CiFile, type TargetBuilder } from "@zuke/core";
+import { cicd, type CiFile, type CiStep, type TargetBuilder } from "@zuke/core";
 import { ChocolateyTasks } from "@zuke/chocolatey";
 import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
@@ -53,8 +53,8 @@ export interface WorkflowTargets {
   ci: TargetBuilder;
   /** The declared-core-floor check, which needs the network. */
   coreFloorCheck: TargetBuilder;
-  /** The test suite, run through each platform's launcher. */
-  test: TargetBuilder;
+  /** The Deno lane: the suite and its coverage gate, through each launcher. */
+  coverage: TargetBuilder;
   /** release-please: maintains the release PR and cuts releases. */
   release: TargetBuilder;
   /** Cuts the composite action release and proposes its pin. */
@@ -93,8 +93,6 @@ export interface WorkflowTargets {
   scorecard: TargetBuilder;
   /** The subprocess e2e suite, on an OS matrix. */
   integration: TargetBuilder;
-  /** The ported test files on Node, with Vitest. */
-  nodeTest: TargetBuilder;
 }
 
 /**
@@ -137,7 +135,21 @@ const GATE_ENDPOINTS = [
   "tuf-repo-cdn.sigstore.dev:443", // dprint's formatting plugins, which `format` and the generators fetch on
   // first use and then cache, each pinned by its checksum in dprint.json.
   "plugins.dprint.dev:443",
+  // setup-node's download of the pinned Node, when the runner image lacks it.
+  "nodejs.org:443",
 ];
+
+/**
+ * The gate's steps on Node: install the npm workspace, which is where the
+ * build's own `@zuke/*` imports resolve from, then run `ci` with Node and
+ * `env`. Custom steps take no invocation `env`, so it rides on the step.
+ */
+function gateOnNode(env: Record<string, string>): CiStep[] {
+  return [
+    { name: "Install the npm workspace", run: "npm ci --ignore-scripts" },
+    { name: "Run ci on Node", run: "node build.ts ci", env },
+  ];
+}
 
 /**
  * What a job that only bootstraps Deno, resolves modules and talks to GitHub
@@ -255,6 +267,13 @@ export function githubWorkflows(
         {
           target: targets.ci,
           name: "Build & verify with Zuke",
+          // The gate runs on Node (#993): the job installs the pinned Node and no
+          // Deno, so a step that quietly needs Deno fails here. Its Deno steps
+          // fetch the pinned Deno themselves (build/deno_tool.ts).
+          bootstrap: {
+            actionsCache: ACTIONS_CACHE,
+            nodeVersion: NODE_PIN.version,
+          },
           // The lint fixer pushes its fix to the PR branch and comments, so this
           // job needs both scopes. On a fork PR the key is absent, the token is
           // read-only whatever is asked for, and the fixer skips.
@@ -278,7 +297,7 @@ export function githubWorkflows(
             // reported itself skipped on every run — honestly, and invisibly.
             fetchDepth: 0,
           },
-          env: {
+          steps: gateOnNode({
             OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
             GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
             CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}",
@@ -296,7 +315,7 @@ export function githubWorkflows(
             // Empty on a pull request, which leaves the default resolution.
             ZUKE_PLUGIN_BASE_REF:
               "${{ github.event_name == 'push' && 'HEAD^' || '' }}",
-          },
+          }),
         },
         {
           target: targets.coreFloorCheck,
@@ -310,9 +329,29 @@ export function githubWorkflows(
           harden: { egress: "block", allowedEndpoints: BOOTSTRAP_ENDPOINTS },
         },
         {
-          target: targets.test,
-          name: "Tests (${{ matrix.os }})",
+          // The same gate on the other two operating systems. No secrets and a
+          // read-only token, so the lint fixer and the Codecov upload skip, as
+          // they do on a fork PR; the Linux job above is the one that holds them.
+          target: targets.ci,
+          id: "gate",
+          name: "Gate on Node (${{ matrix.os }})",
           matrix: { os: ["macos-latest", "windows-latest"] },
+          failFast: false,
+          bootstrap: { nodeVersion: NODE_PIN.version },
+          checkout: { fetchDepth: 0 },
+          steps: gateOnNode({
+            PR_BODY:
+              "${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}",
+          }),
+        },
+        {
+          // The Deno lane (#993): `deno check`, the whole suite and Deno's own
+          // coverage gate, on all three operating systems, through the
+          // launchers users run.
+          target: targets.coverage,
+          id: "test",
+          name: "Tests (${{ matrix.os }})",
+          matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
           // Let both platforms report: cancelling the sibling hides whether a
           // failure is platform-specific, which is what this job exists to answer.
           failFast: false,
@@ -326,14 +365,14 @@ export function githubWorkflows(
             {
               name: "Run tests with the bash launcher",
               if: "runner.os != 'Windows'",
-              run: "./zuke test",
+              run: "./zuke coverage",
               env: { DENO_VERSION: "v2.8.3" },
             },
             {
               name: "Run tests with the PowerShell launcher",
               if: "runner.os == 'Windows'",
               shell: "pwsh",
-              run: "./zuke.ps1 test",
+              run: "./zuke.ps1 coverage",
             },
           ],
         },
@@ -948,17 +987,6 @@ export function githubWorkflows(
         steps: [{
           name: "Run the subprocess e2e suite",
           run: "deno run -A --frozen build.ts integration",
-        }],
-      }, {
-        // The suite on Node, for the files already ported (#993): one OS is
-        // enough until the gate itself moves to Node and runs on all three.
-        target: targets.nodeTest,
-        id: "node",
-        name: "Tests on Node",
-        bootstrap: { denoVersion: "v2.8.3", nodeVersion: NODE_PIN.version },
-        steps: [{
-          name: "Run the ported tests on Node",
-          run: "deno run -A --frozen build.ts nodeTest",
         }],
       }],
     }),

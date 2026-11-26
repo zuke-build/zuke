@@ -188,6 +188,7 @@ import {
   resolveBaseRef,
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
+import { provisionedDeno } from "./build/deno_tool.ts";
 import { buildNpm, installNpmToolchain, NPM_TOOLS } from "./build/npm_build.ts";
 import {
   consumerManifest,
@@ -381,7 +382,8 @@ class ZukeBuild extends Build {
       ),
     )
     .executes(async () => {
-      await DenoTasks.lint();
+      const deno = await provisionedDeno();
+      await DenoTasks.lint((s) => s.toolPath(deno));
     });
 
   // Oxlint, the Node gate's linter (#993), alongside deno lint until the gate
@@ -447,22 +449,23 @@ class ZukeBuild extends Build {
       );
     });
 
-  // The suite on Node (#993): the npm workspace installed from its lock, then
-  // Vitest over every test file.
-  // Kept out of `ci` until the gate moves to Node; the integration workflow
-  // runs it so a file that passes on Node keeps passing.
+  // The suite on Node with the coverage gate (#993), the gate's test run: the
+  // npm workspace installed from its lock, then Vitest over every test file,
+  // with the thresholds vitest.config.ts sets. The Deno lane runs `test`.
   nodeTest = target()
-    .description("Run the test suite on Node with Vitest")
+    .description("Run the test suite on Node with the 95% coverage gate")
     .dependsOn(this.npmInstall)
     .executes(async () => {
+      const run = (env: Record<string, string>) =>
+        VitestTasks.run((s) => s.coverage().reporter("dot").env(env));
       // A `deno` that only fails goes first on PATH, so a test that quietly
       // needs Deno fails here rather than passing because the build runs on it.
-      // A shell-free spawn on Windows looks for deno.exe, which this stub is
-      // not, so the lane would pass there with the very dependency it hunts.
+      // shortcut: a shell-free spawn on Windows looks for deno.exe, which this
+      // POSIX stub is not, so Windows runs without it; the gate's Windows job
+      // installs no Deno, so a test needing one still fails there.
       if (RuntimeTasks.os() === "windows") {
-        throw new Error(
-          "nodeTest hides Deno behind a POSIX stub; run it on Linux or macOS.",
-        );
+        await run({});
+        return;
       }
       const stub = await FileTasks.makeTempDirectory((s) =>
         s.prefix("zuke-no-deno-")
@@ -473,8 +476,7 @@ class ZukeBuild extends Build {
           "#!/bin/sh\nexit 127\n",
           (s) => s.mode(0o755),
         );
-        const path = `${stub}:${EnvTasks.get("PATH") ?? ""}`;
-        await VitestTasks.run((s) => s.reporter("dot").env({ PATH: path }));
+        await run({ PATH: `${stub}:${EnvTasks.get("PATH") ?? ""}` });
       } finally {
         await FileTasks.remove(stub, { recursive: true });
       }
@@ -578,7 +580,7 @@ class ZukeBuild extends Build {
   // `cov.lcov`. Skips with a message when the token is absent (local, fork PRs).
   coverageUpload = target()
     .description("Upload the coverage report to Codecov")
-    .dependsOn(this.coverage, this.provisionTools)
+    .dependsOn(this.nodeTest, this.provisionTools)
     .executes(async () => {
       const token = this.codecovToken.value;
       if (token === undefined || token === "") {
@@ -599,7 +601,7 @@ class ZukeBuild extends Build {
         s
           .toolPath(bin)
           .disableTelem()
-          .files("cov.lcov")
+          .files("coverage/lcov.info")
           .slug("zuke-build/zuke")
           .failOnError()
           .env({ CODECOV_TOKEN: token })
@@ -1289,7 +1291,7 @@ class ZukeBuild extends Build {
       this.oxlint,
       this.tsc,
       this.spell,
-      this.coverage,
+      this.nodeTest,
       this.coverageUpload,
       this.apiDocsCheck,
       this.docLint,
