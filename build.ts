@@ -422,11 +422,11 @@ class ZukeBuild extends Build {
     });
 
   // The suite on Node (#993): the npm workspace installed from its lock, then
-  // Vitest over every test file tests/node_pending.json does not list yet.
+  // Vitest over every test file.
   // Kept out of `ci` until the gate moves to Node; the integration workflow
   // runs it so a file that passes on Node keeps passing.
   nodeTest = target()
-    .description("Run the test suite on Node with Vitest (ported files)")
+    .description("Run the test suite on Node with Vitest")
     .executes(async () => {
       await NpmTasks.ci((s) => s.ignoreScripts().noAudit().noFund());
       // A `deno` that only fails goes first on PATH, so a test that quietly

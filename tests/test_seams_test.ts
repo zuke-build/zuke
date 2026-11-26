@@ -11,8 +11,6 @@
  *   hold what core does not offer;
  * - fixtures and fakes a test runs as a subprocess, under `tests/support/` and
  *   any `fixtures/` directory, and the e2e suite, which runs on Deno alone;
- * - the files still on `tests/node_pending.json`, which follow as they are
- *   ported;
  * - {@link BOUNDARY}, the tests whose subject is the boundary itself.
  *
  * @module
@@ -97,9 +95,6 @@ test("reachesPast finds a Deno call, a node: import and a test library, and noth
 });
 
 test("test files reach the runtime and the test framework only through the seams", async () => {
-  const pending = new Set<string>(
-    await FileTasks.readJson("tests/node_pending.json"),
-  );
   const files = [
     ...await tsFiles("tests"),
     ...(await FileTasks.readDirectory("packages"))
@@ -114,7 +109,7 @@ test("test files reach the runtime and the test framework only through the seams
       ? await tsFiles(root)
       : [];
     for (const path of paths) {
-      if (exempt(path) || pending.has(path) || BOUNDARY.has(path)) continue;
+      if (exempt(path) || BOUNDARY.has(path)) continue;
       for (const reason of reachesPast(await FileTasks.readText(path))) {
         offenders.push(`${path}: ${reason}`);
       }

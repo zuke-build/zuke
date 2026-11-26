@@ -11,7 +11,14 @@
  * Everything lives in the build's own process, so the rollout must run start
  * to finish in one go: no approval gate, no durable bakes.
  */
+import { type NetServer, NetTasks } from "jsr:@zuke/core@^1";
 import type { CanaryContext, CanaryPlatform } from "jsr:@zuke/canary@^1";
+
+/** Whether `error` is the system's refusal of a port something else holds. */
+function isAddrInUse(error: unknown): boolean {
+  return error instanceof Error && "code" in error &&
+    error.code === "EADDRINUSE";
+}
 
 /** What the router serves, set through `localRouter((r) => …)`. */
 export class LocalRouterSettings {
@@ -55,7 +62,7 @@ export class LocalRouter implements CanaryPlatform {
   readonly exposure = "traffic";
   readonly #configure: (s: LocalRouterSettings) => LocalRouterSettings;
   #settings = new LocalRouterSettings();
-  #server: Deno.HttpServer<Deno.NetAddr> | undefined;
+  #server: NetServer | undefined;
   #weight = 0;
   #requests = 0;
 
@@ -69,7 +76,7 @@ export class LocalRouter implements CanaryPlatform {
     if (this.#server === undefined) {
       throw new Error("The local router is not running; stage starts it.");
     }
-    return `http://127.0.0.1:${this.#server.addr.port}/`;
+    return `http://127.0.0.1:${this.#server.port}/`;
   }
 
   /** `"local router"`, for the build summary. */
@@ -82,12 +89,12 @@ export class LocalRouter implements CanaryPlatform {
     this.#settings = this.#configure(new LocalRouterSettings());
     const port = this.#settings.port_;
     try {
-      this.#server = Deno.serve(
-        { hostname: "127.0.0.1", port, onListen: () => {} },
+      this.#server = await NetTasks.serve(
         () => this.#route(),
+        (s) => s.port(port),
       );
     } catch (error) {
-      if (!(error instanceof Deno.errors.AddrInUse)) throw error;
+      if (!isAddrInUse(error)) throw error;
       throw new Error(
         `Port ${port} is already in use — pass --port <n> for another one, ` +
           "or --port 0 for a free one.",
@@ -121,7 +128,7 @@ export class LocalRouter implements CanaryPlatform {
 
   /** Stop the router, if it is running. */
   async close(): Promise<void> {
-    await this.#server?.shutdown();
+    await this.#server?.close();
     this.#server = undefined;
   }
 
