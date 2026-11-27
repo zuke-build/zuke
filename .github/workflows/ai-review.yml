@@ -69,13 +69,15 @@ jobs:
           [ "$head_repo" = "$GITHUB_REPOSITORY" ] || exit 0
           wf="${GITHUB_WORKFLOW_REF#"$GITHUB_REPOSITORY"/}"; wf="${wf%@*}"; wf="${wf##*/}"
           export head_sha
-          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?event=pull_request&status=completed&head_sha=$head_sha&per_page=100" --jq '[.workflow_runs[] | select(.head_sha == env.head_sha and .head_repository.full_name == env.GITHUB_REPOSITORY)] | first | .id // empty')
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?event=pull_request&status=completed&head_sha=$head_sha&per_page=100" --jq '[.workflow_runs[] | select(.head_sha == env.head_sha and .head_repository.full_name == env.GITHUB_REPOSITORY and any(.pull_requests[]?; .number == (env.ZUKE_REVIEW_PR | tonumber)))] | first | .id // empty')
           [ -n "$run_id" ] || exit 0
           gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" --silent
           echo "rerun=true" >> "$GITHUB_OUTPUT"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/comments/$ZUKE_REVIEW_COMMENT/reactions" -f content=+1 --silent || true
         env:
           GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"
+          ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"
         continue-on-error: true
       - name: AI review with Zuke
         if: "steps.callers.outcome == 'success' && steps.rerun.outputs.rerun != 'true'"

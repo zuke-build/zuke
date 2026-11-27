@@ -451,6 +451,7 @@ test("the prelude pin comes from the resolver, not core's fallback", () => {
 function commandBuild(
   configure = (c: ReviewCommandSettings) =>
     c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
+  specSecrets: string[] = [],
 ): string {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
@@ -458,7 +459,11 @@ function commandBuild(
       r.provider("openai").apiKey(this.key).comment()
     );
     review = target().validateBefore(this.security).executes(() => {});
-    wf = aiReviewWorkflow({ reviewers: [this.security], command: configure });
+    wf = aiReviewWorkflow({
+      reviewers: [this.security],
+      secrets: specSecrets,
+      command: configure,
+    });
   }
   const b = new B();
   discoverParameters(b);
@@ -736,7 +741,8 @@ test("the command job decides who asked in a step with no secrets, then reviews"
   // Who may start a review is decided by the build's own preflight, in a step
   // that holds the job's token and nothing else; the step with the keys runs
   // only when it passed.
-  const commandJob = commandBuild().split("  commandReview:")[1];
+  const commandJob = commandBuild((c) => c.text("@zuke-build review"))
+    .split("  commandReview:")[1];
   const check = commandJob.indexOf("Check the commenter may start a review");
   const review = commandJob.indexOf("- name: AI review with Zuke");
   assertEquals(check > 0 && check < review, true);
@@ -773,7 +779,7 @@ test("the command job decides who asked in a step with no secrets, then reviews"
 });
 
 test("the command job re-runs a same-repository pull request's own review, after the role check and with only the job token", () => {
-  const yaml = commandBuild();
+  const yaml = commandBuild((c) => c.text("@zuke-build review"));
   const [reviewJob, commandJob] = yaml.split("  commandReview:");
   // `actions: write` goes to the command job only.
   assertStringIncludes(commandJob, "      actions: write\n");
@@ -790,6 +796,11 @@ test("the command job re-runs a same-repository pull request's own review, after
   assertStringIncludes(step, "continue-on-error: true");
   // The job token alone: no provider key, no App key.
   assertStringIncludes(step, 'GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"');
+  // It reacts to the command comment, which the skipped review would have.
+  assertStringIncludes(
+    step,
+    'ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"',
+  );
   assertEquals(step.includes("OPENAI_API_KEY"), false);
   assertEquals(step.includes("APP_KEY"), false);
   // Same repository is read from the pull request record, not the comment, and
@@ -808,13 +819,46 @@ test("the command job re-runs a same-repository pull request's own review, after
   assertStringIncludes(
     step,
     "select(.head_sha == env.head_sha and " +
-      ".head_repository.full_name == env.GITHUB_REPOSITORY)",
+      ".head_repository.full_name == env.GITHUB_REPOSITORY and " +
+      "any(.pull_requests[]?; .number == (env.ZUKE_REVIEW_PR | tonumber)))",
   );
   assertStringIncludes(step, '[ -n "$run_id" ] || exit 0');
   // The output is set only after GitHub accepted the re-run.
   const post = step.indexOf("-X POST");
   const out = step.indexOf('echo "rerun=true"');
   assertEquals(post > 0 && post < out, true);
+});
+
+test("a command whose secrets the push job lacks neither re-runs nor gets actions: write", () => {
+  // The re-run would run the push job, which never holds these.
+  const yaml = commandBuild();
+  assertEquals(yaml.includes("id: rerun"), false);
+  assertEquals(yaml.includes("actions: write"), false);
+  assertStringIncludes(
+    yaml.split("  commandReview:")[1],
+    "if: \"steps.callers.outcome == 'success'\"\n        run: ./zuke review",
+  );
+  // One secret missing from the push job is enough.
+  const some = commandBuild(
+    (c) => c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
+    ["APP_ID"],
+  );
+  assertEquals(some.includes("id: rerun"), false);
+  assertEquals(some.includes("actions: write"), false);
+});
+
+test("a command whose secrets the push job also holds re-runs and gets actions: write", () => {
+  const yaml = commandBuild(
+    (c) => c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
+    ["APP_ID", "APP_KEY"],
+  );
+  const commandJob = yaml.split("  commandReview:")[1];
+  assertStringIncludes(commandJob, "id: rerun");
+  assertStringIncludes(commandJob, "      actions: write\n");
+  assertEquals(
+    yaml.split("  commandReview:")[0].includes("actions: write"),
+    false,
+  );
 });
 
 test("also adds commands that start the run too, each matched like the first", () => {
