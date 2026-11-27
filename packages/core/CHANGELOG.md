@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.87.0](https://github.com/zuke-build/zuke/compare/core-v1.86.2...core-v1.87.0) (2026-11-27)
+
+
+### Features
+
+* **core:** stream remote cache uploads to S3 and Azure in parts ([#1233](https://github.com/zuke-build/zuke/issues/1233)) ([fd63d31](https://github.com/zuke-build/zuke/commit/fd63d311a639c3c3ce0575a33209a8b783b4f7ac))
+
+
+### Bug Fixes
+
+* **core:** cancelling a Node stream never ends the process with an AbortError ([#1228](https://github.com/zuke-build/zuke/issues/1228)) ([90b5f37](https://github.com/zuke-build/zuke/commit/90b5f37531c36bcec12f669548fcc057e2bb76a1))
+
 ## [1.86.2](https://github.com/zuke-build/zuke/compare/core-v1.86.1...core-v1.86.2) (2026-11-27)
 
 

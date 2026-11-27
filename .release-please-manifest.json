@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.86.2",
+  "packages/core": "1.87.0",
   "packages/deno": "1.6.0",
   "packages/docs": "1.0.1",
   "packages/engine": "1.7.0",
@@ -61,7 +61,7 @@
   "packages/tofu": "1.0.1",
   "packages/release-please": "1.0.3",
   "packages/security": "1.0.1",
-  "packages/ai": "2.13.2",
+  "packages/ai": "2.14.0",
   "packages/otel": "1.0.3",
   "packages/qr": "1.2.0",
   "packages/apple": "1.1.1",
