@@ -24,7 +24,7 @@
 
 import { putBlocks } from "./azure_blob.ts";
 import { artifactBody, HttpError } from "./http.ts";
-import { sha256Hex } from "./internal.ts";
+import { sha256Hex, trimTrailingSlashes } from "./internal.ts";
 import { uploadInParts } from "./part_upload.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 
@@ -94,7 +94,7 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
   /** Build the store from the service URL, the runtime token, and the `fetch` seam. */
   constructor(options: GitHubActionsCacheStoreOptions) {
     this.maxInflatedBytes = options.maxInflatedBytes;
-    this.#base = options.url.replace(/\/+$/, "");
+    this.#base = trimTrailingSlashes(options.url);
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??

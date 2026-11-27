@@ -75,6 +75,16 @@ export function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
 
+/**
+ * `value` without its trailing `/` characters. A loop, not `/\/+$/`, whose
+ * backtracking is quadratic on a long run of slashes.
+ */
+export function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
+}
+
 /** Resolve after `ms` milliseconds (a `setTimeout`-backed sleep). */
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -10,6 +10,7 @@ import { HttpError } from "../src/http.ts";
 import { partsOf, uploadInParts } from "../src/part_upload.ts";
 import { isAzureSasUrl } from "../src/azure_blob.ts";
 import { signSigV4 } from "../src/aws_sigv4.ts";
+import { trimTrailingSlashes } from "../src/internal.ts";
 
 const MIB = 1024 * 1024;
 const PART = 8 * MIB;
@@ -512,4 +513,14 @@ test("SigV4 signs UNSIGNED-PAYLOAD without hashing the body when the header says
   assertEquals(a.headers.authorization, b.headers.authorization); // body ignored
   const hashed = await sign(new Uint8Array([1]), "anything-else");
   assertEquals(hashed.canonicalRequest.endsWith("\nUNSIGNED-PAYLOAD"), false);
+});
+
+test("trimTrailingSlashes drops every trailing slash and nothing else", () => {
+  assertEquals(trimTrailingSlashes("https://h/b///"), "https://h/b");
+  assertEquals(trimTrailingSlashes("https://h/b"), "https://h/b");
+  assertEquals(trimTrailingSlashes("///"), "");
+  assertEquals(
+    trimTrailingSlashes(`${"/".repeat(100_000)}x`),
+    `${"/".repeat(100_000)}x`,
+  );
 });

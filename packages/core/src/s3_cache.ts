@@ -22,7 +22,7 @@ import {
   UNSIGNED_PAYLOAD,
 } from "./aws_sigv4.ts";
 import { HttpError } from "./http.ts";
-import { sha256Hex } from "./internal.ts";
+import { sha256Hex, trimTrailingSlashes } from "./internal.ts";
 import { uploadInParts } from "./part_upload.ts";
 import { HttpCacheStore, type RemoteCacheStore } from "./remote_cache.ts";
 
@@ -120,7 +120,7 @@ export class S3CacheStore implements RemoteCacheStore {
     };
     this.#signed = signing;
     // The path only, as HttpCacheStore reads it, so both upload paths agree.
-    this.#base = options.url.split("?")[0].replace(/\/+$/, "");
+    this.#base = trimTrailingSlashes(options.url.split("?")[0]);
     this.#http = new HttpCacheStore({
       url: options.url,
       fetch: signing,

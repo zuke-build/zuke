@@ -50,7 +50,7 @@ import {
   userId,
   writeStream,
 } from "./fs.ts";
-import { isNotFound, messageOf } from "./internal.ts";
+import { isNotFound, messageOf, trimTrailingSlashes } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
@@ -901,7 +901,7 @@ export class HttpCacheStore implements RemoteCacheStore {
     this.maxInflatedBytes = options.maxInflatedBytes;
     const at = options.url.indexOf("?");
     const path = at === -1 ? options.url : options.url.slice(0, at);
-    this.#base = path.replace(/\/+$/, "");
+    this.#base = trimTrailingSlashes(path);
     this.#query = at === -1 ? "" : options.url.slice(at);
     this.#token = options.token;
     this.#headers = options.headers ?? {};
