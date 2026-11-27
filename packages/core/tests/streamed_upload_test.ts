@@ -423,16 +423,22 @@ function filled(
 
 test("concurrent Azure uploads to one blob never commit a mix of the two archives", async () => {
   // Models Azure: Put Block stores an uncommitted block by id, overwriting one
-  // with the same id; Put Block List commits the listed ids.
+  // with the same id; Put Block List commits the listed ids. Upload A (bytes
+  // of 1) sends two blocks, then waits while upload B (bytes of 2) runs to its
+  // commit, then finishes: with ids shared between uploads, A's commit would
+  // list B's first two blocks under A's ids.
   const uncommitted = new Map<string, number>();
   let committed: number[] = [];
+  let aBlocks = 0;
+  let bCommitted: () => void = () => {};
+  const bDone = new Promise<void>((resolve) => bCommitted = resolve);
   const fetchFn: typeof fetch = async (input, init) => {
-    await new Promise((resolve) => setTimeout(resolve, 0)); // let uploads interleave
     const url = new URL(String(input));
     const body = init?.body;
     if (!(body instanceof Blob)) throw new Error("expected a Blob body");
     if (url.searchParams.get("comp") === "block") {
       const first = new Uint8Array(await body.slice(0, 1).arrayBuffer())[0];
+      if (first === 1 && ++aBlocks === 3) await bDone;
       uncommitted.set(String(url.searchParams.get("blockid")), first);
     } else {
       const ids = [
@@ -444,6 +450,7 @@ test("concurrent Azure uploads to one blob never commit a mix of the two archive
         if (first === undefined) throw new Error("uncommitted block listed");
         return first;
       });
+      bCommitted();
     }
     return new Response(null, { status: 201 });
   };
@@ -452,8 +459,8 @@ test("concurrent Azure uploads to one blob never commit a mix of the two archive
     store.putStream("k", filled(2 * PART + 5, 1)),
     store.putStream("k", filled(2 * PART + 5, 2)),
   ]);
-  assertEquals(committed.length, 3);
-  assertEquals(new Set(committed).size, 1); // one archive, whole
+  // A committed last, and what it committed is A's archive alone.
+  assertEquals(committed, [1, 1, 1]);
 });
 
 test("S3CacheStore.putStream aborts and rethrows when the source stream fails", async () => {
