@@ -140,7 +140,7 @@ function multipartBucket(
   return fakeFetch((call) => {
     const broken = fail(call);
     if (broken !== undefined) return broken;
-    if (call.url.endsWith("?uploads")) {
+    if (new URL(call.url).searchParams.has("uploads")) {
       return new Response(
         "<InitiateMultipartUploadResult><UploadId>up/1</UploadId>" +
           "</InitiateMultipartUploadResult>",
@@ -153,6 +153,38 @@ function multipartBucket(
     return new Response("<CompleteMultipartUploadResult/>");
   });
 }
+
+test("S3CacheStore keeps the configured query on single and multipart uploads", async () => {
+  const store = (fetchFn: typeof fetch) =>
+    new S3CacheStore({
+      url: "https://s3.example.com/zuke-cache/?tenant=a",
+      region: "eu-west-1",
+      credentials: KEY,
+      fetch: fetchFn,
+    });
+  const ok = multipartBucket();
+  await store(ok.fetch).putStream("small", bytes(10));
+  await store(ok.fetch).putStream("big", bytes(PART + 1));
+  const big = "https://s3.example.com/zuke-cache/big?tenant=a&";
+  assertEquals(ok.calls.map((c) => c.url), [
+    "https://s3.example.com/zuke-cache/small?tenant=a",
+    `${big}uploads`,
+    `${big}partNumber=1&uploadId=up%2F1`,
+    `${big}partNumber=2&uploadId=up%2F1`,
+    `${big}uploadId=up%2F1`,
+  ]);
+
+  const broken = multipartBucket((call) =>
+    call.url.includes("partNumber")
+      ? new Response(null, { status: 500 })
+      : undefined
+  );
+  await assertRejects(() =>
+    store(broken.fetch).putStream("big", bytes(PART + 1))
+  );
+  const abort = broken.calls[broken.calls.length - 1];
+  assertEquals([abort.method, abort.url], ["DELETE", `${big}uploadId=up%2F1`]);
+});
 
 test("S3CacheStore.putStream uploads 8 MiB parts and completes them in order", async () => {
   const { fetch, calls } = multipartBucket();

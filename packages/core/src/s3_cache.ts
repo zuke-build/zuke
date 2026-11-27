@@ -89,6 +89,7 @@ export class S3CacheStore implements RemoteCacheStore {
   readonly #http: HttpCacheStore;
   readonly #signed: typeof fetch;
   readonly #base: string;
+  readonly #query: string;
   /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
   readonly maxInflatedBytes?: number;
 
@@ -119,8 +120,12 @@ export class S3CacheStore implements RemoteCacheStore {
       });
     };
     this.#signed = signing;
-    // The path only, as HttpCacheStore reads it, so both upload paths agree.
-    this.#base = trimTrailingSlashes(options.url.split("?")[0]);
+    // Split as HttpCacheStore splits it, so both upload paths agree.
+    const at = options.url.indexOf("?");
+    this.#base = trimTrailingSlashes(
+      at === -1 ? options.url : options.url.slice(0, at),
+    );
+    this.#query = at === -1 ? "" : options.url.slice(at + 1);
     this.#http = new HttpCacheStore({
       url: options.url,
       fetch: signing,
@@ -183,7 +188,10 @@ export class S3CacheStore implements RemoteCacheStore {
     url: string,
     parts: AsyncIterable<Uint8Array<ArrayBuffer>>,
   ): Promise<void> {
-    const created = await (await this.#send("POST", `${url}?uploads`)).text();
+    // The configured query first, as every other request to the object sends it.
+    const at = (params: string) =>
+      `${url}?${this.#query === "" ? "" : `${this.#query}&`}${params}`;
+    const created = await (await this.#send("POST", at("uploads"))).text();
     const id = /<UploadId>([^<]+)<\/UploadId>/.exec(created)?.[1];
     if (id === undefined) {
       throw new Error("remote cache: S3 did not return an upload id.");
@@ -194,7 +202,7 @@ export class S3CacheStore implements RemoteCacheStore {
       for await (const part of parts) {
         const response = await this.#send(
           "PUT",
-          `${url}?partNumber=${etags.length + 1}&${upload}`,
+          at(`partNumber=${etags.length + 1}&${upload}`),
           {
             body: new Blob([part]),
             headers: { "x-amz-content-sha256": UNSIGNED_PAYLOAD },
@@ -212,7 +220,7 @@ export class S3CacheStore implements RemoteCacheStore {
           escapeXml(etag)
         }</ETag></Part>`
       ).join("");
-      const done = await (await this.#send("POST", `${url}?${upload}`, {
+      const done = await (await this.#send("POST", at(upload), {
         body: new Blob([
           `<CompleteMultipartUpload>${list}</CompleteMultipartUpload>`,
         ]),
@@ -223,7 +231,7 @@ export class S3CacheStore implements RemoteCacheStore {
         throw new Error("remote cache: S3 failed to complete the upload.");
       }
     } catch (error) {
-      await this.#send("DELETE", `${url}?${upload}`).catch(() => {}); // best effort
+      await this.#send("DELETE", at(upload)).catch(() => {}); // best effort
       throw error;
     }
   }
