@@ -154,7 +154,7 @@ export async function submitWithGitHubOrigin(
   connector.hash = "";
   const path = `/${encodeURIComponent(connection.organizationId)}` +
     "/SigningRequests";
-  const url = new URL(`${connector.href.replace(/\/+$/, "")}${path}`);
+  const url = new URL(`${connector.href.replace(/(?<!\/)\/+$/, "")}${path}`);
   url.searchParams.set("api-version", API_VERSION);
   const outgoing: Outgoing = {
     method: "POST",

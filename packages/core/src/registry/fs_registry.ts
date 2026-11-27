@@ -33,7 +33,7 @@ import {
   casWriteJson,
   sortNewestFirst,
 } from "../state/json_file_cas.ts";
-import { sha256Hex } from "../internal.ts";
+import { sha256Hex, trimTrailingSlashes } from "../internal.ts";
 
 /**
  * A {@link BuildRegistry} that writes one `<id>.json` file per build under a
@@ -56,7 +56,7 @@ export class FileSystemBuildRegistry implements BuildRegistry {
    * {@link "../state/store.ts".defaultStateHost}.
    */
   constructor(dir: string, host: StateHost = defaultStateHost) {
-    this.#dir = dir.replace(/\/+$/, "");
+    this.#dir = trimTrailingSlashes(dir);
     this.#host = host;
   }
 

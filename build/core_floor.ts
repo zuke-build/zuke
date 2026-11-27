@@ -201,7 +201,7 @@ export function workspaceSiblings(
 ): Map<string, string> {
   // A Windows root (`C:\work`) becomes `file:///C:/work`, a POSIX one
   // (`/work`) `file:///work`.
-  const slashed = root.replaceAll("\\", "/").replace(/\/+$/, "");
+  const slashed = root.replaceAll("\\", "/").replace(/(?<!\/)\/+$/, "");
   const base = slashed.startsWith("/")
     ? `file://${slashed}`
     : `file:///${slashed}`;

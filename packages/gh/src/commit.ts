@@ -136,7 +136,7 @@ export class GhCommitSettings {
 
   /** The API root, for GitHub Enterprise. */
   baseUrl(url: string): this {
-    this.baseUrl_ = url.replace(/\/+$/, "");
+    this.baseUrl_ = url.replace(/(?<!\/)\/+$/, "");
     return this;
   }
 
@@ -220,7 +220,7 @@ export class GhTagSettings {
 
   /** The API root, for GitHub Enterprise. */
   baseUrl(url: string): this {
-    this.baseUrl_ = url.replace(/\/+$/, "");
+    this.baseUrl_ = url.replace(/(?<!\/)\/+$/, "");
     return this;
   }
 

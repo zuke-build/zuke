@@ -171,7 +171,7 @@ function decodeUserinfo(part: string): string {
  */
 function endpointUrl(base: URL, call: PrometheusCall): URL {
   const url = new URL(base.href);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}${call.path}`;
+  url.pathname = `${url.pathname.replace(/(?<!\/)\/+$/, "")}${call.path}`;
   const query = url.search === "" ? [] : [url.search.slice(1)];
   for (const [name, value] of call.params) {
     if (base.searchParams.has(name)) {

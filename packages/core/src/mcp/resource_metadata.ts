@@ -32,6 +32,8 @@
  * @module
  */
 
+import { trimTrailingSlashes } from "../internal.ts";
+
 /**
  * The scope that asks an authorization server for a refresh token. It is a
  * request about the *session*, not about access to this resource, which is why
@@ -197,7 +199,7 @@ function resourceUrl(resource: string): URL {
  * dropped before insertion, as RFC 9728 §3.1 requires.
  */
 export function metadataPath(resource: string): string {
-  const path = resourceUrl(resource).pathname.replace(/\/+$/, "");
+  const path = trimTrailingSlashes(resourceUrl(resource).pathname);
   return `${WELL_KNOWN}${path}`;
 }
 

@@ -144,7 +144,7 @@ function application(
     setting(settings.authorityHost_, "AZURE_AUTHORITY_HOST", context) ??
       AZURE_PUBLIC_AUTHORITY_HOST;
   return {
-    tokenUrl: `${host.replace(/\/+$/, "")}/${tenant}/oauth2/v2.0/token`,
+    tokenUrl: `${host.replace(/(?<!\/)\/+$/, "")}/${tenant}/oauth2/v2.0/token`,
     clientId,
   };
 }

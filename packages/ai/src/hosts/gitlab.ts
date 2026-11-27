@@ -65,7 +65,7 @@ export function resolveGitlabContext(
   if (projectId === undefined || projectId === "") return undefined;
   if (mrIid === undefined || mrIid === "") return undefined;
   const api = env("CI_API_V4_URL") ?? DEFAULT_API;
-  return { token, api: api.replace(/\/+$/, ""), projectId, mrIid };
+  return { token, api: api.replace(/(?<!\/)\/+$/, ""), projectId, mrIid };
 }
 
 /**

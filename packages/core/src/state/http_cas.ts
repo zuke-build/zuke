@@ -27,6 +27,7 @@ import {
   STATE_PROTOCOL_VERSION,
 } from "./protocol.ts";
 import type { PutResult } from "./store.ts";
+import { trimTrailingSlashes } from "../internal.ts";
 
 /** Connection settings for an {@link HttpJsonCas} — the `{ url, token?, fetch? }` both backends expose. */
 export interface HttpCasOptions {
@@ -64,7 +65,7 @@ export class HttpJsonCas {
     scope: string,
     collection: string,
   ) {
-    this.base = options.url.replace(/\/+$/, "");
+    this.base = trimTrailingSlashes(options.url);
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
     this.#scope = scope;

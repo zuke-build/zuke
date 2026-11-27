@@ -139,7 +139,7 @@ export function connect(settings: SignPathConnectionSettings): Connection {
   return {
     organizationId,
     token,
-    apiBase: apiUrl.href.replace(/\/+$/, ""),
+    apiBase: apiUrl.href.replace(/(?<!\/)\/+$/, ""),
     webOrigin: apiUrl.origin,
     redactor,
     settings,

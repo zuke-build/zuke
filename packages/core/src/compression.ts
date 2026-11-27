@@ -31,7 +31,12 @@ import { runProcess } from "./process.ts";
 import process from "node:process";
 import { mkdirRecursive, readFile, remove, symlink, writeFile } from "./fs.ts";
 import type { PathLike } from "./path.ts";
-import { crc32, limitBytes, lstatOrNull } from "./internal.ts";
+import {
+  crc32,
+  limitBytes,
+  lstatOrNull,
+  trimTrailingSlashes,
+} from "./internal.ts";
 import { streamOf } from "./web_stream.ts";
 import { unxz } from "./xz.ts";
 
@@ -841,7 +846,7 @@ export async function findSymlinkAncestor(
   name: string,
   realDirs: Set<string>,
 ): Promise<string | null> {
-  const parts = name.replace(/\/+$/, "").split("/").slice(0, -1);
+  const parts = trimTrailingSlashes(name).split("/").slice(0, -1);
   let current = root;
   for (const part of parts) {
     current = `${current}/${part}`;
@@ -907,7 +912,7 @@ async function writeEntries(
       // slash for the filesystem ops, and replace a prior *non-directory* at the
       // path so a malformed duplicate is "last wins" (removing a populated
       // directory fails and is ignored, so its contents are kept).
-      const dirPath = path.replace(/\/+$/, "");
+      const dirPath = trimTrailingSlashes(path);
       await remove(dirPath, false).catch(() => {});
       await mkdirRecursive(dirPath);
       realDirs.add(dirPath);

@@ -61,7 +61,7 @@ export function resolveAzureContext(
   if (pullRequestId === undefined || pullRequestId === "") return undefined;
   return {
     token,
-    collection: collection.replace(/\/+$/, "") + "/",
+    collection: collection.replace(/(?<!\/)\/+$/, "") + "/",
     project,
     repositoryId,
     pullRequestId,

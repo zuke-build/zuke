@@ -76,7 +76,7 @@ export function messageOf(value: unknown): string {
 }
 
 /**
- * `value` without its trailing `/` characters. A loop, not `/\/+$/`, whose
+ * `value` without its trailing `/` characters. A loop, not the plain regex, whose
  * backtracking is quadratic on a long run of slashes.
  */
 export function trimTrailingSlashes(value: string): string {

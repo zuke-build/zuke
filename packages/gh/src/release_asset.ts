@@ -137,7 +137,7 @@ export class GhReleaseAssetSettings {
 
   /** Use a different REST base (GitHub Enterprise Server). */
   baseUrl(url: string): this {
-    this.baseUrl_ = url.replace(/\/+$/, "");
+    this.baseUrl_ = url.replace(/(?<!\/)\/+$/, "");
     return this;
   }
 
