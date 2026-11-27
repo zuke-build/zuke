@@ -1018,10 +1018,14 @@ test({
           0,
         );
         const path = await FileTasks.readText(`${dir}/path.txt`);
-        // Just the running Deno's directory: no separator, nothing else.
+        // Just the running Deno's directory. Deno 2.9 and later put their own
+        // node_compat_bin first in every process they run, so that entry is
+        // Deno's, not the runner's.
         const separator = RuntimeTasks.os() === "windows" ? ";" : ":";
-        assertEquals(path.includes(separator), false);
-        assertEquals(path.length > 0, true);
+        const entries = path.split(separator)
+          .filter((entry) => !/node_compat_bin$/.test(entry));
+        assertEquals(entries.length, 1, path);
+        assertEquals(entries[0].length > 0, true);
       }, { prefix: "zuke-dispatch-" });
     } finally {
       if (inherited !== undefined) EnvTasks.set("PATH", inherited);

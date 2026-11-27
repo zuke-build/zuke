@@ -41,22 +41,25 @@ export interface DenoPin {
 
 /* cspell:disable */
 
-/** The Deno release the launchers bootstrap, with its verified checksums. */
+/**
+ * The Deno release the launchers bootstrap, with its verified checksums: the
+ * newest patch on Deno's 2.9 LTS line.
+ */
 export const DENO_PIN: DenoPin = {
-  version: "2.8.3",
+  version: "2.9.8",
   checksums: {
     "x86_64-unknown-linux-gnu":
-      "30455b845ffa6082209c3590269c910ad3b7efdf28c9879afd4006c47ae54197",
+      "e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609",
     "aarch64-unknown-linux-gnu":
-      "d4589cc1ffcbf1995c92a0127d932aaf832ac70cfdcc6d5b7bf38043cf303575",
+      "d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905",
     "x86_64-apple-darwin":
-      "4254ec12123cfcf88b87703d7acf092a1ea024bdf9be8dd3cd9d4474761cb74e",
+      "4b2f5edd2639b7470f034238b321d7002d8dfb4726d8558f52c17afac370eb2c",
     "aarch64-apple-darwin":
-      "88b350be928fdba0e5d8142ff7c101a17133426371e3cf5ed0e0f74e62476f6c",
+      "9f0bf660393da2eaff044cdc7444cb08c73f235849b61d224d825a194ce7c98e",
     "x86_64-pc-windows-msvc":
-      "7fdd1f42e6b0855421ecf27bb406e2492ade1087c85e30ebf0deab6280ea743c",
+      "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf",
     "aarch64-pc-windows-msvc":
-      "243f478ac577ade1bbd980ecf510607a10ed8cc977b462083ada48e5f6580de1",
+      "b413b92b735b50c198e8fe3b85af1aa50e29d5f72e229aab701d132286e14cef",
   },
 };
 

@@ -16,7 +16,7 @@
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
 #                  known-good version (see below) for reproducible and more
 #                  predictable installs. An override must name an exact release
-#                  tag (e.g. v2.8.3) - "latest" is rejected, because a moving
+#                  tag (e.g. v2.9.8) - "latest" is rejected, because a moving
 #                  target has no checksum to pin - and is only installed if
 #                  DENO_SHA256 also supplies the matching per-platform checksum
 #                  (see below); this launcher never downloads an unverified
@@ -29,17 +29,17 @@ $ErrorActionPreference = "Stop"
 
 # Pinned default so the bootstrap installs a known version rather than whatever
 # "latest" happens to be.
-$DefaultDenoVersion = "2.8.3"
+$DefaultDenoVersion = "2.9.8"
 
 # --- Pinned per-platform checksums for $DefaultDenoVersion ------------------
 # SHA-256 of each `deno-<target>.zip` release asset, from
-# https://github.com/denoland/deno/releases/tag/v2.8.3 (GitHub's own reported
+# https://github.com/denoland/deno/releases/tag/v2.9.8 (GitHub's own reported
 # asset `digest`, cross-checked by downloading and hashing the artifact).
 # Bump *together* with $DefaultDenoVersion: this file is generated from
 # @zuke/cli's deno_pin.ts, so change the pin there and regenerate.
 $DenoChecksums = @{
-  "x86_64-pc-windows-msvc"  = "7fdd1f42e6b0855421ecf27bb406e2492ade1087c85e30ebf0deab6280ea743c"
-  "aarch64-pc-windows-msvc" = "243f478ac577ade1bbd980ecf510607a10ed8cc977b462083ada48e5f6580de1"
+  "x86_64-pc-windows-msvc"  = "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf"
+  "aarch64-pc-windows-msvc" = "b413b92b735b50c198e8fe3b85af1aa50e29d5f72e229aab701d132286e14cef"
 }
 # -----------------------------------------------------------------------------
 
@@ -68,7 +68,7 @@ if (-not $deno) {
     # checksum to pin - so name the release you want instead.
     throw "zuke: DENO_VERSION=latest is not supported: this launcher verifies the " +
       "download against a pinned SHA-256, and ""latest"" has no fixed hash. Set " +
-      "DENO_VERSION to an exact release tag (e.g. v2.8.3) plus DENO_SHA256 with that " +
+      "DENO_VERSION to an exact release tag (e.g. v2.9.8) plus DENO_SHA256 with that " +
       "release's deno-<target>.zip hash, or unset DENO_VERSION to install the " +
       "verified default $DefaultDenoVersion."
   }

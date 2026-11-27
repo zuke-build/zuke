@@ -97,12 +97,12 @@ jobs:
         if: "runner.os == 'Linux'"
         run: ./zuke coverage
         env:
-          DENO_VERSION: v2.8.3
+          DENO_VERSION: v2.9.8
       - name: Run tests with the bash launcher
         if: "runner.os == 'macOS'"
         run: ./zuke test
         env:
-          DENO_VERSION: v2.8.3
+          DENO_VERSION: v2.9.8
       - name: Run tests with the PowerShell launcher
         if: "runner.os == 'Windows'"
         shell: pwsh

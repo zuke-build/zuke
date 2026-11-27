@@ -16,7 +16,7 @@
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
 #                  known-good version (see below) for reproducible and more
 #                  predictable installs. An override must name an exact release
-#                  tag (e.g. v2.8.3) — "latest" is rejected, because a moving
+#                  tag (e.g. v2.9.8) — "latest" is rejected, because a moving
 #                  target has no checksum to pin — and is only installed if
 #                  DENO_SHA256 also supplies the matching per-platform checksum
 #                  (see below); this launcher never downloads an unverified
@@ -28,24 +28,24 @@ set -euo pipefail
 
 # Pinned default so the bootstrap installs a known version rather than whatever
 # "latest" happens to be.
-DEFAULT_DENO_VERSION="v2.8.3"
+DEFAULT_DENO_VERSION="v2.9.8"
 
 # --- Pinned per-platform checksums for DEFAULT_DENO_VERSION -----------------
 # SHA-256 of each `deno-<target>.zip` release asset, from
-# https://github.com/denoland/deno/releases/tag/v2.8.3 (GitHub's own reported
+# https://github.com/denoland/deno/releases/tag/v2.9.8 (GitHub's own reported
 # asset `digest`, cross-checked by downloading and hashing the artifact).
 # Bump *together* with DEFAULT_DENO_VERSION: this file is generated from
 # @zuke/cli's deno_pin.ts, so change the pin there and regenerate.
 deno_checksum_for() {
   case "$1" in
     x86_64-unknown-linux-gnu)
-      echo "30455b845ffa6082209c3590269c910ad3b7efdf28c9879afd4006c47ae54197" ;;
+      echo "e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609" ;;
     aarch64-unknown-linux-gnu)
-      echo "d4589cc1ffcbf1995c92a0127d932aaf832ac70cfdcc6d5b7bf38043cf303575" ;;
+      echo "d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905" ;;
     x86_64-apple-darwin)
-      echo "4254ec12123cfcf88b87703d7acf092a1ea024bdf9be8dd3cd9d4474761cb74e" ;;
+      echo "4b2f5edd2639b7470f034238b321d7002d8dfb4726d8558f52c17afac370eb2c" ;;
     aarch64-apple-darwin)
-      echo "88b350be928fdba0e5d8142ff7c101a17133426371e3cf5ed0e0f74e62476f6c" ;;
+      echo "9f0bf660393da2eaff044cdc7444cb08c73f235849b61d224d825a194ce7c98e" ;;
     *)
       return 1 ;;
   esac
@@ -78,7 +78,7 @@ else
       # checksum to pin — so name the release you want instead.
       echo "zuke: DENO_VERSION=latest is not supported: this launcher verifies the" >&2
       echo "      download against a pinned SHA-256, and \"latest\" has no fixed hash." >&2
-      echo "      Set DENO_VERSION to an exact release tag (e.g. v2.8.3) plus DENO_SHA256" >&2
+      echo "      Set DENO_VERSION to an exact release tag (e.g. v2.9.8) plus DENO_SHA256" >&2
       echo "      with that release's deno-<target>.zip hash, or unset DENO_VERSION to" >&2
       echo "      install the verified default $DEFAULT_DENO_VERSION." >&2
       exit 1
