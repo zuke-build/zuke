@@ -28559,6 +28559,11 @@ class ReviewCommandSettings
     plain names. Only the command job receives them; the `pull_request` job is
     unchanged. Secrets both jobs should hold go on
     {@link AiReviewWorkflowSpec.secrets} instead.
+
+    A command that adds a secret the `pull_request` job lacks reviews in its
+    own job on every pull request. Only when every secret it names is also on
+    the `pull_request` job does it re-run that job's review and grant
+    `actions: write`: the re-run would otherwise drop what the secret enables.
   role(role: CommandRole): this
     The least repository role a commenter needs to start a run — `"read"`,
     `"triage"`, `"write"` (the default: push access), `"maintain"` or

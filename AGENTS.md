@@ -696,8 +696,11 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   is read by nobody until the next run. After posting such a reply, add one new
   general comment on the pull request whose text is `@zuke-build review` and
   nothing else: it starts a run with no push, and that run adjudicates every
-  rebuttal and answers it where it was made. Skip it when a push follows the
-  reply anyway, since the push starts the same run.
+  rebuttal and answers it where it was made. On a same-repository pull request
+  the command re-runs the pull request's own `AI review` run, so that check
+  follows the new verdict; a fork's pull request is reviewed by the command job
+  itself. Skip it when a push follows the reply anyway, since the push starts
+  the same run.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it

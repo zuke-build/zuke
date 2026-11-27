@@ -231,7 +231,11 @@ To check the identity took, look at the author of the summary comment: it is
   credentials on `command: (c) => c.secrets(this.appId, this.appKey)` instead,
   so only the comment-started job — which runs the default branch's build, never
   the pull request's — holds them; push runs then post as `github-actions[bot]`
-  and leave threads for the next command run to resolve.
+  and leave threads for the next command run to resolve. Because the command's
+  review then holds credentials the push job lacks, the command reviews in its
+  own job on every pull request: the generated command job re-runs the pull
+  request's own `AI review` run (and is granted `actions: write`) only when
+  every secret the command names is also on the pull-request job.
 - **Forks.** A fork's pull request receives no secrets from GitHub at all, and
   the pull-request job's gate skips it besides. The command job covers forks
   safely because the pull request is fetched as data and never executed.

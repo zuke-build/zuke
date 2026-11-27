@@ -73,6 +73,36 @@ const DEFAULT_PATHS: Record<CiProvider, string> = {
 /** The id of the command job's step that decides who may start a review. */
 const CALLERS_STEP_ID = "callers";
 
+/** The id of the command job's step that re-runs the pull request's own review. */
+const RERUN_STEP_ID = "rerun";
+
+/**
+ * The command job's re-run step, as a script the tests run against a fake `gh`: for a pull request whose head repository
+ * GitHub's own record names as this repository, re-runs this workflow's
+ * `pull_request` run for the pull request's current head commit, so the check
+ * the pull request shows follows the latest verdict and one assessment is
+ * posted. It writes `rerun=true` only once GitHub accepted the re-run; every
+ * other outcome (a fork, no run, a run still in progress or too old, an API
+ * error) leaves the output unset and the job reviews itself. The head
+ * repository is read from the pull request record, never from the comment, and
+ * a run is picked only when its own head repository is this one and it is for
+ * this pull request, so neither a fork's run that shares the commit nor another
+ * pull request's run from the same branch is ever re-run. After GitHub accepts
+ * the re-run the command comment gets a 👍, as the reviewers would have given
+ * it. The step holds `GITHUB_TOKEN` and no other secret.
+ */
+export const RERUN_SCRIPT = [
+  'read -r head_repo head_sha < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$ZUKE_REVIEW_PR" --jq \'(.head.repo.full_name // "-") + " " + .head.sha\')',
+  '[ "$head_repo" = "$GITHUB_REPOSITORY" ] || exit 0',
+  'wf="${GITHUB_WORKFLOW_REF#"$GITHUB_REPOSITORY"/}"; wf="${wf%@*}"; wf="${wf##*/}"',
+  "export head_sha",
+  "run_id=$(gh api \"repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?event=pull_request&status=completed&head_sha=$head_sha&per_page=100\" --jq '[.workflow_runs[] | select(.head_sha == env.head_sha and .head_repository.full_name == env.GITHUB_REPOSITORY and any(.pull_requests[]?; .number == (env.ZUKE_REVIEW_PR | tonumber)))] | first | .id // empty')",
+  '[ -n "$run_id" ] || exit 0',
+  'gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" --silent',
+  'echo "rerun=true" >> "$GITHUB_OUTPUT"',
+  'gh api -X POST "repos/$GITHUB_REPOSITORY/issues/comments/$ZUKE_REVIEW_COMMENT/reactions" -f content=+1 --silent || true',
+].join("\n");
+
 /** The Docker image used for the GitLab job — the official Deno image. */
 const DENO_IMAGE = "denoland/deno:latest";
 
@@ -195,6 +225,11 @@ export class ReviewCommandSettings {
    * plain names. Only the command job receives them; the `pull_request` job is
    * unchanged. Secrets both jobs should hold go on
    * {@link AiReviewWorkflowSpec.secrets} instead.
+   *
+   * A command that adds a secret the `pull_request` job lacks reviews in its
+   * own job on every pull request. Only when every secret it names is also on
+   * the `pull_request` job does it re-run that job's review and grant
+   * `actions: write`: the re-run would otherwise drop what the secret enables.
    */
   secrets(...secrets: ReviewSecret[]): this {
     this.secrets_.push(...secrets);
@@ -643,6 +678,7 @@ class AiReviewWorkflow extends CiFile {
     comments: boolean,
     pull: string,
     cancelInProgress: boolean,
+    actionsWrite = false,
   ): CiJob {
     return {
       id,
@@ -676,8 +712,14 @@ class AiReviewWorkflow extends CiFile {
       // The write scope sits on the job that posts, not on the workflow: with
       // two jobs, a workflow-level write is broader than either needs, and
       // zizmor's excessive-permissions audit says so.
-      ...(comments
-        ? { permissions: { contents: "read", "pull-requests": "write" } }
+      ...(comments || actionsWrite
+        ? {
+          permissions: {
+            ...(actionsWrite ? { actions: "write" } : {}),
+            contents: "read",
+            ...(comments ? { "pull-requests": "write" } : {}),
+          },
+        }
         : {}),
       timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
       // Declared rather than built here, so the prelude is whatever core
@@ -799,6 +841,12 @@ class AiReviewWorkflow extends CiFile {
       const commandEnv: Record<string, string> = { ...env };
       for (const name of command.secrets) commandEnv[name] = githubRef(name);
       Object.assign(commandEnv, caller);
+      // The re-run runs the push job, which never holds a secret given to the
+      // command alone (the App credentials that let the command resolve
+      // threads, for one): re-running it would drop what the command's own
+      // review applies. So the re-run is only generated when the push job
+      // holds every secret the command adds.
+      const canRerun = command.secrets.every((name) => name in env);
       jobs.push(this.#githubJob(
         "commandReview",
         "AI review on command",
@@ -818,9 +866,30 @@ class AiReviewWorkflow extends CiFile {
             continueOnError: true,
             env: { GITHUB_TOKEN: githubRef("GITHUB_TOKEN"), ...caller },
           },
+          // A same-repository pull request has its own `AI review` run for
+          // this head commit: re-running it puts the verdict on the check the
+          // pull request shows, and its one assessment replaces this job's.
+          // Holds the job token alone; any failure falls through to the
+          // review below.
+          ...(canRerun
+            ? [{
+              id: RERUN_STEP_ID,
+              name: "Re-run the pull request's own review",
+              if: `steps.${CALLERS_STEP_ID}.outcome == 'success'`,
+              run: RERUN_SCRIPT,
+              continueOnError: true,
+              env: {
+                GH_TOKEN: githubRef("GITHUB_TOKEN"),
+                [REVIEW_PR_ENV]: caller[REVIEW_PR_ENV],
+                [REVIEW_COMMENT_ENV]: caller[REVIEW_COMMENT_ENV],
+              },
+            }]
+            : []),
           {
             name: "AI review with Zuke",
-            if: `steps.${CALLERS_STEP_ID}.outcome == 'success'`,
+            if: canRerun
+              ? `steps.${CALLERS_STEP_ID}.outcome == 'success' && steps.${RERUN_STEP_ID}.outputs.rerun != 'true'`
+              : `steps.${CALLERS_STEP_ID}.outcome == 'success'`,
             run: `./zuke ${target}`,
             env: commandEnv,
           },
@@ -828,6 +897,7 @@ class AiReviewWorkflow extends CiFile {
         reviewers.commentEnabled,
         "github.event.issue.number",
         false,
+        canRerun,
       ));
     }
     return {
