@@ -43,6 +43,7 @@ export async function* partsOf(
     }
   } finally {
     await reader.cancel().catch(() => {}); // already closed is fine
+    reader.releaseLock(); // cancel leaves the stream locked to this reader
   }
   if (filled > 0) yield part.slice(0, filled);
 }

@@ -97,6 +97,25 @@ test("uploadInParts sends one part or less whole, and more in order", async () =
   assertEquals(await run(2 * PART), [`part:${PART}`, `part:${PART}`]);
 });
 
+test("uploadInParts leaves the source unlocked after success and early failure", async () => {
+  const done = bytes(PART + 1);
+  await uploadInParts(done, () => Promise.resolve(), async (parts) => {
+    for await (const _ of parts) { /* drain */ }
+  });
+  assertEquals(done.locked, false);
+
+  const failed = bytes(3 * PART);
+  await assertRejects(() =>
+    uploadInParts(
+      failed,
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("boom")),
+    )
+  );
+  assertEquals(failed.locked, false);
+  await failed.cancel(); // rejects with a TypeError while still locked
+});
+
 // --- S3 ---------------------------------------------------------------------
 
 const KEY = {
