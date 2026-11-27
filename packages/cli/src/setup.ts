@@ -941,8 +941,12 @@ async function convertMcpConfig(
   ) {
     return undefined;
   }
-  const at = entry.args.indexOf(buildFile);
-  if (entry.args[0] !== "run" || at < 0) {
+  // Only the form setup writes: any other Deno option, such as --env-file,
+  // has meaning Node would lose, so that entry is the user's to move.
+  const [run, all, file, ...rest] = entry.args;
+  if (
+    run !== "run" || !["-A", "--allow-all"].includes(all) || file !== buildFile
+  ) {
     notes.push(
       `${path}'s zuke server runs deno in a way setup does not recognise, ` +
         `so it was kept. Point it at node ${buildFile} mcp by hand.`,
@@ -955,7 +959,7 @@ async function convertMcpConfig(
     mergeMcpConfig(config.document, {
       ...entry,
       command: "node",
-      args: entry.args.slice(at),
+      args: [buildFile, ...rest],
     }),
   );
   host.log(`  update   ${name}`);

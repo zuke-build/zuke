@@ -37,7 +37,8 @@ It converts the project in place, with or without `--force`:
   every other `@zuke/*` package `deno.json` or an inline `jsr:` specifier in the
   build file imports, through its npm alias.
 - `.mcp.json`'s `zuke` server, when it runs the build with `deno run`, is
-  pointed at `node`, keeping its other arguments.
+  pointed at `node`, keeping its other arguments. One that passes Deno any other
+  option is left alone, with a note.
 - `.gitignore` gains `node_modules/`.
 
 The build file and `deno.json` are kept. Setup reports what it could not do for
