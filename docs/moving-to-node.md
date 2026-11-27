@@ -34,7 +34,10 @@ It converts the project in place, with or without `--force`:
 - `./zuke` and `zuke.ps1` are rewritten as the Node launchers. A file at that
   name that is not one of Zuke's launchers is left alone.
 - `package.json` is created or merged: `"type": "module"`, `@zuke/core`, and
-  every other `@zuke/*` package `deno.json` imports, through its npm alias.
+  every other `@zuke/*` package `deno.json` or an inline `jsr:` specifier in the
+  build file imports, through its npm alias.
+- `.mcp.json`'s `zuke` server, when it runs the build with `deno run`, is
+  pointed at `node`, keeping its other arguments.
 - `.gitignore` gains `node_modules/`.
 
 The build file and `deno.json` are kept. Setup reports what it could not do for
@@ -81,9 +84,8 @@ instead.
 
 ## The editor and MCP
 
-The conversion leaves `.mcp.json` as it is, so its `zuke` server still starts
-with `deno run`. Point it at Node by hand: `"command": "node"`, `"args":
-["build.ts", "mcp"]`, with your build file's name. Do not re-run setup with
-`--force` for it: that also overwrites the build file with the starter one. An
-editor's TypeScript support reads `node_modules` once the first `./zuke` run has
-installed it.
+Setup points the `zuke` server in `.mcp.json` at Node itself: `deno run -A
+build.ts mcp` becomes `node build.ts mcp`, with any `--allow-run` kept. An entry
+that runs Deno some other way is left as it is, with a note: point it at `node
+<build file> mcp` by hand. An editor's TypeScript support reads `node_modules`
+once the first `./zuke` run has installed it.

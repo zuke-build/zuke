@@ -142,11 +142,13 @@ with it — leaving `CmdTasks.exec` in place for a tool that has a typed wrapper
 is a bug, not a shortcut. An `&&` chain becomes sequential steps, a
 `run`/prerequisite delegation becomes `.dependsOn(...)`, and anything too
 shell-specific to translate (pipes, redirects, env assignments) is preserved
-behind a `// TODO` so the file still compiles. It scaffolds the launchers and
-`deno.json` exactly like `setup`, and takes the same `--dir`, `--name`,
-`--force`, `--yes`, `--bootstrap` / `--no-bootstrap`, `--mcp` and `--allow-run`
-flags. Afterwards, use the **zuke-write-build** skill to finish replacing any
-remaining generated `CmdTasks.exec` calls with typed `*Tasks` wrappers.
+behind a `// TODO` so the file still compiles. It scaffolds the rest exactly
+like `setup`, on the same runtime — Node, with `package.json`, for a new
+project, or the project's own — and takes the same `--dir`, `--name`, `--force`,
+`--yes`, `--runtime`, `--bootstrap` / `--no-bootstrap`, `--mcp` and
+`--allow-run` flags. Afterwards, use the **zuke-write-build** skill to finish
+replacing any remaining generated `CmdTasks.exec` calls with typed `*Tasks`
+wrappers.
 
 A Python project's `pyproject.toml` imports too: the first task table it carries
 (`[tool.poe.tasks]`, `[tool.pdm.scripts]`, `[tool.hatch.envs.default.scripts]`,

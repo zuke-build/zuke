@@ -362,7 +362,8 @@ const SDK_BOOTSTRAP_QUESTION =
 /** The launcher question when the build's kind is not known yet (`import`). */
 const ANY_BOOTSTRAP_QUESTION =
   "Launchers: download their pinned, checksum-verified runtime (Deno for a " +
-  "TypeScript build, zuke for a Python one) when it is missing? [y/n]";
+  "TypeScript build on Deno, zuke for a Python one; a Node build's always " +
+  "do) when it is missing? [y/n]";
 
 /**
  * Which launchers to scaffold. A flag decides outright; otherwise the wizard
@@ -484,6 +485,7 @@ Import options:
   --name <Class>          Build class name (default: MyBuild)
   --from <source>         Force a source: package.json, makefile or pyproject (default: auto-detect)
   --zuke <version>        The zuke release a pyproject.toml import's launchers run (default: this one)
+  --runtime deno|node     Runtime of a generated zuke.ts (default: node, or the project's own)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --bootstrap             Launchers download their pinned, checksum-verified runtime when missing (default):
@@ -772,6 +774,9 @@ async function commandImport(
       force = prompter.confirm("Overwrite existing files if present?");
     }
   }
+  // Like setup: the project's own runtime, else Node. A build.py ignores it.
+  const runtime = runtimeOption(flags.runtime) ??
+    await defaultRuntime(dir, host);
   const bootstrapDeno = resolveBootstrapDeno(
     flags,
     prompter,
@@ -788,6 +793,7 @@ async function commandImport(
       from: flags.from,
       mcp: mcpOption(flags),
       bootstrapDeno,
+      runtime,
       pin: () => binaryPin(flags, upgradeHost, "zuke import"),
     },
     host,

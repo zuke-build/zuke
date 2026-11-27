@@ -1495,8 +1495,12 @@ test("runSetup --runtime node converts a Deno project in place, without --force"
   assertEquals(result.notes[0].includes("@zuke/core/shell"), true);
 });
 
-test("runSetup --runtime node converting asks for the jsr: imports Node cannot load", async () => {
-  const host = denoProject('import { Build } from "jsr:@zuke/core@^1";\n');
+test("runSetup --runtime node converting asks for the jsr: imports Node cannot load, and declares them", async () => {
+  const host = denoProject(
+    'import { Build } from "jsr:@zuke/core@^1";\n' +
+      "import { $ } from 'jsr:@zuke/core/shell';\n" +
+      'import { NpmTasks } from "jsr:@zuke/npm";\n',
+  );
   host.files.delete("deno.json");
   const result = await runSetup(
     { dir: ".", force: false, name: "A", runtime: "node" },
@@ -1504,11 +1508,82 @@ test("runSetup --runtime node converting asks for the jsr: imports Node cannot l
   );
   assertEquals(result.manualSteps.length, 1);
   assertStringIncludes(result.manualSteps[0], "jsr:");
-  // With no deno.json there is nothing to note, and only @zuke/core to add.
+  // With no deno.json there is nothing to note; the inlined packages are
+  // declared, so changing the imports to bare names is all that is left.
   assertEquals(result.notes, []);
   assertEquals(JSON.parse(host.files.get("package.json") ?? "").dependencies, {
     "@zuke/core": NODE_CORE,
+    "@zuke/npm": "npm:@zuke-build/npm@^1",
   });
+});
+
+test("runSetup --runtime node converting points .mcp.json's deno server at node", async () => {
+  const host = denoProject();
+  host.files.set(
+    ".mcp.json",
+    JSON.stringify({
+      mcpServers: {
+        zuke: {
+          command: "deno",
+          args: ["run", "-A", "build.ts", "mcp", "--allow-run"],
+        },
+        other: { command: "x", args: [] },
+      },
+      extra: true,
+    }),
+  );
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(JSON.parse(host.files.get(".mcp.json") ?? ""), {
+    mcpServers: {
+      zuke: { command: "node", args: ["build.ts", "mcp", "--allow-run"] },
+      other: { command: "x", args: [] },
+    },
+    extra: true,
+  });
+  assertEquals(
+    result.files.find((f) => f.path === ".mcp.json")?.status,
+    "overwritten",
+  );
+});
+
+test("runSetup --runtime node converting keeps a .mcp.json it cannot convert, with a note", async () => {
+  const cases: ReadonlyArray<[string, boolean]> = [
+    // Not JSON: noted.
+    ["{", true],
+    // deno, but not running the build file: noted.
+    [
+      JSON.stringify({
+        mcpServers: { zuke: { command: "deno", args: ["task", "mcp"] } },
+      }),
+      true,
+    ],
+    // Not deno, or no zuke server: the project's own, kept silently.
+    [
+      JSON.stringify({
+        mcpServers: { zuke: { command: "zuke", args: ["mcp"] } },
+      }),
+      false,
+    ],
+    [JSON.stringify({ mcpServers: {} }), false],
+  ];
+  for (const [text, noted] of cases) {
+    const host = denoProject();
+    host.files.delete("deno.json");
+    host.files.set(".mcp.json", text);
+    const result = await runSetup(
+      { dir: ".", force: false, name: "A", runtime: "node" },
+      host,
+    );
+    assertEquals(host.files.get(".mcp.json"), text);
+    assertEquals(
+      result.notes.some((n) => n.includes(".mcp.json")),
+      noted,
+      text,
+    );
+  }
 });
 
 test("runSetup --runtime node converting a build with no zuke.json writes a Node one", async () => {

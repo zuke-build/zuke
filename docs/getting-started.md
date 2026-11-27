@@ -49,12 +49,13 @@ downloaded.
 In an existing Deno project, `zuke setup --runtime node` converts it in place,
 with or without `--force`. It adds `"runtime": "node"` to `zuke.json`, keeping
 its other fields, rewrites the launchers for Node, and declares in
-`package.json` `@zuke/core` and every other `@zuke/*` package `deno.json`
-imports, through their npm aliases. The build file and `deno.json` are kept: a
-note names what else `deno.json` imports, which the build no longer sees, and
-setup stops with a manual step if the build file still imports a `jsr:`
-specifier, which Node cannot load. Setup does not move a Node project back to
-Deno.
+`package.json` `@zuke/core` and every other `@zuke/*` package `deno.json` or the
+build file's inline `jsr:` specifiers import, through their npm aliases. The
+`zuke` server in `.mcp.json`, when it runs the build with `deno run`, is pointed
+at `node`. The build file and `deno.json` are kept: a note names what else
+`deno.json` imports, which the build no longer sees, and setup stops with a
+manual step if the build file still imports a `jsr:` specifier, which Node
+cannot load. Setup does not move a Node project back to Deno.
 
 ## A Deno project with `zuke setup --runtime deno`
 
@@ -155,9 +156,11 @@ an `&&` chain becomes sequential steps, a `package.json` `run` delegation (or a
 Makefile prerequisite) becomes `.dependsOn(...)`, and a command too
 shell-specific to translate (pipes, redirects, env assignments) is preserved
 behind a `// TODO` so the file still compiles and the tricky bits are flagged.
-It also scaffolds the launchers and `deno.json`, exactly like `zuke setup`.
-Flags: `--from <package.json|makefile|pyproject>`, plus the same `--dir`,
-`--name`, `--force`, `--yes`.
+It also scaffolds the rest exactly like `zuke setup`, on the same runtime: Node
+for a new project, so the launchers and `package.json`, or the project's own
+when it has a `zuke.json` already. Flags: `--from
+<package.json|makefile|pyproject>`, `--runtime deno|node`, plus the same
+`--dir`, `--name`, `--force`, `--yes`.
 
 A Python project's `pyproject.toml` (poe, pdm, hatch, taskipy or rye tasks) is
 read last, and becomes a `build.py` scaffolded as `zuke setup --sdk python`
