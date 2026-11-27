@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.2](https://github.com/zuke-build/zuke/compare/core-v1.86.1...core-v1.86.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* **cli:** the launchers bootstrap Deno 2.9.8, on Deno's 2.9 LTS line ([#1226](https://github.com/zuke-build/zuke/issues/1226)) ([2bde807](https://github.com/zuke-build/zuke/commit/2bde80743388aef97910b4bdec48d1c74b45aa4f))
+
 ## [1.86.1](https://github.com/zuke-build/zuke/compare/core-v1.86.0...core-v1.86.1) (2026-11-26)
 
 
