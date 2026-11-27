@@ -71,6 +71,9 @@ export interface AwsSignature {
   readonly headers: Readonly<Record<string, string>>;
 }
 
+/** The payload hash S3 accepts, over HTTPS, for a body that is not hashed. */
+export const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
+
 /** The signing algorithm's name, as the header and string to sign spell it. */
 const ALGORITHM = "AWS4-HMAC-SHA256";
 
@@ -196,7 +199,10 @@ export async function signSigV4(
     canonicalQuery(url),
     names.map((name) => `${name}:${headers.get(name)}\n`).join(""),
     signedHeaders,
-    await sha256Hex(request.body),
+    // A caller that streams the body states `UNSIGNED-PAYLOAD` instead of a hash.
+    headers.get("x-amz-content-sha256") === UNSIGNED_PAYLOAD
+      ? UNSIGNED_PAYLOAD
+      : await sha256Hex(request.body),
   ].join("\n");
   const scope = `${day}/${region}/${service}/aws4_request`;
   const stringToSign = [

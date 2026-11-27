@@ -36,7 +36,9 @@ import {
   type TarEntry,
   untarStream,
 } from "./compression.ts";
+import { isAzureSasUrl, putBlocks } from "./azure_blob.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
+import { uploadInParts } from "./part_upload.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
 import {
   chmod,
@@ -971,6 +973,33 @@ export class HttpCacheStore implements RemoteCacheStore {
     });
     await response.body?.cancel();
     if (!response.ok) throw new HttpError(response.status, url);
+  }
+
+  /**
+   * Store the archive `artifact` streams under `key`. For an Azure Blob SAS
+   * URL a stream larger than one part is uploaded in 8 MiB blocks, so memory
+   * stays at a few blocks; uncommitted blocks of a failed upload are discarded
+   * by the service. Any other server may refuse a body of unknown length, so
+   * the archive is buffered and sent with {@link HttpCacheStore.put}.
+   */
+  async putStream(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void> {
+    const whole = (bytes: Uint8Array) => this.put(key, bytes);
+    if (!isAzureSasUrl(this.#url(key))) {
+      return await whole(
+        new Uint8Array(await new Response(artifact).arrayBuffer()),
+      );
+    }
+    await uploadInParts(artifact, whole, async (parts) => {
+      await putBlocks(
+        this.#fetch,
+        this.#url(key),
+        this.#requestHeaders(),
+        parts,
+      );
+    });
   }
 }
 
