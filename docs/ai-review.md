@@ -706,8 +706,7 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with one of the commands. The job holds no script
-and no `gh` of its own — two steps, both the build:
+account; and the body starts with one of the commands. It runs three steps:
 
 1. **Check the commenter may start a review** runs `./zuke review --preflight`
    with the job's `GITHUB_TOKEN` and nothing else: no provider key, no App key.
@@ -723,9 +722,27 @@ and no `gh` of its own — two steps, both the build:
    does not turn the run red: with no pre-filter anyone who can comment can type
    the command, and a red run for each would be noise and a lever anyone could
    pull.
-2. **AI review with Zuke** runs only when that step passed, with the keys. Its
-   reviewers check the commenter again — the same answer, looked up once per run
-   — so the gate also holds on a core with no preflight phase.
+2. **Re-run the pull request's own review** runs only when that step passed, and
+   holds the job's `GITHUB_TOKEN` alone, with `actions: write`, which only this
+   job is granted. It reads the pull request's head repository from GitHub's own
+   record of the pull request, never from the comment. For a same-repository
+   pull request it looks up this workflow's `pull_request` run for the pull
+   request's current head commit, completed and with this repository as its own
+   head repository, so a fork's run that shares the commit is never picked, and
+   asks GitHub to re-run it. That re-run is the review: it reads the threads,
+   adjudicates rebuttals, applies `accept` commands, posts one assessment, and
+   sets the `AI review` check the pull request shows, so a passing verdict turns
+   a red check green with no push and no manual re-run. A re-run executes
+   nothing a push by the branch's author had not already executed with the same
+   secrets. The step is `continue-on-error` and sets its output only once GitHub
+   accepted the re-run.
+3. **AI review with Zuke** runs only when step 1 passed and step 2 re-ran
+   nothing: a fork's pull request (whose push job never ran and must not), a
+   pull request with no completed run for its head commit, a run still in
+   progress or too old for GitHub to re-run, or an API error. It runs with the
+   keys, exactly as before, and its result stays in this run. Its reviewers
+   check the commenter again — the same answer, looked up once per run — so the
+   gate also holds on a core with no preflight phase.
 
 The job passes the commenter's login, the least role and the admitted logins as
 `ZUKE_REVIEW_ACTOR`, `ZUKE_REVIEW_ROLE` and `ZUKE_REVIEW_USERS`. A workflow
@@ -986,4 +1003,7 @@ starts it by commenting `@zuke-build review`: the
 pull request fetched as data, posts as `zuke-build[bot]` (both reviewers share
 one `GhTasks.appTokenSource` pinned to this repository and narrowed to comments,
 reactions and thread resolution), and each reviewer reacts 👍 on the comment
-first. Each assessment lands in that run's job summary and as a PR comment.
+first. On a same-repository pull request the command job re-runs the pull
+request's own `AI review` run instead of reviewing itself, so the check follows
+the latest verdict. Each assessment lands in the reviewing run's job summary and
+as a PR comment.

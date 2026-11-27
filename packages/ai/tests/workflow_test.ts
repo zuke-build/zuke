@@ -735,12 +735,10 @@ test("the command is GitHub-only: another host renders no comment job", () => {
 test("the command job decides who asked in a step with no secrets, then reviews", () => {
   // Who may start a review is decided by the build's own preflight, in a step
   // that holds the job's token and nothing else; the step with the keys runs
-  // only when it passed. No shell and no `gh` of the job's own.
+  // only when it passed.
   const commandJob = commandBuild().split("  commandReview:")[1];
-  assertEquals(commandJob.includes("gh api"), false);
-  assertEquals(commandJob.includes("shell: bash"), false);
   const check = commandJob.indexOf("Check the commenter may start a review");
-  const review = commandJob.indexOf("AI review with Zuke");
+  const review = commandJob.indexOf("- name: AI review with Zuke");
   assertEquals(check > 0 && check < review, true);
   const step = commandJob.slice(check, review);
   assertStringIncludes(step, "id: callers");
@@ -758,9 +756,11 @@ test("the command job decides who asked in a step with no secrets, then reviews"
   assertEquals(step.includes("OPENAI_API_KEY"), false);
   assertEquals(step.includes("APP_KEY"), false);
   const reviewStep = commandJob.slice(review);
+  // It runs only when the commenter passed and no re-run took the review over.
   assertStringIncludes(
     reviewStep,
-    "if: \"steps.callers.outcome == 'success'\"",
+    "if: \"steps.callers.outcome == 'success' && " +
+      "steps.rerun.outputs.rerun != 'true'\"",
   );
   assertStringIncludes(
     reviewStep,
@@ -770,6 +770,51 @@ test("the command job decides who asked in a step with no secrets, then reviews"
   assertStringIncludes(reviewStep, "ZUKE_REVIEW_ROLE: write");
   // No allow-list by default.
   assertEquals(commandJob.includes("ZUKE_REVIEW_USERS"), false);
+});
+
+test("the command job re-runs a same-repository pull request's own review, after the role check and with only the job token", () => {
+  const yaml = commandBuild();
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  // `actions: write` goes to the command job only.
+  assertStringIncludes(commandJob, "      actions: write\n");
+  assertEquals(reviewJob.includes("actions: write"), false);
+  assertStringIncludes(yaml, "permissions:\n  contents: read\njobs:");
+  const check = commandJob.indexOf("id: callers");
+  const rerun = commandJob.indexOf("id: rerun");
+  const review = commandJob.indexOf("- name: AI review with Zuke");
+  assertEquals(check > 0 && check < rerun && rerun < review, true);
+  const step = commandJob.slice(rerun, review);
+  // Only after the commenter was admitted, and never fatal: any failure falls
+  // through to the command job's own review.
+  assertStringIncludes(step, "if: \"steps.callers.outcome == 'success'\"");
+  assertStringIncludes(step, "continue-on-error: true");
+  // The job token alone: no provider key, no App key.
+  assertStringIncludes(step, 'GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"');
+  assertEquals(step.includes("OPENAI_API_KEY"), false);
+  assertEquals(step.includes("APP_KEY"), false);
+  // Same repository is read from the pull request record, not the comment, and
+  // a fork pull request stops here, so it falls through to the job's review.
+  assertStringIncludes(step, "repos/$GITHUB_REPOSITORY/pulls/$ZUKE_REVIEW_PR");
+  assertStringIncludes(
+    step,
+    '[ "$head_repo" = "$GITHUB_REPOSITORY" ] || exit 0',
+  );
+  assertEquals(step.includes("github.event.comment.body"), false);
+  // The run is this workflow's own, completed, for the current head commit,
+  // and its own head repository is this one: a fork's run sharing the commit
+  // is never picked. No run found means no re-run.
+  assertStringIncludes(step, "actions/workflows/$wf/runs?event=pull_request");
+  assertStringIncludes(step, "status=completed&head_sha=$head_sha");
+  assertStringIncludes(
+    step,
+    "select(.head_sha == env.head_sha and " +
+      ".head_repository.full_name == env.GITHUB_REPOSITORY)",
+  );
+  assertStringIncludes(step, '[ -n "$run_id" ] || exit 0');
+  // The output is set only after GitHub accepted the re-run.
+  const post = step.indexOf("-X POST");
+  const out = step.indexOf('echo "rerun=true"');
+  assertEquals(post > 0 && post < out, true);
 });
 
 test("also adds commands that start the run too, each matched like the first", () => {
