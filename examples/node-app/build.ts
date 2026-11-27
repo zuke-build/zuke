@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * A Node project driven by Zuke. Nothing is added to package.json's
- * dependencies: Deno runs the build, and the typed `@zuke/npm` wrapper drives
- * the app's own npm scripts and toolchain.
+ * A Node project driven by Zuke. Node runs the build too, and the typed
+ * `@zuke/npm` wrapper drives the app's own npm scripts and toolchain.
  *
  *   zuke                   # install → test → build → pack
  *   zuke test              # just install → test
