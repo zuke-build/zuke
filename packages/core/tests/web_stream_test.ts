@@ -104,3 +104,24 @@ test("toWebStream and fromWebStream carry bytes both ways", async () => {
   }
   assertEquals(back, [1, 2, 3, 4]);
 });
+
+test("toWebStream's cancel destroys the readable without an error event", async () => {
+  // Readable.toWeb's own cancel destroys with an AbortError, which crashed a
+  // test process when it found no listener (#1215).
+  const errors: unknown[] = [];
+  const readable = new Readable({ read() {} });
+  readable.on("error", (error) => errors.push(error));
+  readable.push(new Uint8Array([1]));
+  const web = toWebStream(readable);
+  await web.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assertEquals(readable.destroyed, true);
+  assertEquals(errors, []);
+});
+
+test("toWebStream errors the web stream when the readable errors", async () => {
+  const readable = new Readable({ read() {} });
+  const web = toWebStream(readable);
+  readable.destroy(new Error("boom"));
+  await assertRejects(() => collect(web), Error, "boom");
+});
