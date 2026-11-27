@@ -45,13 +45,17 @@ zuke setup --mcp --allow-run    # …and let the agent run targets
 Any client also takes the command directly. For example, with Claude Code:
 
 ```sh
-claude mcp add zuke -- deno run -A build.ts mcp
+claude mcp add zuke -- node build.ts mcp
 ```
 
-Any client that speaks stdio MCP works the same way — give it the command `deno
-run -A build.ts mcp` (add `--allow-run` when you want the agent to execute
-targets). That is the command `zuke setup --mcp` writes too: it is the same on
-every platform and needs only Deno on the machine the client runs on.
+Any client that speaks stdio MCP works the same way — give it the command `node
+build.ts mcp` (add `--allow-run` when you want the agent to execute targets).
+That is the command `zuke setup --mcp` writes for a project on Node: it is the
+same on every platform and needs Node 26 or newer on the machine the client runs
+on, with the project's dependencies installed, which the first `./zuke` run
+does. For a build on Deno, the command is `deno run -A build.ts mcp`, and that
+is what setup writes there. `zuke setup --runtime node` points that entry at
+Node when it moves a project from Deno.
 
 ## HTTP transport
 
