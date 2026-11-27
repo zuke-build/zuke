@@ -50,7 +50,7 @@ import {
   userId,
   writeStream,
 } from "./fs.ts";
-import { isNotFound, messageOf, trimTrailingSlashes } from "./internal.ts";
+import { cacheObjectUrl, isNotFound, messageOf } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
@@ -887,8 +887,7 @@ export interface HttpCacheStoreOptions {
  * ({@link "./cache.ts".OpenCacheOptions.signingKey}).
  */
 export class HttpCacheStore implements RemoteCacheStore {
-  readonly #base: string;
-  readonly #query: string;
+  readonly #url: (key: string) => string;
   readonly #token?: string;
   readonly #headers: Readonly<Record<string, string>>;
   readonly #fetch: typeof fetch;
@@ -899,19 +898,12 @@ export class HttpCacheStore implements RemoteCacheStore {
   /** Build the store from its URL, optional token, size caps, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
     this.maxInflatedBytes = options.maxInflatedBytes;
-    const at = options.url.indexOf("?");
-    const path = at === -1 ? options.url : options.url.slice(0, at);
-    this.#base = trimTrailingSlashes(path);
-    this.#query = at === -1 ? "" : options.url.slice(at);
+    this.#url = cacheObjectUrl(options.url);
     this.#token = options.token;
     this.#headers = options.headers ?? {};
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??
       DEFAULT_MAX_ARTIFACT_BYTES;
-  }
-
-  #url(key: string): string {
-    return `${this.#base}/${encodeURIComponent(key)}${this.#query}`;
   }
 
   #requestHeaders(extra?: Record<string, string>): Record<string, string> {

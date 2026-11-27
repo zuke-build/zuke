@@ -22,7 +22,7 @@ import {
   UNSIGNED_PAYLOAD,
 } from "./aws_sigv4.ts";
 import { HttpError } from "./http.ts";
-import { sha256Hex, trimTrailingSlashes } from "./internal.ts";
+import { cacheObjectUrl, sha256Hex } from "./internal.ts";
 import { uploadInParts } from "./part_upload.ts";
 import { HttpCacheStore, type RemoteCacheStore } from "./remote_cache.ts";
 
@@ -88,8 +88,7 @@ function escapeXml(text: string): string {
 export class S3CacheStore implements RemoteCacheStore {
   readonly #http: HttpCacheStore;
   readonly #signed: typeof fetch;
-  readonly #base: string;
-  readonly #query: string;
+  readonly #object: (key: string) => string;
   /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
   readonly maxInflatedBytes?: number;
 
@@ -120,12 +119,8 @@ export class S3CacheStore implements RemoteCacheStore {
       });
     };
     this.#signed = signing;
-    // Split as HttpCacheStore splits it, so both upload paths agree.
-    const at = options.url.indexOf("?");
-    this.#base = trimTrailingSlashes(
-      at === -1 ? options.url : options.url.slice(0, at),
-    );
-    this.#query = at === -1 ? "" : options.url.slice(at + 1);
+    // Built as HttpCacheStore builds it, so both upload paths agree.
+    this.#object = cacheObjectUrl(options.url);
     this.#http = new HttpCacheStore({
       url: options.url,
       fetch: signing,
@@ -164,8 +159,7 @@ export class S3CacheStore implements RemoteCacheStore {
     return uploadInParts(
       artifact,
       (whole) => this.put(key, whole),
-      (parts) =>
-        this.#multipart(`${this.#base}/${encodeURIComponent(key)}`, parts),
+      (parts) => this.#multipart(this.#object(key), parts),
     );
   }
 
@@ -188,9 +182,9 @@ export class S3CacheStore implements RemoteCacheStore {
     url: string,
     parts: AsyncIterable<Uint8Array<ArrayBuffer>>,
   ): Promise<void> {
-    // The configured query first, as every other request to the object sends it.
+    // After the configured query, which `url` already carries.
     const at = (params: string) =>
-      `${url}?${this.#query === "" ? "" : `${this.#query}&`}${params}`;
+      `${url}${url.includes("?") ? "&" : "?"}${params}`;
     const created = await (await this.#send("POST", at("uploads"))).text();
     const id = /<UploadId>([^<]+)<\/UploadId>/.exec(created)?.[1];
     if (id === undefined) {
