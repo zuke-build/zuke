@@ -44,11 +44,34 @@ export function streamOf<T>(
   );
 }
 
-/** `readable` as a web stream of its bytes, by `Readable.toWeb`. */
+/**
+ * `readable` as a web stream of its bytes, read through `Readable.toWeb`. A
+ * cancel destroys `readable` with no error: `Readable.toWeb`'s own cancel
+ * destroys it with an `AbortError`, which Node emits as an `'error'` event,
+ * and one that finds no listener ends the process (#1215).
+ */
 export function toWebStream(readable: Readable): ReadableStream<Uint8Array> {
   const web = Readable.toWeb(readable);
-  if (web instanceof ReadableStream) return web;
-  throw new TypeError("zuke: node:stream/web is not the global ReadableStream");
+  if (!(web instanceof ReadableStream)) {
+    throw new TypeError(
+      "zuke: node:stream/web is not the global ReadableStream",
+    );
+  }
+  const reader = web.getReader();
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        const next = await reader.read();
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+      cancel() {
+        reader.releaseLock();
+        readable.destroy();
+      },
+    },
+    { highWaterMark: 0 },
+  );
 }
 
 /** `stream` as a Node readable, by `Readable.fromWeb`. */
