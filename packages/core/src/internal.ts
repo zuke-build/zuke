@@ -75,6 +75,28 @@ export function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
 
+/**
+ * `value` without its trailing `/` characters. A loop, not `/\/+$/`, whose
+ * backtracking is quadratic on a long run of slashes.
+ */
+export function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
+}
+
+/**
+ * The object URLs of a cache store at `url`: its path without trailing
+ * slashes, then the encoded key, then `url`'s query, which every store
+ * request keeps.
+ */
+export function cacheObjectUrl(url: string): (key: string) => string {
+  const at = url.indexOf("?");
+  const base = trimTrailingSlashes(at === -1 ? url : url.slice(0, at));
+  const query = at === -1 ? "" : url.slice(at);
+  return (key) => `${base}/${encodeURIComponent(key)}${query}`;
+}
+
 /** Resolve after `ms` milliseconds (a `setTimeout`-backed sleep). */
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

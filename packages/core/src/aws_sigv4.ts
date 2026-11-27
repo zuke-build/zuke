@@ -71,6 +71,9 @@ export interface AwsSignature {
   readonly headers: Readonly<Record<string, string>>;
 }
 
+/** The payload hash S3 accepts, over HTTPS, for a body that is not hashed. */
+export const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
+
 /** The signing algorithm's name, as the header and string to sign spell it. */
 const ALGORITHM = "AWS4-HMAC-SHA256";
 
@@ -162,7 +165,10 @@ function amzDate(now: number): string {
 
 /**
  * Sign `request` for `service` in `region` at the instant `now` (epoch ms).
- * Pure apart from WebCrypto: the same inputs give the same signature.
+ * Pure apart from WebCrypto: the same inputs give the same signature. The
+ * payload hash is the SHA-256 of `request.body`, unless the caller set the
+ * `x-amz-content-sha256` header to `UNSIGNED-PAYLOAD`: then the body is not
+ * hashed and that value is signed, as S3 accepts for a streamed part.
  */
 export async function signSigV4(
   request: AwsSignableRequest,
@@ -196,7 +202,10 @@ export async function signSigV4(
     canonicalQuery(url),
     names.map((name) => `${name}:${headers.get(name)}\n`).join(""),
     signedHeaders,
-    await sha256Hex(request.body),
+    // A caller that streams the body states `UNSIGNED-PAYLOAD` instead of a hash.
+    headers.get("x-amz-content-sha256") === UNSIGNED_PAYLOAD
+      ? UNSIGNED_PAYLOAD
+      : await sha256Hex(request.body),
   ].join("\n");
   const scope = `${day}/${region}/${service}/aws4_request`;
   const stringToSign = [

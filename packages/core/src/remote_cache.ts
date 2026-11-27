@@ -36,7 +36,9 @@ import {
   type TarEntry,
   untarStream,
 } from "./compression.ts";
+import { isAzureSasUrl, putBlocks } from "./azure_blob.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
+import { uploadInParts } from "./part_upload.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
 import {
   chmod,
@@ -48,7 +50,7 @@ import {
   userId,
   writeStream,
 } from "./fs.ts";
-import { isNotFound, messageOf } from "./internal.ts";
+import { cacheObjectUrl, isNotFound, messageOf } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
@@ -885,8 +887,7 @@ export interface HttpCacheStoreOptions {
  * ({@link "./cache.ts".OpenCacheOptions.signingKey}).
  */
 export class HttpCacheStore implements RemoteCacheStore {
-  readonly #base: string;
-  readonly #query: string;
+  readonly #url: (key: string) => string;
   readonly #token?: string;
   readonly #headers: Readonly<Record<string, string>>;
   readonly #fetch: typeof fetch;
@@ -897,19 +898,12 @@ export class HttpCacheStore implements RemoteCacheStore {
   /** Build the store from its URL, optional token, size caps, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
     this.maxInflatedBytes = options.maxInflatedBytes;
-    const at = options.url.indexOf("?");
-    const path = at === -1 ? options.url : options.url.slice(0, at);
-    this.#base = path.replace(/\/+$/, "");
-    this.#query = at === -1 ? "" : options.url.slice(at);
+    this.#url = cacheObjectUrl(options.url);
     this.#token = options.token;
     this.#headers = options.headers ?? {};
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??
       DEFAULT_MAX_ARTIFACT_BYTES;
-  }
-
-  #url(key: string): string {
-    return `${this.#base}/${encodeURIComponent(key)}${this.#query}`;
   }
 
   #requestHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -971,6 +965,33 @@ export class HttpCacheStore implements RemoteCacheStore {
     });
     await response.body?.cancel();
     if (!response.ok) throw new HttpError(response.status, url);
+  }
+
+  /**
+   * Store the archive `artifact` streams under `key`. For an Azure Blob SAS
+   * URL a stream larger than one part is uploaded in 8 MiB blocks, so memory
+   * stays at a few blocks; uncommitted blocks of a failed upload are discarded
+   * by the service. Any other server may refuse a body of unknown length, so
+   * the archive is buffered and sent with {@link HttpCacheStore.put}.
+   */
+  async putStream(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void> {
+    const whole = (bytes: Uint8Array) => this.put(key, bytes);
+    if (!isAzureSasUrl(this.#url(key))) {
+      return await whole(
+        new Uint8Array(await new Response(artifact).arrayBuffer()),
+      );
+    }
+    await uploadInParts(artifact, whole, async (parts) => {
+      await putBlocks(
+        this.#fetch,
+        this.#url(key),
+        this.#requestHeaders(),
+        parts,
+      );
+    });
   }
 }
 

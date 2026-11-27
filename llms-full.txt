@@ -1008,7 +1008,10 @@ function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unk
 
 async function signSigV4(request: AwsSignableRequest, credentials: AwsCredentials, region: string, service: string, now: number): Promise<AwsSignature>
   Sign `request` for `service` in `region` at the instant `now` (epoch ms).
-  Pure apart from WebCrypto: the same inputs give the same signature.
+  Pure apart from WebCrypto: the same inputs give the same signature. The
+  payload hash is the SHA-256 of `request.body`, unless the caller set the
+  `x-amz-content-sha256` header to `UNSIGNED-PAYLOAD`: then the body is not
+  hashed and that value is signed, as S3 accepts for a streamed part.
 
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
@@ -1912,8 +1915,15 @@ class GitHubActionsCacheStore implements RemoteCacheStore
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
     The archive stored under `key` as a stream, or `null` if there is none.
-  async put(key: string, artifact: Uint8Array): Promise<void>
+  put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+  async putStream(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
+    Store the archive `artifact` streams under `key`. A stream that fits one
+    part is a single `put`; a larger one goes to the blob in 8 MiB blocks,
+    committed by one block list, so memory stays at a few blocks. An upload
+    that fails part way leaves uncommitted blocks, which the blob service
+    discards, and an entry never finalized, so no half-written archive is
+    ever served.
 
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
@@ -1986,6 +1996,12 @@ class HttpCacheStore implements RemoteCacheStore
     before there was anything to reject.
   async put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+  async putStream(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
+    Store the archive `artifact` streams under `key`. For an Azure Blob SAS
+    URL a stream larger than one part is uploaded in 8 MiB blocks, so memory
+    stays at a few blocks; uncommitted blocks of a failed upload are discarded
+    by the service. Any other server may refuse a body of unknown length, so
+    the archive is buffered and sent with {@link HttpCacheStore.put}.
 
 class HttpError extends Error
   Raised when an HTTP request returns a non-2xx status. The URL appears in the
@@ -2393,7 +2409,10 @@ class S3CacheStore implements RemoteCacheStore
   A miss is a `404`, which S3 answers only to a caller allowed `s3:ListBucket`
   on the bucket; without it a missing key is a `403`, reported as a lookup
   failure (and a rebuild) rather than a miss. Grant `s3:GetObject`,
-  `s3:PutObject` and `s3:ListBucket`. Entries are never evicted by the store:
+  `s3:PutObject` and `s3:ListBucket`; a streamed upload larger than one part
+  is a multipart upload, aborted on failure, which needs `s3:AbortMultipartUpload`
+  to clean up (add a lifecycle rule aborting incomplete multipart uploads as
+  a backstop). Entries are never evicted by the store:
   put a lifecycle rule on the prefix.
 
   constructor(options: S3CacheStoreOptions)
@@ -2406,6 +2425,11 @@ class S3CacheStore implements RemoteCacheStore
     The archive stored under `key` as a stream, or `null` if there is none.
   put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+  putStream(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
+    Store the archive `artifact` streams under `key`. A stream that fits one
+    8 MiB part is a single `PUT`; a larger one is a multipart upload, each
+    part signed `UNSIGNED-PAYLOAD`, so memory stays at a few parts. If any
+    request fails, the upload is aborted, so no parts are left to be billed.
 
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.

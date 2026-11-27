@@ -23,6 +23,7 @@ function fakeBucket(): {
   objects: Map<string, Uint8Array>;
 } {
   const objects = new Map<string, Uint8Array>();
+  const parts = new Map<number, Uint8Array<ArrayBuffer>>();
   const fetchFn: typeof fetch = async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
     const headers = new Headers(init?.headers);
@@ -34,7 +35,32 @@ function fakeBucket(): {
     ) {
       return new Response("unsigned", { status: 403 });
     }
-    const key = url.slice(`${BUCKET}/`.length);
+    const [path, query = ""] = url.slice(`${BUCKET}/`.length).split("?");
+    const key = path;
+    const params = new URLSearchParams(query);
+    if (init?.method === "POST" && query === "uploads") {
+      return new Response("<R><UploadId>u1</UploadId></R>");
+    }
+    if (init?.method === "PUT" && params.has("partNumber")) {
+      if (headers.get("x-amz-content-sha256") !== "UNSIGNED-PAYLOAD") {
+        return new Response("signed part", { status: 400 });
+      }
+      const part = new Uint8Array(await new Response(init.body).arrayBuffer());
+      parts.set(Number(params.get("partNumber")), part);
+      return new Response(null, { headers: { etag: '"e"' } });
+    }
+    if (init?.method === "POST" && params.has("uploadId")) {
+      objects.set(
+        key,
+        new Uint8Array(
+          await new Blob(
+            [...parts.entries()].sort((a, b) => a[0] - b[0]).map((p) => p[1]),
+          ).arrayBuffer(),
+        ),
+      );
+      parts.clear();
+      return new Response("<Done/>");
+    }
     if (init?.method === "PUT" && init.body instanceof Blob) {
       objects.set(key, new Uint8Array(await init.body.arrayBuffer()));
       return new Response(null, { status: 200 });
@@ -48,6 +74,20 @@ function fakeBucket(): {
 }
 
 test("the S3 cache store restores outputs on a fresh checkout", async () => {
+  await restoresOutputs(new TextEncoder().encode("built"));
+});
+
+test("the S3 cache store uploads and restores a multi-part archive", async () => {
+  // Random bytes do not compress, so the archive spans two 8 MiB parts.
+  const big = new Uint8Array(9 * 1024 * 1024);
+  for (let at = 0; at < big.length; at += 65536) {
+    crypto.getRandomValues(big.subarray(at, at + 65536));
+  }
+  await restoresOutputs(big);
+});
+
+/** Build `out.txt` as `content`, drop the local state, and restore it from the bucket. */
+async function restoresOutputs(content: Uint8Array): Promise<void> {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
       const bucket = fakeBucket();
@@ -69,7 +109,7 @@ test("the S3 cache store restores outputs on a fresh checkout", async () => {
           build = target().inputs("input.txt").outputs("out.txt").executes(
             async () => {
               log.push("build");
-              await FileTasks.writeText("out.txt", "built");
+              await FileTasks.writeBytes("out.txt", content);
             },
           );
         }
@@ -85,11 +125,14 @@ test("the S3 cache store restores outputs on a fresh checkout", async () => {
         const second = await runCli(B, ["build"]);
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored, body not re-run
-        assertEquals(await FileTasks.readText(`${dir}/out.txt`), "built");
+        assertEquals(
+          await FileTasks.readBytes(`${dir}/out.txt`),
+          content,
+        );
       } finally {
         globalThis.fetch = realFetch;
         for (const name of Object.keys(vars)) EnvTasks.delete(name);
       }
     });
   });
-});
+}

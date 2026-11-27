@@ -22,8 +22,10 @@
  * @module
  */
 
+import { putBlocks } from "./azure_blob.ts";
 import { artifactBody, HttpError } from "./http.ts";
-import { sha256Hex } from "./internal.ts";
+import { sha256Hex, trimTrailingSlashes } from "./internal.ts";
+import { uploadInParts } from "./part_upload.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 
 /** Configuration for a {@link GitHubActionsCacheStore}. */
@@ -92,7 +94,7 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
   /** Build the store from the service URL, the runtime token, and the `fetch` seam. */
   constructor(options: GitHubActionsCacheStoreOptions) {
     this.maxInflatedBytes = options.maxInflatedBytes;
-    this.#base = options.url.replace(/\/+$/, "");
+    this.#base = trimTrailingSlashes(options.url);
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??
@@ -177,8 +179,15 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
     );
   }
 
-  /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
-  async put(key: string, artifact: Uint8Array): Promise<void> {
+  /**
+   * Reserve the entry for `key` and upload it through `upload`, which is given
+   * the signed URL and returns the size stored; then finalize it. An entry
+   * another job finalized first is left as it is.
+   */
+  async #store(
+    key: string,
+    upload: (url: string) => Promise<number>,
+  ): Promise<void> {
     const version = await this.#version(key);
     let reserved: Record<string, unknown>;
     try {
@@ -189,33 +198,55 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
       if (error instanceof HttpError && error.status === 409) return;
       throw error;
     }
-    const upload = stringField(
-      reserved,
-      "signed_upload_url",
-      "signedUploadUrl",
-    );
-    if (reserved.ok !== true || upload === undefined) {
+    const url = stringField(reserved, "signed_upload_url", "signedUploadUrl");
+    if (reserved.ok !== true || url === undefined) {
       throw new Error(
         `remote cache: the GitHub Actions cache service refused to reserve ` +
           `an entry for "${key}".`,
       );
     }
-    // shortcut: one Put Blob request, which the blob service caps at 5000 MiB;
-    // upload in blocks if an artifact ever has to exceed that.
-    const response = await this.#fetch(upload, {
-      method: "PUT",
-      headers: {
-        "x-ms-blob-type": "BlockBlob",
-        "content-type": "application/octet-stream",
-      },
-      body: new Blob([new Uint8Array(artifact)]),
-    });
-    await response.body?.cancel();
-    if (!response.ok) throw new HttpError(response.status, upload);
+    const size = await upload(url);
     await this.#call("FinalizeCacheEntryUpload", {
       key,
       version,
-      size_bytes: String(artifact.byteLength),
+      size_bytes: String(size),
     });
+  }
+
+  /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
+  put(key: string, artifact: Uint8Array): Promise<void> {
+    return this.#store(key, async (url) => {
+      const response = await this.#fetch(url, {
+        method: "PUT",
+        headers: {
+          "x-ms-blob-type": "BlockBlob",
+          "content-type": "application/octet-stream",
+        },
+        body: new Blob([new Uint8Array(artifact)]),
+      });
+      await response.body?.cancel();
+      if (!response.ok) throw new HttpError(response.status, url);
+      return artifact.byteLength;
+    });
+  }
+
+  /**
+   * Store the archive `artifact` streams under `key`. A stream that fits one
+   * part is a single `put`; a larger one goes to the blob in 8 MiB blocks,
+   * committed by one block list, so memory stays at a few blocks. An upload
+   * that fails part way leaves uncommitted blocks, which the blob service
+   * discards, and an entry never finalized, so no half-written archive is
+   * ever served.
+   */
+  async putStream(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void> {
+    await uploadInParts(
+      artifact,
+      (whole) => this.put(key, whole),
+      (parts) =>
+        this.#store(key, (url) => putBlocks(this.#fetch, url, {}, parts)),
+    );
   }
 }

@@ -161,7 +161,16 @@ a clear error rather than silently truncated. You can implement
 `RemoteCacheStore` yourself for any other backend. It may also implement the
 optional `getStream(key)` and `putStream(key, artifact)`. The executor then
 streams the artifact to and from a temporary file instead of holding it in
-memory, which is what every built-in store does for downloads.
+memory. Every built-in store streams downloads. For uploads,
+`FileSystemCacheStore` writes the stream as it comes, and the network stores
+send it in 8 MiB parts, so memory stays at a few parts: `S3CacheStore` as a
+multipart upload (aborted if any request fails, so no parts are left billed;
+allow `s3:AbortMultipartUpload`, and add a lifecycle rule that aborts incomplete
+multipart uploads as a backstop), `GitHubActionsCacheStore` and an
+`HttpCacheStore` on an Azure Blob SAS URL as blocks committed by one block list
+(uncommitted blocks are discarded by Azure). An archive of one part or less is a
+single request. An `HttpCacheStore` on any other server buffers the archive and
+`PUT`s it whole, since such a server may refuse a body of unknown length.
 
 ### Configuring it
 
