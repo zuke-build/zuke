@@ -79,6 +79,12 @@ test("compileCliBinaries bundles the entry, compiles the bundle, and runs the ho
           await FileTasks.readText(`${cwd}/${ENTRY_FILE}`),
           "// the entry\n",
         );
+        // Deno 2.9 holds back a release published minutes ago, which the
+        // compile embeds: the configuration beside the entry turns that off.
+        assertEquals(
+          JSON.parse(await FileTasks.readText(`${cwd}/deno.json`)),
+          { minimumDependencyAge: 0 },
+        );
         await FileTasks.writeText(`${cwd}/${BUNDLE_FILE}`, "// bundled\n");
       },
       async (bundle, binDir) => {

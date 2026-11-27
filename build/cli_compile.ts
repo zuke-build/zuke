@@ -15,7 +15,8 @@
  *
  * Deno looks for a configuration file from the working directory, and this
  * checkout's would map `@zuke/*` onto the workspace instead of JSR, so the
- * entry is written to, and bundled in, an empty temporary directory.
+ * entry is written to, and bundled in, a temporary directory whose only
+ * configuration is {@link BUNDLE_CONFIG}.
  *
  * @module
  */
@@ -118,6 +119,14 @@ export const ENTRY_FILE = "zuke.ts";
 export const BUNDLE_FILE = "zuke.mjs";
 
 /**
+ * The `deno.json` beside the entry. Deno 2.9 holds back a release younger
+ * than its default minimum dependency age, and the compile runs minutes
+ * after the publish of the very release it embeds, so the bundle failed to
+ * load it. The releases are named exactly, so taking the newest is safe.
+ */
+const BUNDLE_CONFIG = '{ "minimumDependencyAge": 0 }\n';
+
+/**
  * Build `entry`, the module `build/cli_binary.ts` renders, into every
  * target's binary in `binDir` (absolute, since the work happens in a
  * temporary directory): `deno bundle` resolves the releases it names into
@@ -140,6 +149,7 @@ export async function compileCliBinaries(
   );
   try {
     await FileTasks.writeText(scratch(ENTRY_FILE).path, entry);
+    await FileTasks.writeText(scratch("deno.json").path, BUNDLE_CONFIG);
     await bundle((s) =>
       s.script(ENTRY_FILE).output(BUNDLE_FILE).cwd(scratch.path)
     );
