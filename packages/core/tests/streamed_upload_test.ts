@@ -42,14 +42,18 @@ function fakeFetch(
   return { fetch: fetchFn, calls };
 }
 
-/** A stream of `n` zero bytes, in 1 MiB chunks. */
-function zeros(n: number): ReadableStream<Uint8Array<ArrayBuffer>> {
+/** A stream of `n` bytes all equal to `value`, in chunks of `chunk` bytes. */
+function bytes(
+  n: number,
+  value = 0,
+  chunk = MIB,
+): ReadableStream<Uint8Array<ArrayBuffer>> {
   let left = n;
   return new ReadableStream({
     pull(controller) {
-      const size = Math.min(MIB, left);
+      const size = Math.min(chunk, left);
       left -= size;
-      if (size > 0) controller.enqueue(new Uint8Array(size));
+      if (size > 0) controller.enqueue(new Uint8Array(size).fill(value));
       if (left === 0) controller.close();
     },
   });
@@ -59,15 +63,7 @@ const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 test("partsOf cuts at exact and inexact boundaries, across chunk edges", async () => {
   const sizes = async (n: number, chunk: number) => {
-    let left = n;
-    const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
-      pull(controller) {
-        const size = Math.min(chunk, left);
-        left -= size;
-        if (size > 0) controller.enqueue(new Uint8Array(size));
-        if (left === 0) controller.close();
-      },
-    });
+    const stream = bytes(n, 0, chunk);
     const out: number[] = [];
     for await (const part of partsOf(stream, 4)) out.push(part.length);
     return out;
@@ -83,7 +79,7 @@ test("uploadInParts sends one part or less whole, and more in order", async () =
   const run = async (n: number) => {
     const seen: string[] = [];
     await uploadInParts(
-      zeros(n),
+      bytes(n),
       (bytes) => {
         seen.push(`whole:${bytes.length}`);
         return Promise.resolve();
@@ -140,7 +136,7 @@ function multipartBucket(
 
 test("S3CacheStore.putStream uploads 8 MiB parts and completes them in order", async () => {
   const { fetch, calls } = multipartBucket();
-  await s3(fetch).putStream("k", zeros(PART + 1));
+  await s3(fetch).putStream("k", bytes(PART + 1));
 
   assertEquals(calls.map((c) => c.method), ["POST", "PUT", "PUT", "POST"]);
   assertEquals(calls[0].url, `${OBJECT}?uploads`);
@@ -163,7 +159,7 @@ test("S3CacheStore.putStream uploads 8 MiB parts and completes them in order", a
 
 test("S3CacheStore.putStream splits an exact multiple without an empty part", async () => {
   const { fetch, calls } = multipartBucket();
-  await s3(fetch).putStream("k", zeros(2 * PART));
+  await s3(fetch).putStream("k", bytes(2 * PART));
   assertEquals(
     calls.filter((c) => c.method === "PUT").map((c) => c.body.length),
     [PART, PART],
@@ -172,7 +168,7 @@ test("S3CacheStore.putStream splits an exact multiple without an empty part", as
 
 test("S3CacheStore.putStream sends one part or less as a single signed PUT", async () => {
   const { fetch, calls } = fakeFetch(() => new Response(null));
-  await s3(fetch).putStream("k", zeros(PART));
+  await s3(fetch).putStream("k", bytes(PART));
   assertEquals(calls.length, 1);
   assertEquals(calls[0].url, OBJECT);
   assertEquals(calls[0].body.length, PART);
@@ -189,7 +185,7 @@ test("S3CacheStore.putStream aborts the upload when a part fails", async () => {
       : undefined
   );
   const err = await assertRejects(() =>
-    s3(fetch).putStream("k", zeros(2 * PART + 1))
+    s3(fetch).putStream("k", bytes(2 * PART + 1))
   );
   assertEquals(err instanceof HttpError, true);
   const last = calls[calls.length - 1];
@@ -206,7 +202,7 @@ test("S3CacheStore.putStream aborts when completion answers 200 with an error", 
       ? new Response("<Error><Code>InternalError</Code></Error>")
       : undefined
   );
-  await assertRejects(() => s3(fetch).putStream("k", zeros(PART + 1)));
+  await assertRejects(() => s3(fetch).putStream("k", bytes(PART + 1)));
   assertEquals(calls[calls.length - 1].method, "DELETE");
 });
 
@@ -219,7 +215,7 @@ test("S3CacheStore.putStream aborts when completion is refused, and keeps the ca
       : undefined
   );
   const err = await assertRejects(() =>
-    s3(fetch).putStream("k", zeros(PART + 1))
+    s3(fetch).putStream("k", bytes(PART + 1))
   );
   assertEquals(err instanceof HttpError && err.status === 403, true);
   assertEquals(calls[calls.length - 1].method, "DELETE");
@@ -227,13 +223,13 @@ test("S3CacheStore.putStream aborts when completion is refused, and keeps the ca
 
 test("S3CacheStore.putStream refuses a response without an upload id or an ETag", async () => {
   const noId = fakeFetch(() => new Response("<x/>"));
-  await assertRejects(() => s3(noId.fetch).putStream("k", zeros(PART + 1)));
+  await assertRejects(() => s3(noId.fetch).putStream("k", bytes(PART + 1)));
   assertEquals(noId.calls.length, 1); // nothing to abort
 
   const { fetch, calls } = multipartBucket((c) =>
     c.method === "PUT" ? new Response(null) : undefined
   );
-  await assertRejects(() => s3(fetch).putStream("k", zeros(PART + 1)));
+  await assertRejects(() => s3(fetch).putStream("k", bytes(PART + 1)));
   assertEquals(calls[calls.length - 1].method, "DELETE");
 });
 
@@ -270,7 +266,7 @@ const comp = (call: Call) => new URL(call.url).searchParams.get("comp");
 
 test("GitHubActionsCacheStore.putStream uploads blocks, commits them, and finalizes the summed size", async () => {
   const { fetch, calls } = cacheService();
-  await gha(fetch).putStream("k1", zeros(2 * PART + 5));
+  await gha(fetch).putStream("k1", bytes(2 * PART + 5));
 
   const blobs = calls.filter((c) => c.url.startsWith("https://blob.test/"));
   assertEquals(blobs.map(comp), ["block", "block", "block", "blocklist"]);
@@ -302,7 +298,7 @@ test("GitHubActionsCacheStore.putStream uploads blocks, commits them, and finali
 
 test("GitHubActionsCacheStore.putStream splits an exact multiple into two blocks", async () => {
   const { fetch, calls } = cacheService();
-  await gha(fetch).putStream("k", zeros(2 * PART));
+  await gha(fetch).putStream("k", bytes(2 * PART));
   assertEquals(calls.filter((c) => comp(c) === "block").length, 2);
   assertEquals(
     JSON.parse(text(calls[calls.length - 1].body)).size_bytes,
@@ -312,7 +308,7 @@ test("GitHubActionsCacheStore.putStream splits an exact multiple into two blocks
 
 test("GitHubActionsCacheStore.putStream sends one part or less as a single Put Blob", async () => {
   const { fetch, calls } = cacheService();
-  await gha(fetch).putStream("k", zeros(PART));
+  await gha(fetch).putStream("k", bytes(PART));
   assertEquals(calls[1].url, "https://blob.test/up?sig=2");
   assertEquals(calls[1].headers.get("x-ms-blob-type"), "BlockBlob");
   assertEquals(calls.length, 3); // reserve, upload, finalize
@@ -324,7 +320,7 @@ test("GitHubActionsCacheStore.putStream never finalizes when a block or the list
       u.searchParams.get("comp") === failing ? 500 : 201
     );
     const err = await assertRejects(() =>
-      gha(fetch).putStream("k", zeros(PART + 1))
+      gha(fetch).putStream("k", bytes(PART + 1))
     );
     assertEquals(err instanceof HttpError, true);
     assertEquals(
@@ -338,7 +334,7 @@ test("GitHubActionsCacheStore.putStream leaves an entry another job finalized", 
   const { fetch, calls } = fakeFetch(() =>
     json({ code: "already_exists" }, 409)
   );
-  await gha(fetch).putStream("k", zeros(PART + 1));
+  await gha(fetch).putStream("k", bytes(PART + 1));
   assertEquals(calls.length, 1);
 });
 
@@ -354,7 +350,7 @@ test("HttpCacheStore.putStream uploads an Azure SAS URL in blocks and commits th
     headers: { "x-extra": "1" },
     fetch,
   });
-  await store.putStream("k1", zeros(PART + 1));
+  await store.putStream("k1", bytes(PART + 1));
 
   const urls = calls.map((c) => new URL(c.url));
   assertEquals(urls.map((u) => u.searchParams.get("comp")), [
@@ -378,7 +374,7 @@ test("HttpCacheStore.putStream uploads an Azure SAS URL in blocks and commits th
 
 test("HttpCacheStore.putStream sends a small Azure archive as one Put Blob", async () => {
   const { fetch, calls } = fakeFetch(() => new Response(null, { status: 201 }));
-  await new HttpCacheStore({ url: AZURE, fetch }).putStream("k", zeros(10));
+  await new HttpCacheStore({ url: AZURE, fetch }).putStream("k", bytes(10));
   assertEquals(calls.length, 1);
   assertEquals(new URL(calls[0].url).searchParams.has("comp"), false);
 });
@@ -386,7 +382,7 @@ test("HttpCacheStore.putStream sends a small Azure archive as one Put Blob", asy
 test("HttpCacheStore.putStream fails when an Azure block is refused", async () => {
   const { fetch } = fakeFetch(() => new Response(null, { status: 403 }));
   const err = await assertRejects(() =>
-    new HttpCacheStore({ url: AZURE, fetch }).putStream("k", zeros(PART + 1))
+    new HttpCacheStore({ url: AZURE, fetch }).putStream("k", bytes(PART + 1))
   );
   assertEquals(err instanceof HttpError, true);
 });
@@ -395,7 +391,7 @@ test("HttpCacheStore.putStream buffers into one PUT for any other server", async
   const { fetch, calls } = fakeFetch(() => new Response(null, { status: 201 }));
   await new HttpCacheStore({ url: "https://cache.test", fetch }).putStream(
     "k",
-    zeros(PART + 1),
+    bytes(PART + 1),
   );
   assertEquals(calls.length, 1);
   assertEquals(
@@ -404,22 +400,6 @@ test("HttpCacheStore.putStream buffers into one PUT for any other server", async
   );
   assertEquals(calls[0].body.length, PART + 1);
 });
-
-/** `n` bytes all equal to `value`, in 1 MiB chunks. */
-function filled(
-  n: number,
-  value: number,
-): ReadableStream<Uint8Array<ArrayBuffer>> {
-  let left = n;
-  return new ReadableStream({
-    pull(controller) {
-      const size = Math.min(MIB, left);
-      left -= size;
-      if (size > 0) controller.enqueue(new Uint8Array(size).fill(value));
-      if (left === 0) controller.close();
-    },
-  });
-}
 
 test("concurrent Azure uploads to one blob never commit a mix of the two archives", async () => {
   // Models Azure: Put Block stores an uncommitted block by id, overwriting one
@@ -456,8 +436,8 @@ test("concurrent Azure uploads to one blob never commit a mix of the two archive
   };
   const store = new HttpCacheStore({ url: AZURE, fetch: fetchFn });
   await Promise.all([
-    store.putStream("k", filled(2 * PART + 5, 1)),
-    store.putStream("k", filled(2 * PART + 5, 2)),
+    store.putStream("k", bytes(2 * PART + 5, 1)),
+    store.putStream("k", bytes(2 * PART + 5, 2)),
   ]);
   // A committed last, and what it committed is A's archive alone.
   assertEquals(committed, [1, 1, 1]);
