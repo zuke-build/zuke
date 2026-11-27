@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.9.0](https://github.com/zuke-build/zuke/compare/cli-v2.8.0...cli-v2.9.0) (2026-11-27)
+
+
+### Features
+
+* **cli:** setup defaults to Node, and converts a Deno project in place ([#1209](https://github.com/zuke-build/zuke/issues/1209)) ([faf34d4](https://github.com/zuke-build/zuke/commit/faf34d4aae2d74d1f0205f9f75f7d067169bb908))
+* **cli:** tell Deno projects how long Deno support is confirmed ([#1212](https://github.com/zuke-build/zuke/issues/1212)) ([eb54487](https://github.com/zuke-build/zuke/commit/eb54487f309c21296daee513707fe4f624c7aeb4))
+* **cli:** zuke import scaffolds Node, and converting moves .mcp.json ([#1220](https://github.com/zuke-build/zuke/issues/1220)) ([c03d1aa](https://github.com/zuke-build/zuke/commit/c03d1aa6d9bc046c1d12850100fd4e7e87a732f8))
+
 ## [2.8.0](https://github.com/zuke-build/zuke/compare/cli-v2.7.0...cli-v2.8.0) (2026-11-23)
 
 
