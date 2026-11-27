@@ -1524,8 +1524,10 @@ test("runSetup --runtime node converting points .mcp.json's deno server at node"
     JSON.stringify({
       mcpServers: {
         zuke: {
-          command: "deno",
+          type: "stdio",
+          command: "/usr/local/bin/deno",
           args: ["run", "-A", "build.ts", "mcp", "--allow-run"],
+          env: { ZUKE_TOKEN: "x" },
         },
         other: { command: "x", args: [] },
       },
@@ -1538,7 +1540,12 @@ test("runSetup --runtime node converting points .mcp.json's deno server at node"
   );
   assertEquals(JSON.parse(host.files.get(".mcp.json") ?? ""), {
     mcpServers: {
-      zuke: { command: "node", args: ["build.ts", "mcp", "--allow-run"] },
+      zuke: {
+        type: "stdio",
+        command: "node",
+        args: ["build.ts", "mcp", "--allow-run"],
+        env: { ZUKE_TOKEN: "x" },
+      },
       other: { command: "x", args: [] },
     },
     extra: true,
@@ -1547,6 +1554,30 @@ test("runSetup --runtime node converting points .mcp.json's deno server at node"
     result.files.find((f) => f.path === ".mcp.json")?.status,
     "overwritten",
   );
+});
+
+test("runSetup --runtime node converting declares the imports of a build it is handed", async () => {
+  // What zuke import --force --runtime node does in a Deno project.
+  const host = denoProject();
+  await runSetup(
+    {
+      dir: ".",
+      force: true,
+      name: "A",
+      runtime: "node",
+      buildContent: 'import { CmdTasks } from "@zuke/cmd";\n',
+      imports: {
+        "@zuke/core": "jsr:@zuke/core@^1",
+        "@zuke/cmd": "jsr:@zuke/cmd@^1",
+      },
+    },
+    host,
+  );
+  assertEquals(JSON.parse(host.files.get("package.json") ?? "").dependencies, {
+    "@zuke/core": NODE_CORE,
+    "@zuke/cmd": "npm:@zuke-build/cmd@^1",
+    "@zuke/docker": "npm:@zuke-build/docker@^1",
+  });
 });
 
 test("runSetup --runtime node converting keeps a .mcp.json it cannot convert, with a note", async () => {

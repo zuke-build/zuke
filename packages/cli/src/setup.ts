@@ -786,15 +786,25 @@ export async function runSetup(
   }
 
   if (node) {
+    // What the build file imports, plus, when converting, what the Deno
+    // project already declared: an imported build brings its own imports.
+    const declared = npmDependencies(
+      Object.keys(options.imports ?? STARTER_IMPORTS),
+    );
     const dependencies = converting
-      ? await convertedDependencies(
-        options.dir,
-        buildFile,
-        host,
-        manualSteps,
-        notes,
-      )
-      : npmDependencies(Object.keys(options.imports ?? STARTER_IMPORTS));
+      ? [
+        ...new Map([
+          ...declared,
+          ...await convertedDependencies(
+            options.dir,
+            buildFile,
+            host,
+            manualSteps,
+            notes,
+          ),
+        ]),
+      ]
+      : declared;
     files.push(
       await setupPackageJson(
         options.dir,
@@ -925,7 +935,12 @@ async function convertMcpConfig(
   }
   const servers = config.document.mcpServers;
   const entry = isRecord(servers) ? servers[MCP_SERVER_NAME] : undefined;
-  if (!isServerEntry(entry) || entry.command !== "deno") return undefined;
+  // A bare deno, a path to one, or deno.exe.
+  if (
+    !isServerEntry(entry) || !/(?:^|[\\/])deno(?:\.exe)?$/i.test(entry.command)
+  ) {
+    return undefined;
+  }
   const at = entry.args.indexOf(buildFile);
   if (entry.args[0] !== "run" || at < 0) {
     notes.push(
@@ -936,7 +951,9 @@ async function convertMcpConfig(
   }
   await host.writeText(
     path,
+    // The entry's own keys (env, cwd, type) are the user's, and kept.
     mergeMcpConfig(config.document, {
+      ...entry,
       command: "node",
       args: entry.args.slice(at),
     }),
