@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * A canary rollout you can run with nothing but Deno. The candidate takes
+ * A canary rollout you can run with nothing but Node. The candidate takes
  * 10 % and then 50 % of the traffic, each step bakes while an HTTP probe
  * checks the router, and it is promoted — or, when it fails, rolled back.
  *

@@ -1,4 +1,5 @@
 {
   "name": "App",
-  "build": "build.ts"
+  "build": "build.ts",
+  "runtime": "node"
 }

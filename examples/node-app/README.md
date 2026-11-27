@@ -17,14 +17,15 @@ npm run zuke -- --list # the same build, for npm-centric colleagues
 
 What to notice:
 
-- `package.json` gains no dependency. Deno is the only prerequisite for the
-  build; the app keeps its Node toolchain, and `npm ci` / `npm test` / `npm run
-  build` are what actually execute — through `NpmTasks.ci()`, `NpmTasks.test()`
-  and `NpmTasks.run((s) => s.script("build"))`, which build the argv rather than
-  a shell string.
+- Node runs the build as well as the app: `zuke.json` says `"runtime": "node"`,
+  so a copy set up with `zuke setup` gets the Node launchers and `@zuke/core` in
+  `package.json`, and `zuke add npm` adds the wrapper. The app keeps its own
+  toolchain, and `npm ci` / `npm test` / `npm run build` are what actually
+  execute — through `NpmTasks.ci()`, `NpmTasks.test()` and `NpmTasks.run((s) =>
+  s.script("build"))`, which build the argv rather than a shell string.
 - The `zuke` npm script hands over to the `zuke` CLI, so npm-centric colleagues
   keep their habit: `npm run zuke -- test` runs one target, `npm run zuke --
-  --list` shows what the build can do. Nobody has to learn Deno commands.
+  --list` shows what the build can do.
 - A larger app would put the build in a `build/` folder and drive the root with
   `.cwd("..")` — see
   [Using Zuke in a Node/npm project](../../docs/node-projects.md) for that

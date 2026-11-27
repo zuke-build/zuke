@@ -1,6 +1,6 @@
 # canary-release
 
-A canary rollout you can run on your own machine with nothing but Deno — no
+A canary rollout you can run on your own machine with nothing but Node — no
 cloud account, no cluster, no CLI. [`build.ts`](./build.ts) rolls `v2` of a tiny
 HTTP service out beside `v1` through [`@zuke/canary`](../../docs/canary.md):
 

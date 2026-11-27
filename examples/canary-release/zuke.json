@@ -1,4 +1,5 @@
 {
   "name": "Release",
-  "build": "build.ts"
+  "build": "build.ts",
+  "runtime": "node"
 }

@@ -6,10 +6,10 @@ its own directory with the `zuke` CLI, which finds the `zuke.json` beside the
 build and runs it:
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # once
-cd examples/deno-library
-zuke --list                                # what the build can do
-zuke                                       # run its default target
+npm install -g @zuke-build/cli   # once
+cd examples/node-app
+zuke --list                      # what the build can do
+zuke                             # run its default target
 ```
 
 Other ways to install the CLI — Homebrew, Chocolatey, a signed binary — are in
@@ -35,4 +35,11 @@ against the _published_ packages instead of the source in this repository. So
 when you copy an example, run `zuke setup` in the copy. It adds the `./zuke`
 launcher and the manifest that declares `@zuke/core`, and leaves the existing
 `build.ts` alone. Then run `zuke add <name>` for each other package the build
-imports, such as `zuke add deno`.
+imports, such as `zuke add npm`.
+
+Setup keeps the runtime the copy's `zuke.json` names. `node-app` and
+`canary-release` say `"runtime": "node"`, so a copy is a Node project with a
+`package.json`. `deno-library`, `release-library`, `ci-only` and
+`scripts-to-zuke` build Deno code with `DenoTasks`, so their `zuke.json` names
+no runtime and a copy stays on Deno, with a `deno.json`. Builds on Deno are
+supported until October 2027; `zuke setup --runtime node` moves one to Node.
