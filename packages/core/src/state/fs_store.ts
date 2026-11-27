@@ -45,7 +45,7 @@ import {
   publishFile,
   sortNewestFirst,
 } from "./json_file_cas.ts";
-import { sha256Hex } from "../internal.ts";
+import { sha256Hex, trimTrailingSlashes } from "../internal.ts";
 
 /**
  * A {@link StateStore} that writes one `<id>.json` file per run under a
@@ -68,7 +68,7 @@ export class FileSystemStateStore implements StateStore {
    * through `host`, which defaults to {@link defaultStateHost}.
    */
   constructor(dir: string, host: StateHost = defaultStateHost) {
-    this.#dir = dir.replace(/\/+$/, "");
+    this.#dir = trimTrailingSlashes(dir);
     this.#host = host;
   }
 

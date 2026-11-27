@@ -51,7 +51,7 @@ export class GooglePlayClient {
   ): Promise<unknown> {
     const raw = body instanceof Uint8Array;
     const response = await this.#settings.fetch_(
-      `${this.#settings.apiUrl_.replace(/\/+$/, "")}${path}`,
+      `${this.#settings.apiUrl_.replace(/(?<!\/)\/+$/, "")}${path}`,
       {
         method,
         headers: {

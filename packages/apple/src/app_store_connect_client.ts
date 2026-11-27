@@ -142,7 +142,7 @@ export class AppStoreConnectClient {
     body?: JsonObject,
   ): Promise<unknown> {
     const settings = this.#settings;
-    const url = `${settings.apiUrl_.replace(/\/+$/, "")}${path}`;
+    const url = `${settings.apiUrl_.replace(/(?<!\/)\/+$/, "")}${path}`;
     const label = `${method} ${path.split("?")[0]}`;
     for (let attempt = 0;; attempt++) {
       const retry = method === "GET" && attempt < RETRIES;

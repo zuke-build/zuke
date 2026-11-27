@@ -115,7 +115,7 @@ export interface ResolvedOtel {
 
 /** Join a base endpoint and a signal path, tolerating a trailing slash. */
 function joinEndpoint(base: string, path: string): string {
-  return `${base.replace(/\/+$/, "")}${path}`;
+  return `${base.replace(/(?<!\/)\/+$/, "")}${path}`;
 }
 
 /** Normalise a blank or whitespace-only endpoint value to `undefined` (unset). */
