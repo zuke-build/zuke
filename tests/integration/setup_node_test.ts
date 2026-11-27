@@ -125,7 +125,7 @@ test("zuke setup defaults a new project to Node, and converts a Deno one in plac
 
     // A Deno project stays on Deno when re-run without --runtime ...
     const deno = `${root}/deno`;
-    assertEquals(await run(["--runtime", "deno", "--dir", deno]), 0);
+    assertEquals(await run(["--runtime", "deno", "--mcp", "--dir", deno]), 0);
     assertEquals(await run(["--dir", deno]), 0, lines.join("\n"));
     assertEquals(
       runtimeNamed(await FileTasks.readText(`${deno}/zuke.json`)),
@@ -149,7 +149,46 @@ test("zuke setup defaults a new project to Node, and converts a Deno one in plac
       JSON.parse(await FileTasks.readText(`${deno}/package.json`)).dependencies,
       { "@zuke/core": "npm:@zuke-build/core@^1" },
     );
+    // Its MCP server now starts with node.
+    assertEquals(
+      JSON.parse(await FileTasks.readText(`${deno}/.mcp.json`)).mcpServers.zuke,
+      { command: "node", args: ["build.ts", "mcp"] },
+    );
   } finally {
     await FileTasks.remove(root, { recursive: true });
+  }
+});
+
+test("zuke import scaffolds a Node project by default", async () => {
+  const dir = await FileTasks.makeTempDirectory((s) =>
+    s.prefix("zuke-it-node-")
+  );
+  try {
+    await FileTasks.writeText(
+      `${dir}/package.json`,
+      JSON.stringify({ name: "app", scripts: { build: "tsc" } }),
+    );
+    const lines: string[] = [];
+    const code = await main(
+      ["import", "--yes", "--dir", dir],
+      quietHost(lines),
+      defaultPrompter,
+    );
+    assertEquals(code, 0, lines.join("\n"));
+    assertEquals(
+      runtimeNamed(await FileTasks.readText(`${dir}/zuke.json`)),
+      "node",
+    );
+    assertEquals(await FileTasks.exists(`${dir}/deno.json`), false);
+    const manifest = JSON.parse(
+      await FileTasks.readText(`${dir}/package.json`),
+    );
+    assertEquals(manifest.scripts, { build: "tsc" });
+    assertEquals(manifest.dependencies, {
+      "@zuke/core": "npm:@zuke-build/core@^1",
+      "@zuke/cmd": "npm:@zuke-build/cmd@^1",
+    });
+  } finally {
+    await FileTasks.remove(dir, { recursive: true });
   }
 });

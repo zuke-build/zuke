@@ -311,7 +311,7 @@ test("main setup (interactive) does not ask when a flag already answered", async
 test("main import honours the launcher flags and question too", async () => {
   const flagged = new FakeHost({ Makefile: "build:\n\techo hi\n" });
   const code = await main(
-    ["import", "--yes", "--no-bootstrap-deno"],
+    ["import", "--yes", "--runtime", "deno", "--no-bootstrap-deno"],
     flagged,
     new FakePrompter(false),
   );
@@ -324,7 +324,10 @@ test("main import honours the launcher flags and question too", async () => {
 
   const asked = new FakeHost({ Makefile: "build:\n\techo hi\n" });
   const prompter = new FakePrompter(true, "", true, false, "no");
-  assertEquals(await main(["import"], asked, prompter), 0);
+  assertEquals(
+    await main(["import", "--runtime", "deno"], asked, prompter),
+    0,
+  );
   assertEquals(
     prompter.asks.some((q) => q.includes("download their pinned")),
     true,
@@ -333,6 +336,22 @@ test("main import honours the launcher flags and question too", async () => {
     asked.files.get("zuke")?.includes("Deno not found on PATH"),
     true,
   );
+});
+
+test("main import scaffolds a Node project by default", async () => {
+  const host = new FakeHost({ Makefile: "build:\n\ttsc\n" });
+  assertEquals(
+    await main(["import", "--yes"], host, new FakePrompter(false)),
+    0,
+  );
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? "").runtime, "node");
+  assertEquals(host.files.has("deno.json"), false);
+  assertEquals(/deno/i.test(host.files.get("zuke") ?? ""), false);
+  // The generated build runs a command, so it needs @zuke/cmd as well.
+  assertEquals(JSON.parse(host.files.get("package.json") ?? "").dependencies, {
+    "@zuke/core": "npm:@zuke-build/core@^1",
+    "@zuke/cmd": "npm:@zuke-build/cmd@^1",
+  });
 });
 
 test("main --help documents both launcher flags", async () => {

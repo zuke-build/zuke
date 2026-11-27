@@ -107,7 +107,7 @@ export type McpConfig =
   };
 
 /** Whether `value` is a well-formed server entry: a command and its arguments. */
-function isServerEntry(value: unknown): value is McpServerEntry {
+export function isServerEntry(value: unknown): value is McpServerEntry {
   return isRecord(value) && typeof value.command === "string" &&
     Array.isArray(value.args) &&
     value.args.every((arg) => typeof arg === "string");

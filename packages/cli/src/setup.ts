@@ -13,7 +13,9 @@
 
 import {
   binaryMcpEntry,
+  isServerEntry,
   MCP_CONFIG_FILE,
+  MCP_SERVER_NAME,
   type McpServerEntry,
   mcpServerEntry,
   mergeMcpConfig,
@@ -724,7 +726,9 @@ export async function runSetup(
     // A conversion reads deno.json's imports, so it is held to the same rule.
     ...(converting ? [{ name: "deno.json", launcher: false }] : []),
     { name: ".gitignore", launcher: false },
-    ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
+    ...(options.mcp || converting
+      ? [{ name: MCP_CONFIG_FILE, launcher: false }]
+      : []),
   ];
   for (const item of collisionTargets) {
     const path = joinPath(options.dir, item.name);
@@ -782,15 +786,25 @@ export async function runSetup(
   }
 
   if (node) {
+    // What the build file imports, plus, when converting, what the Deno
+    // project already declared: an imported build brings its own imports.
+    const declared = npmDependencies(
+      Object.keys(options.imports ?? STARTER_IMPORTS),
+    );
     const dependencies = converting
-      ? await convertedDependencies(
-        options.dir,
-        buildFile,
-        host,
-        manualSteps,
-        notes,
-      )
-      : [STARTER_NPM_DEPENDENCY];
+      ? [
+        ...new Map([
+          ...declared,
+          ...await convertedDependencies(
+            options.dir,
+            buildFile,
+            host,
+            manualSteps,
+            notes,
+          ),
+        ]),
+      ]
+      : declared;
     files.push(
       await setupPackageJson(
         options.dir,
@@ -811,6 +825,10 @@ export async function runSetup(
         notes,
       ),
     );
+  }
+  if (converting) {
+    const mcp = await convertMcpConfig(options.dir, buildFile, host, notes);
+    if (mcp !== undefined) files.push(mcp);
   }
   files.push(
     await setupGitignore(
@@ -891,6 +909,63 @@ async function setupMcpConfig(
   return { path: name, status: "overwritten" };
 }
 
+/**
+ * Point the `zuke` server of a converted project's `.mcp.json` at Node: an
+ * entry that runs the build file with `deno run` becomes `node`, keeping the
+ * arguments after the build file. Any other entry is the project's own and is
+ * left alone with a note; a project with no `.mcp.json`, or no `zuke` server
+ * in it, has nothing to convert.
+ */
+async function convertMcpConfig(
+  dir: string,
+  buildFile: string,
+  host: SetupHost,
+  notes: string[],
+): Promise<FileResult | undefined> {
+  const name = MCP_CONFIG_FILE;
+  const path = joinPath(dir, name);
+  if (!(await host.exists(path))) return undefined;
+  const config = parseMcpConfig(await host.readText(path));
+  if (config.state === "unparseable") {
+    notes.push(
+      `${path} could not be parsed, so its zuke server was not moved to ` +
+        `Node. Point it at node ${buildFile} mcp by hand.`,
+    );
+    return undefined;
+  }
+  const servers = config.document.mcpServers;
+  const entry = isRecord(servers) ? servers[MCP_SERVER_NAME] : undefined;
+  // A bare deno, a path to one, or deno.exe.
+  if (
+    !isServerEntry(entry) || !/(?:^|[\\/])deno(?:\.exe)?$/i.test(entry.command)
+  ) {
+    return undefined;
+  }
+  // Only the form setup writes: any other Deno option, such as --env-file,
+  // has meaning Node would lose, so that entry is the user's to move.
+  const [run, all, file, ...rest] = entry.args;
+  if (
+    run !== "run" || !["-A", "--allow-all"].includes(all) || file !== buildFile
+  ) {
+    notes.push(
+      `${path}'s zuke server runs deno in a way setup does not recognise, ` +
+        `so it was kept. Point it at node ${buildFile} mcp by hand.`,
+    );
+    return undefined;
+  }
+  await host.writeText(
+    path,
+    // The entry's own keys (env, cwd, type) are the user's, and kept.
+    mergeMcpConfig(config.document, {
+      ...entry,
+      command: "node",
+      args: [buildFile, ...rest],
+    }),
+  );
+  host.log(`  update   ${name}`);
+  return { path: name, status: "overwritten" };
+}
+
 /** The line `setup` ensures is present in `.gitignore` for generated output. */
 const GITIGNORE_ENTRY = ".zuke/";
 
@@ -941,6 +1016,18 @@ const STARTER_NPM_DEPENDENCY: NpmDependency = [
 /** A Zuke package's bare specifier, `@zuke/<name>`, without a subpath. */
 const ZUKE_PACKAGE = /^@zuke\/([a-z0-9][a-z0-9-]*)$/;
 
+/** An inline `jsr:@zuke/<name>` specifier, with or without a version and subpath. */
+const INLINE_ZUKE_JSR =
+  /["']jsr:@zuke\/([a-z0-9][a-z0-9-]*)(?:@[^"'/]*)?(?:\/[^"']*)?["']/g;
+
+/** The npm alias of each `@zuke/<name>` among `specifiers`; others are dropped. */
+function npmDependencies(specifiers: readonly string[]): NpmDependency[] {
+  return specifiers.flatMap((specifier): NpmDependency[] => {
+    const zuke = ZUKE_PACKAGE.exec(specifier);
+    return zuke === null ? [] : [[specifier, zukeNpmDependency(zuke[1])]];
+  });
+}
+
 /**
  * The `zuke.json` of the Deno project in `dir`, converted to Node: its own
  * fields, with `"runtime": "node"`. A project with no `zuke.json` yet gets
@@ -989,15 +1076,24 @@ async function convertedDependencies(
   steps: string[],
   notes: string[],
 ): Promise<NpmDependency[]> {
-  const dependencies = new Map([STARTER_NPM_DEPENDENCY]);
+  const build = joinPath(dir, buildFile);
+  const source = await host.readText(build);
+  // A build that inlines its jsr: specifiers declares them nowhere else.
+  const inlined = [...source.matchAll(INLINE_ZUKE_JSR)].map((m) =>
+    `@zuke/${m[1]}`
+  );
+  const dependencies = new Map([
+    STARTER_NPM_DEPENDENCY,
+    ...npmDependencies(inlined),
+  ]);
   const denoJson = joinPath(dir, "deno.json");
   if (await host.exists(denoJson)) {
     const imports = parsedRecord(await host.readText(denoJson))?.imports;
     const others: string[] = [];
     for (const specifier of isRecord(imports) ? Object.keys(imports) : []) {
-      const zuke = ZUKE_PACKAGE.exec(specifier);
-      if (zuke === null) others.push(specifier);
-      else dependencies.set(specifier, zukeNpmDependency(zuke[1]));
+      const [dependency] = npmDependencies([specifier]);
+      if (dependency === undefined) others.push(specifier);
+      else dependencies.set(...dependency);
     }
     notes.push(
       `${denoJson} is kept, but the build no longer reads it on Node. ` +
@@ -1008,8 +1104,7 @@ async function convertedDependencies(
           }, add an npm equivalent to package.json.`),
     );
   }
-  const build = joinPath(dir, buildFile);
-  if (/["']jsr:/.test(await host.readText(build))) {
+  if (/["']jsr:/.test(source)) {
     steps.push(
       `${build} imports a jsr: specifier, which Node cannot load. Import ` +
         "@zuke/* by bare specifier instead, as package.json declares it.",

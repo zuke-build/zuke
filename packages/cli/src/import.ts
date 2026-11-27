@@ -26,6 +26,7 @@
  * @module
  */
 
+import type { ProjectRuntime } from "./runtime_field.ts";
 import type { BinaryPin } from "./binary_pin.ts";
 import { parsePyproject } from "./pyproject.ts";
 import { generatePythonBuild } from "./python_build.ts";
@@ -319,6 +320,11 @@ export interface ImportOptions {
   /** Which launchers to scaffold (see {@link "./setup.ts".SetupOptions.bootstrapDeno}). */
   bootstrapDeno?: boolean;
   /**
+   * The runtime a generated `zuke.ts` runs on (see
+   * {@link "./setup.ts".SetupOptions.runtime}); a `build.py` ignores it.
+   */
+  runtime?: ProjectRuntime;
+  /**
    * Resolve the pin of the `zuke` release a Python build's launchers run,
    * whose engine its `zuke.json` pins. Called only when a `pyproject.toml` is
    * imported, so importing a `package.json` or a `Makefile` never needs the
@@ -437,6 +443,7 @@ export async function runImport(
       imports: translation.imports,
       mcp: options.mcp,
       bootstrapDeno: options.bootstrapDeno,
+      runtime: translation.python ? undefined : options.runtime,
       sdk: translation.python ? { pin: await options.pin() } : undefined,
     }, host);
     return {
