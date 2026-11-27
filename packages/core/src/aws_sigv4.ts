@@ -165,7 +165,10 @@ function amzDate(now: number): string {
 
 /**
  * Sign `request` for `service` in `region` at the instant `now` (epoch ms).
- * Pure apart from WebCrypto: the same inputs give the same signature.
+ * Pure apart from WebCrypto: the same inputs give the same signature. The
+ * payload hash is the SHA-256 of `request.body`, unless the caller set the
+ * `x-amz-content-sha256` header to `UNSIGNED-PAYLOAD`: then the body is not
+ * hashed and that value is signed, as S3 accepts for a streamed part.
  */
 export async function signSigV4(
   request: AwsSignableRequest,

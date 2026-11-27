@@ -13,6 +13,9 @@
 /** The size of every part but the last: 8 MiB, above S3's 5 MiB part minimum. */
 export const PART_SIZE = 8 * 1024 * 1024;
 
+/** What a yielded part's slot is cleared to. */
+const EMPTY = new Uint8Array(0);
+
 /** `stream` cut into parts of exactly `size` bytes, the last one shorter. */
 export async function* partsOf(
   stream: ReadableStream<Uint8Array<ArrayBuffer>>,
@@ -44,6 +47,19 @@ export async function* partsOf(
   if (filled > 0) yield part.slice(0, filled);
 }
 
+/** The `held` parts, then `rest`; each slot is cleared as it is yielded. */
+async function* chain(
+  held: Uint8Array<ArrayBuffer>[],
+  rest: AsyncIterable<Uint8Array<ArrayBuffer>>,
+): AsyncGenerator<Uint8Array<ArrayBuffer>> {
+  for (let i = 0; i < held.length; i++) {
+    const part = held[i];
+    held[i] = EMPTY;
+    yield part;
+  }
+  yield* rest;
+}
+
 /**
  * Upload `stream`: through `whole` when it fits in one part (a single request,
  * as `put` makes), else through `parts`, which is given every part in order.
@@ -55,14 +71,13 @@ export async function uploadInParts(
   parts: (parts: AsyncIterable<Uint8Array<ArrayBuffer>>) => Promise<void>,
 ): Promise<void> {
   const rest = partsOf(stream);
-  const first = await rest.next();
-  if (first.done) return await whole(new Uint8Array(0));
-  const second = await rest.next();
-  if (second.done) return await whole(first.value);
-  async function* all(): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-    yield first.value;
-    yield second.value;
-    yield* rest;
+  try {
+    const first = await rest.next();
+    if (first.done) return await whole(new Uint8Array(0));
+    const second = await rest.next();
+    if (second.done) return await whole(first.value);
+    await parts(chain([first.value, second.value], rest));
+  } finally {
+    await rest.return(undefined); // releases the stream if not read to the end
   }
-  await parts(all());
 }

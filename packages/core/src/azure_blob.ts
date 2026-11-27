@@ -56,8 +56,11 @@ export async function putBlocks(
   };
   const ids: string[] = [];
   let size = 0;
+  // Per upload, so a concurrent upload to the same blob cannot overwrite this
+  // one's uncommitted blocks; Azure needs ids of one length within a blob.
+  const prefix = crypto.randomUUID();
   for await (const part of parts) {
-    const id = btoa(String(ids.length).padStart(8, "0"));
+    const id = btoa(`${prefix}${String(ids.length).padStart(8, "0")}`);
     await send(
       withQuery(url, { comp: "block", blockid: id }),
       new Blob([part]),

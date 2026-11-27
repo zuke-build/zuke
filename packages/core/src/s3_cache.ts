@@ -119,7 +119,8 @@ export class S3CacheStore implements RemoteCacheStore {
       });
     };
     this.#signed = signing;
-    this.#base = options.url.replace(/\/+$/, "");
+    // The path only, as HttpCacheStore reads it, so both upload paths agree.
+    this.#base = options.url.split("?")[0].replace(/\/+$/, "");
     this.#http = new HttpCacheStore({
       url: options.url,
       fetch: signing,

@@ -1008,7 +1008,10 @@ function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unk
 
 async function signSigV4(request: AwsSignableRequest, credentials: AwsCredentials, region: string, service: string, now: number): Promise<AwsSignature>
   Sign `request` for `service` in `region` at the instant `now` (epoch ms).
-  Pure apart from WebCrypto: the same inputs give the same signature.
+  Pure apart from WebCrypto: the same inputs give the same signature. The
+  payload hash is the SHA-256 of `request.body`, unless the caller set the
+  `x-amz-content-sha256` header to `UNSIGNED-PAYLOAD`: then the body is not
+  hashed and that value is signed, as S3 accepts for a streamed part.
 
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By

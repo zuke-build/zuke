@@ -8,6 +8,8 @@ import { HttpCacheStore } from "../src/remote_cache.ts";
 import { S3CacheStore } from "../src/s3_cache.ts";
 import { HttpError } from "../src/http.ts";
 import { partsOf, uploadInParts } from "../src/part_upload.ts";
+import { isAzureSasUrl } from "../src/azure_blob.ts";
+import { signSigV4 } from "../src/aws_sigv4.ts";
 
 const MIB = 1024 * 1024;
 const PART = 8 * MIB;
@@ -275,10 +277,13 @@ test("GitHubActionsCacheStore.putStream uploads blocks, commits them, and finali
   const ids = blobs.slice(0, 3).map((c) =>
     new URL(c.url).searchParams.get("blockid")
   );
-  assertEquals(
-    ids,
-    ["00000000", "00000001", "00000002"].map((s) => btoa(s)),
-  );
+  assertEquals(ids.map((id) => atob(String(id)).slice(36)), [
+    "00000000",
+    "00000001",
+    "00000002",
+  ]);
+  assertEquals(new Set(ids.map((id) => String(id).length)).size, 1);
+  assertEquals(String(ids[0]).length <= 64, true); // Azure's id limit
   assertEquals(blobs[0].url.includes("sig=2"), true); // the SAS is kept
   assertEquals(blobs[0].headers.get("authorization"), null);
   assertEquals(blobs.slice(0, 3).map((c) => c.body.length), [PART, PART, 5]);
@@ -359,8 +364,14 @@ test("HttpCacheStore.putStream uploads an Azure SAS URL in blocks and commits th
   ]);
   assertEquals(urls[0].pathname, "/container/k1");
   assertEquals(urls[0].searchParams.get("sig"), "abc");
-  assertEquals(urls[0].searchParams.get("blockid"), btoa("00000000"));
-  assertEquals(urls[1].searchParams.get("blockid"), btoa("00000001"));
+  assertEquals(
+    atob(String(urls[0].searchParams.get("blockid"))).slice(36),
+    "00000000",
+  );
+  assertEquals(
+    atob(String(urls[1].searchParams.get("blockid"))).slice(36),
+    "00000001",
+  );
   assertEquals(calls[0].headers.get("authorization"), "Bearer t");
   assertEquals(calls[0].headers.get("x-extra"), "1");
 });
@@ -392,4 +403,126 @@ test("HttpCacheStore.putStream buffers into one PUT for any other server", async
     ["PUT", "https://cache.test/k"],
   );
   assertEquals(calls[0].body.length, PART + 1);
+});
+
+/** `n` bytes all equal to `value`, in 1 MiB chunks. */
+function filled(
+  n: number,
+  value: number,
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+  let left = n;
+  return new ReadableStream({
+    pull(controller) {
+      const size = Math.min(MIB, left);
+      left -= size;
+      if (size > 0) controller.enqueue(new Uint8Array(size).fill(value));
+      if (left === 0) controller.close();
+    },
+  });
+}
+
+test("concurrent Azure uploads to one blob never commit a mix of the two archives", async () => {
+  // Models Azure: Put Block stores an uncommitted block by id, overwriting one
+  // with the same id; Put Block List commits the listed ids.
+  const uncommitted = new Map<string, number>();
+  let committed: number[] = [];
+  const fetchFn: typeof fetch = async (input, init) => {
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let uploads interleave
+    const url = new URL(String(input));
+    const body = init?.body;
+    if (!(body instanceof Blob)) throw new Error("expected a Blob body");
+    if (url.searchParams.get("comp") === "block") {
+      const first = new Uint8Array(await body.slice(0, 1).arrayBuffer())[0];
+      uncommitted.set(String(url.searchParams.get("blockid")), first);
+    } else {
+      const ids = [
+        ...(await body.text()).matchAll(/<Latest>([^<]+)<\/Latest>/g),
+      ]
+        .map((m) => m[1]);
+      committed = ids.map((id) => {
+        const first = uncommitted.get(id);
+        if (first === undefined) throw new Error("uncommitted block listed");
+        return first;
+      });
+    }
+    return new Response(null, { status: 201 });
+  };
+  const store = new HttpCacheStore({ url: AZURE, fetch: fetchFn });
+  await Promise.all([
+    store.putStream("k", filled(2 * PART + 5, 1)),
+    store.putStream("k", filled(2 * PART + 5, 2)),
+  ]);
+  assertEquals(committed.length, 3);
+  assertEquals(new Set(committed).size, 1); // one archive, whole
+});
+
+test("S3CacheStore.putStream aborts and rethrows when the source stream fails", async () => {
+  const { fetch, calls } = multipartBucket();
+  let sent = 0;
+  const failing = new ReadableStream<Uint8Array<ArrayBuffer>>({
+    pull(controller) {
+      if (sent === 2 * PART) return controller.error(new Error("disk gone"));
+      sent += MIB;
+      controller.enqueue(new Uint8Array(MIB));
+    },
+  });
+  const err = await assertRejects(() => s3(fetch).putStream("k", failing));
+  assertEquals(err instanceof Error && err.message, "disk gone");
+  assertEquals(calls[calls.length - 1].method, "DELETE");
+});
+
+test("uploadInParts releases the source stream when the upload stops early", async () => {
+  let cancelled = false;
+  const source = new ReadableStream<Uint8Array<ArrayBuffer>>({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(MIB));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  await assertRejects(() =>
+    uploadInParts(
+      source,
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("409")),
+    )
+  );
+  assertEquals(cancelled, true);
+});
+
+test("isAzureSasUrl accepts a blob SAS URL and rejects lookalikes", () => {
+  assertEquals(isAzureSasUrl(AZURE), true);
+  assertEquals(isAzureSasUrl("https://acct.blob.core.windows.net/c"), false); // no sig
+  assertEquals(
+    isAzureSasUrl("https://evil-blob.core.windows.net.attacker.com/c?sig=1"),
+    false,
+  );
+  assertEquals(
+    isAzureSasUrl("https://evilblob.core.windows.net.x/c?sig=1"),
+    false,
+  );
+  assertEquals(isAzureSasUrl("not a url"), false);
+});
+
+test("SigV4 signs UNSIGNED-PAYLOAD without hashing the body when the header says so", async () => {
+  const sign = (body: Uint8Array, hash: string) =>
+    signSigV4(
+      {
+        method: "PUT",
+        url: "https://b.s3.amazonaws.com/k",
+        headers: { "x-amz-content-sha256": hash },
+        body,
+      },
+      KEY,
+      "eu-west-1",
+      "s3",
+      Date.parse("2015-08-30T12:36:00Z"),
+    );
+  const a = await sign(new Uint8Array([1]), "UNSIGNED-PAYLOAD");
+  const b = await sign(new Uint8Array([2, 3]), "UNSIGNED-PAYLOAD");
+  assertEquals(a.canonicalRequest.endsWith("\nUNSIGNED-PAYLOAD"), true);
+  assertEquals(a.headers.authorization, b.headers.authorization); // body ignored
+  const hashed = await sign(new Uint8Array([1]), "anything-else");
+  assertEquals(hashed.canonicalRequest.endsWith("\nUNSIGNED-PAYLOAD"), false);
 });
