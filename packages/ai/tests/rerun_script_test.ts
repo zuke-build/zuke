@@ -5,8 +5,10 @@
  * The command job's re-run step, run for real against a fake `gh`: a POSIX
  * shell shim that answers the two reads from JSON files and records every
  * call, so the test sees which run the script would re-run, if any. The shim
- * filters with the machine's `jq`, as the real `gh` does for `--jq`, so a
- * machine without `jq` (and Windows, which has no `bash` shim) skips these.
+ * filters with the machine's `jq`, as the real `gh` does for `--jq`, found
+ * once here and called by its absolute path, so the shim's narrowed PATH
+ * cannot hide it. A machine without `jq`, and Windows, reports these tests as
+ * skipped (`1r82bhxza0qqm`).
  */
 
 import { test } from "../../../tests/_testing.ts";
@@ -14,6 +16,18 @@ import { assertEquals } from "../../../tests/_assert.ts";
 import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { RERUN_SCRIPT } from "../src/workflow.ts";
+
+/** The machine's `jq`, by absolute path, or null where these tests skip. */
+const JQ = RuntimeTasks.os() === "windows" ? null : await (async () => {
+  const found = await $`sh -c ${"command -v jq"}`.quiet().noThrow();
+  const path = found.code === 0 ? found.stdout.trim() : "";
+  return path.startsWith("/") ? path : null;
+})();
+
+/** Register a scenario test, skipped where the shim cannot run. */
+function shimTest(name: string, fn: () => Promise<void>): void {
+  test({ name, ignore: JQ === null, fn });
+}
 
 const FAKE_GH = `#!/bin/sh
 d="$FAKE_GH_DIR"
@@ -32,8 +46,8 @@ echo "$method $url" >> "$d/calls.log"
 case "$method $url" in
   "POST "*/rerun) [ -e "$d/refuse" ] && exit 1; exit 0;;
   "POST "*) exit 0;;
-  *"/pulls/"*) jq -r "$jqf" "$d/pull.json";;
-  *"/runs?"*) jq -r "$jqf" "$d/runs.json";;
+  *"/pulls/"*) "$FAKE_JQ" -r "$jqf" "$d/pull.json";;
+  *"/runs?"*) "$FAKE_JQ" -r "$jqf" "$d/runs.json";;
 esac
 `;
 
@@ -63,15 +77,13 @@ interface Outcome {
 /**
  * Run the step as pull request 7 of `o/r`, whose head is `headRepo` (null for a
  * deleted fork), with `runs` listed and the re-run refused when `refuse`.
- * Resolves to null when this machine cannot run the shim.
  */
 async function scenario(
   headRepo: string | null,
   runs: Record<string, unknown>[],
   refuse = false,
-): Promise<Outcome | null> {
-  if (RuntimeTasks.os() === "windows") return null;
-  if ((await $`jq --version`.quiet().noThrow().code()) !== 0) return null;
+): Promise<Outcome> {
+  if (JQ === null) throw new Error("the shim needs jq; this test is skipped");
   const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-rerun-"));
   try {
     await FileTasks.writeText(`${dir}/gh`, FAKE_GH);
@@ -96,6 +108,7 @@ async function scenario(
     await $`bash -e ${dir}/step.sh`.quiet().env({
       PATH: `${dir}:/usr/bin:/bin`,
       FAKE_GH_DIR: dir,
+      FAKE_JQ: JQ,
       GITHUB_REPOSITORY: "o/r",
       GITHUB_WORKFLOW_REF: "o/r/.github/workflows/ai-review.yml@refs/heads/m",
       GITHUB_OUTPUT: `${dir}/out`,
@@ -117,72 +130,72 @@ function posts(outcome: Outcome): string[] {
   return outcome.calls.filter((call) => call.startsWith("POST"));
 }
 
-test("same-repository pull request: re-runs its newest own run, then reacts", async () => {
-  const out = await scenario("o/r", [run(30, "o/r", [7]), run(20, "o/r", [7])]);
-  if (out === null) return;
-  assertEquals(posts(out), [
-    "POST repos/o/r/actions/runs/30/rerun",
-    "POST repos/o/r/issues/comments/99/reactions",
-  ]);
-  assertEquals(out.output, "rerun=true\n");
-  // The run is looked up by this workflow's file and the head commit.
-  assertEquals(
-    out.calls[1],
-    "GET repos/o/r/actions/workflows/ai-review.yml/runs?event=pull_request" +
-      "&status=completed&head_sha=abc&per_page=100",
-  );
-});
+shimTest(
+  "same-repository pull request: re-runs its newest own run, then reacts",
+  async () => {
+    const out = await scenario("o/r", [
+      run(30, "o/r", [7]),
+      run(20, "o/r", [7]),
+    ]);
+    assertEquals(posts(out), [
+      "POST repos/o/r/actions/runs/30/rerun",
+      "POST repos/o/r/issues/comments/99/reactions",
+    ]);
+    assertEquals(out.output, "rerun=true\n");
+    // The run is looked up by this workflow's file and the head commit.
+    assertEquals(
+      out.calls[1],
+      "GET repos/o/r/actions/workflows/ai-review.yml/runs?event=pull_request" +
+        "&status=completed&head_sha=abc&per_page=100",
+    );
+  },
+);
 
-test("a fork's pull request is not re-run", async () => {
+shimTest("a fork's pull request is not re-run", async () => {
   const out = await scenario("fork/r", [run(30, "o/r", [7])]);
-  if (out === null) return;
   assertEquals(out.calls.length, 1);
   assertEquals(out.output, "");
 });
 
-test("a deleted fork is not re-run", async () => {
+shimTest("a deleted fork is not re-run", async () => {
   const out = await scenario(null, [run(30, "o/r", [7])]);
-  if (out === null) return;
   assertEquals(out.calls.length, 1);
   assertEquals(out.output, "");
 });
 
-test("a fork's run sharing the head commit is never picked", async () => {
+shimTest("a fork's run sharing the head commit is never picked", async () => {
   const out = await scenario("o/r", [
     run(40, "fork/r", [7]),
     run(20, "o/r", [7]),
   ]);
-  if (out === null) return;
   assertEquals(posts(out)[0], "POST repos/o/r/actions/runs/20/rerun");
   const only = await scenario("o/r", [run(40, "fork/r", [7])]);
-  if (only === null) return;
   assertEquals(posts(only), []);
   assertEquals(only.output, "");
 });
 
-test("another pull request's run on the same commit is never picked", async () => {
-  const out = await scenario("o/r", [
-    run(40, "o/r", [8]),
-    run(20, "o/r", [7, 9]),
-  ]);
-  if (out === null) return;
-  assertEquals(posts(out)[0], "POST repos/o/r/actions/runs/20/rerun");
-  const only = await scenario("o/r", [run(40, "o/r", [8])]);
-  if (only === null) return;
-  assertEquals(posts(only), []);
-  assertEquals(only.output, "");
-});
+shimTest(
+  "another pull request's run on the same commit is never picked",
+  async () => {
+    const out = await scenario("o/r", [
+      run(40, "o/r", [8]),
+      run(20, "o/r", [7, 9]),
+    ]);
+    assertEquals(posts(out)[0], "POST repos/o/r/actions/runs/20/rerun");
+    const only = await scenario("o/r", [run(40, "o/r", [8])]);
+    assertEquals(posts(only), []);
+    assertEquals(only.output, "");
+  },
+);
 
-test("no run to re-run: no output, nothing posted", async () => {
+shimTest("no run to re-run: no output, nothing posted", async () => {
   const out = await scenario("o/r", [run(30, "o/r", [7], "other")]);
-  if (out === null) return;
   assertEquals(posts(out), []);
   assertEquals(out.output, "");
 });
 
-test("a refused re-run sets no output and reacts to nothing", async () => {
+shimTest("a refused re-run sets no output and reacts to nothing", async () => {
   const out = await scenario("o/r", [run(30, "o/r", [7])], true);
-  if (out === null) return;
   assertEquals(posts(out), ["POST repos/o/r/actions/runs/30/rerun"]);
   assertEquals(out.output, "");
 });
