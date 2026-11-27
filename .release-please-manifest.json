@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.86.1",
+  "packages/core": "1.86.2",
   "packages/deno": "1.6.0",
   "packages/docs": "1.0.1",
   "packages/engine": "1.7.0",
@@ -10,7 +10,7 @@
   "packages/yarn": "1.2.0",
   "packages/cmd": "1.0.1",
   "packages/console": "1.5.1",
-  "packages/cli": "2.9.0",
+  "packages/cli": "2.9.1",
   "packages/docker": "1.1.1",
   "packages/docker-compose": "1.3.2",
   "packages/kubectl": "1.2.1",
