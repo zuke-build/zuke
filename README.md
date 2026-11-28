@@ -21,6 +21,7 @@
   <a href="https://scorecard.dev/viewer/?uri=github.com/zuke-build/zuke"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/zuke-build/zuke/badge" /></a>
   <a href="https://www.bestpractices.dev/projects/14036"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/14036/badge" /></a>
   <a href="https://github.com/marketplace/actions/zuke-build"><img alt="GitHub Marketplace" src="https://img.shields.io/github/v/release/zuke-build/zuke?filter=%21%2A-%2A&amp;label=Marketplace&amp;logo=github&amp;color=2ea44f" /></a>
+  <a href="https://www.npmjs.com/package/@zuke-build/core"><img alt="npm" src="https://img.shields.io/npm/v/@zuke-build/core?label=npm&amp;logo=npm" /></a>
   <a href="https://jsr.io/@zuke/core"><img alt="JSR" src="https://jsr.io/badges/@zuke/core" /></a>
   <a href="https://jsr.io/@zuke/core"><img alt="JSR score" src="https://jsr.io/badges/@zuke/core/score" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" /></a>
@@ -37,34 +38,27 @@ whole thing to **AI agents** as typed tools. Inspired by
 
 ## Five minutes to a typed build
 
-**1. Install the CLI** — pick one. Every route is the same CLI and fully
-supported; the binaries need no Node or Deno up front. See [Install](#install).
-
-From npm (any OS, with Node):
+**1. Install the CLI.** With Node 24.12 or newer:
 
 ```sh
 npm install -g @zuke-build/cli
 ```
 
-With Homebrew (macOS, Linux):
-
-```sh
-brew install zuke-build/tap/zuke
-```
-
-With Chocolatey (Windows):
-
-```powershell
-choco install zuke
-```
+Homebrew, Chocolatey and Deno work too, and the Homebrew and Chocolatey builds
+need no Node or Deno at all: see [Install](#install).
 
 **2. Set up a project and run it**, whichever way you installed:
 
 ```sh
-zuke setup         # scaffold build.ts, package.json + the ./zuke launcher
-zuke               # run the build
-zuke generate-ci   # write .github/workflows/ci.yml from the build
+zuke setup          # scaffold build.ts, package.json, zuke.json and the ./zuke launcher
+zuke                # run the default target; any other command runs the build, like zuke ci
+zuke generate-ci    # write .github/workflows/ci.yml from the build
 ```
+
+`zuke setup --mcp` also registers the build's MCP server for your agent, `zuke
+import` migrates `package.json` scripts, a `Makefile` or `pyproject.toml` tasks
+instead, and `zuke add docker` adds `@zuke/docker` to the project (with
+`remove`, `cache` and `relock` beside it).
 
 `zuke generate-ci` needs one line in the build. Here is the whole file after you
 have replaced the scaffolded sample target with real work, with `@zuke/npm`
@@ -104,9 +98,8 @@ can never drift from the build.
   />
 </p>
 
-Already have `package.json` scripts, a `Makefile` or `pyproject.toml` tasks?
-`zuke import` turns them into a build (`build.ts`, or `build.py` for Python)
-with a target per task. Details, the launcher, and a longer first build:
+Details, the launcher, `zuke import` (which writes `build.py` for a
+`pyproject.toml`), and a longer first build:
 **[Getting started](./docs/getting-started.md)**.
 
 Prefer to poke at something real? [`examples/`](./examples) holds six cloneable
@@ -226,19 +219,11 @@ build-provenance attestation as the others. Upgrade with `choco upgrade zuke`.
 See [installing](./docs/install.md#with-chocolatey-windows) for how to check a
 download.
 
-### Set up a project
+### Node or Deno
 
-The same steps, however you installed the CLI:
-
-```sh
-zuke setup          # scaffold build.ts, package.json, zuke.json and the ./zuke launcher
-zuke setup --mcp    # …and register the build's MCP server for your agent
-zuke import         # or migrate package.json scripts / a Makefile / pyproject.toml tasks instead
-zuke                # run the default target; any other command runs the build, like zuke ci
-zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
-```
-
-A new project's build runs on Node, with `@zuke/*` installed from npm as
+Whichever way you installed the CLI, `zuke setup` (see the
+[quick start](#five-minutes-to-a-typed-build)) picks the project's runtime. A
+new project's build runs on Node, with `@zuke/*` installed from npm as
 `@zuke-build/*`. The scaffolded `./zuke` launcher (and `zuke.ps1` on Windows)
 bootstraps a pinned, checksum-verified Node on first use and installs the
 dependencies, so a checkout needs **nothing** installed up front — not even the
@@ -291,7 +276,10 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 72 packages:
+Zuke is a workspace of 72 packages, each published to
+[JSR](https://jsr.io/@zuke) as `@zuke/<name>` and to
+[npm](https://www.npmjs.com/org/zuke-build) as `@zuke-build/<name>`, which a
+Node project imports under the alias `@zuke/<name>`. The links below go to JSR:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
@@ -315,11 +303,11 @@ a typed wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 [`@zuke/dart`](https://jsr.io/@zuke/dart),
 [`@zuke/playwright`](https://jsr.io/@zuke/playwright), and more.
 
-The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.
-The complete typed surface of every package is in
-[`llms-full.txt`](./llms-full.txt) (one file), summarised in
-[`llms.txt`](./llms.txt); for a single package run `deno doc
-jsr:@zuke/<package>`.
+The full matrix with live version badges is in
+**[Packages](./docs/packages.md)**. The complete typed surface of every package
+is in [`llms-full.txt`](./llms-full.txt) (one file), summarised in
+[`llms.txt`](./llms.txt); for a single package, read the `## API` section of its
+README on npm or JSR, or run `deno doc jsr:@zuke/<package>`.
 
 ## AI in your pipeline
 
@@ -402,18 +390,16 @@ Start here, then browse the full index in [`docs/`](./docs/README.md):
 ## Development
 
 ```sh
-deno task test        # run the suite
-deno task cov         # run with coverage + enforce the 95% gate
-deno task check       # type-check
-deno task fmt         # format (fmt:check to verify only)
-deno task lint        # lint
-deno task spell       # spell-check (cspell)
-deno task ci          # the full gate — deno run -A --frozen build.ts ci
+npm ci                # install the workspace and the pinned tools
+node build.ts ci      # the full gate, as CI runs it on Node
 ```
 
-`deno task ci` **is** `./zuke ci`, the same gate the `ci` job in
+That is the gate the `ci` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
-pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check list.
+pull request, on all three OSes. The Deno lane is still there: `deno task test`,
+`deno task cov` (the suite with Deno's 95% coverage gate), `deno task check`,
+and `deno task ci` or `./zuke ci` for the same gate on Deno. See
+[`AGENTS.md`](./AGENTS.md#commands) for the full check list.
 
 ## Contributing
 
