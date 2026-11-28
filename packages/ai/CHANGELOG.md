@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.0](https://github.com/zuke-build/zuke/compare/ai-v2.13.2...ai-v2.14.0) (2026-11-27)
+
+
+### Features
+
+* **ai:** the review command re-runs the pull request's own review ([#1229](https://github.com/zuke-build/zuke/issues/1229)) ([403b1ae](https://github.com/zuke-build/zuke/commit/403b1ae7fef8949394608d6a97d7ced16a5b471b))
+
 ## [2.13.2](https://github.com/zuke-build/zuke/compare/ai-v2.13.1...ai-v2.13.2) (2026-11-24)
 
 
