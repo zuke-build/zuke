@@ -374,8 +374,8 @@ Start here, then browse the full index in [`docs/`](./docs/README.md):
   execution.
 - [Packages](./docs/packages.md) and [Tools](./docs/tools.md) — the package
   matrix, and every wrapper's tasks.
-- [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
-  build with Deno.
+- [Using Zuke in a Node/npm project](./docs/node-projects.md) — a Node build in
+  the project, or a separate Deno build folder beside it.
 - [MCP server](./docs/mcp.md) and [Agent skills](./docs/agent-skills.md) — the
   build as typed tools for an agent, and the skills that teach one to write it.
 - [Caching](./docs/caching.md), [Service targets](./docs/services.md),

@@ -1,7 +1,8 @@
 # Shell wrapper (`$`)
 
-Ergonomic process execution built on `Deno.Command`, imported from the `shell`
-submodule:
+Ergonomic process execution built on the runtime's process API
+(`node:child_process` on Node, `Deno.Command` on Deno), imported from the
+`shell` submodule:
 
 <!-- check -->
 

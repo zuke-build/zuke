@@ -665,9 +665,10 @@ not change that — it is still the fork's code that runs.
 
 A reviewer that takes commands adds the flow that does cover forks. Name the
 mention maintainers address it by, and the generator adds a second job that runs
-the review **from the default branch's checkout, with the pull request fetched
-as data** whenever a maintainer comments `<mention> review` or `<mention> accept
-…` on any pull request:
+the review whenever a maintainer comments `<mention> review` or `<mention>
+accept …` on any pull request. On a fork's pull request it reviews **from the
+default branch's checkout, with the pull request fetched as data**; on a
+same-repository pull request it re-runs the pull request's own `AI review` run:
 
 ```ts
 security = securityReviewer((r) =>
@@ -887,10 +888,11 @@ starts reads every thread and every quoting comment on the pull request,
 adjudicates each rebuttal, and replies where it was made: an accepted rebuttal
 closes the thread as dismissed, and one that does not hold gets an "upheld"
 reply naming the gap, so the maintainer can reply again and comment the command
-again to continue the discussion. The command runs from the default branch with
-the pull request fetched as data, so it works for a same-repository pull request
-exactly as for a fork's, and it reads the same state block and threads the
-push-started run writes, whichever bot account each posts as.
+again to continue the discussion. On a fork's pull request the command reviews
+from the default branch with the pull request fetched as data; on a
+same-repository pull request it re-runs the pull request's own review. Either
+way it reads the same state block and threads the push-started run writes,
+whichever bot account each posts as.
 
 The workflow deliberately does **not** run on every reply in a thread. A busy
 review has many replies, and a run for each would snowball into reviews of the
@@ -941,7 +943,8 @@ the next run, whichever starts it, and the panel leaves the `review` row out.
 
 Zuke's own build gates the `review` target with **two reviewers** on every
 internal PR — an OpenAI security scan and an OpenAI code-quality review sharing
-one key. In [`build.ts`](../build.ts):
+one key. An abridged excerpt of [`build.ts`](../build.ts), which imports
+`EnvTasks` from `@zuke/core`:
 
 ```ts
 openaiKey = parameter("OpenAI API key for the AI security review")
@@ -957,7 +960,7 @@ securityReview = securityReviewer((r) =>
     .budget(this.aiBudget) // shared with the other reviewer and the lint fixer
     .skipIfKeyMissing() // skip + announce when the key is absent (local runs)
     .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
-    .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+    .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
     .failWhen((g) => g.scoreAbove(5))
     .onError("warn")
@@ -972,7 +975,7 @@ generalReview = genericReviewer((r) =>
     // The built-in rubric covers code quality/maintainability already;
     // `.criteria(...)` is optional fine-tuning with project-specific notes.
     .criteria("Strict TypeScript on Deno: no `any`, no `as`; task-shaped API.")
-    .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+    .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
     .failWhen((g) => g.scoreAbove(5))
     .onError("warn")

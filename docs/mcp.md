@@ -632,11 +632,13 @@ zuke mcp --registry --allow-run
 - **Execution is a spawn.** A registered build has no live instance in the
   server, so a run tool **spawns the build's registered launch location** (the
   `deno run <module> <target>` `zuke register` recorded, or an explicit command)
-  and returns its captured output. This is code execution, so it is off unless
-  `--allow-run`, and it honours the same [authorization](#authorization) tiers —
-  the allow-list and `--protect` globs match the **qualified**
-  `<buildId>:<target>` name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`).
-  Every mutating or denied call is [audited](#audit-log).
+  and returns its captured output. A module location is launched with `deno run
+  -A` even on Node, so a Node build must register an explicit command, such as
+  `node build.ts`. This is code execution, so it is off unless `--allow-run`,
+  and it honours the same [authorization](#authorization) tiers — the allow-list
+  and `--protect` globs match the **qualified** `<buildId>:<target>` name (e.g.
+  `--allow-run=Api:*`, `--protect=Api:deploy`). Every mutating or denied call is
+  [audited](#audit-log).
 - **Where it spawns from is checked too.** The registry names the launch
   location, so a registry a second party can write to would otherwise be enough
   to run attacker-chosen code. A **remote** entry module (anything that is not a

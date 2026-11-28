@@ -12,7 +12,7 @@ wrapper, and a chain you can stop anywhere.
 
 ```ts
 import { Build, FileTasks, parameter, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 import { GhTasks } from "@zuke/gh";
 import { GitTasks } from "@zuke/git";
 
@@ -27,26 +27,26 @@ class Release extends Build {
 
   check = target()
     .description("Type-check the public entrypoint")
-    .executes(() => DenoTasks.check((s) => s.paths("mod.ts")));
+    .executes(() => NpmTasks.run((s) => s.script("check")));
 
   test = target()
     .description("Run the tests")
     .dependsOn(this.check)
-    .executes(() => DenoTasks.test((s) => s.allowAll()));
+    .executes(() => NpmTasks.test());
 
   bump = target()
-    .description("Write the version into jsr.json and commit it")
+    .description("Write the version into package.json and commit it")
     .dependsOn(this.test)
     .executes(async () => {
       const manifest: Record<string, unknown> = JSON.parse(
-        await FileTasks.readText("jsr.json"),
+        await FileTasks.readText("package.json"),
       );
       const bumped = { ...manifest, version: this.releaseVersion.value };
       await FileTasks.writeText(
-        "jsr.json",
+        "package.json",
         `${JSON.stringify(bumped, null, 2)}\n`,
       );
-      await GitTasks.add((s) => s.paths("jsr.json"));
+      await GitTasks.add((s) => s.paths("package.json"));
       await GitTasks.commit((s) =>
         s.message(`chore: release ${this.releaseVersion.value}`)
       );
@@ -77,9 +77,9 @@ class Release extends Build {
     );
 
   publish = target()
-    .description("Publish the package to JSR")
+    .description("Publish the package to npm")
     .dependsOn(this.release)
-    .executes(() => DenoTasks.publish());
+    .executes(() => NpmTasks.publish((s) => s.access("public")));
 
   default = target()
     .description("Default: the whole release")
@@ -105,9 +105,9 @@ RELEASE_VERSION=1.1.0 zuke                       # the parameter from the enviro
 - **Every step is the real CLI, typed.** `GitTasks.tag((s) =>
   s.name(…).message(…))` is `git tag -a … -m …`; `GhTasks.releaseCreate((s) =>
   s.generateNotes().latest())` is `gh release create --generate-notes --latest`;
-  `DenoTasks.publish()` is `deno publish`, which reads your `jsr.json` (or
-  `deno.json`). The flags are methods, a typo is a compile error, and the argv
-  is built without a shell.
+  `NpmTasks.publish((s) => s.access("public"))` is `npm publish --access
+  public`. The flags are methods, a typo is a compile error, and the argv is
+  built without a shell.
 - **The version is a typed input.** `parameter(…).required()` is read from
   `--release-version` or `RELEASE_VERSION`, checked before the first target
   runs, and used in the targets as `this.releaseVersion.value`. `zuke --list`
@@ -117,15 +117,16 @@ RELEASE_VERSION=1.1.0 zuke                       # the parameter from the enviro
 
 ## Variations
 
-- **npm instead of JSR:** replace the `publish` body with `NpmTasks.publish((s)
-  => s.access("public"))` from `@zuke/npm`, and bump `package.json` instead of
-  `jsr.json`.
+- **JSR (Deno) instead of npm:** replace the `publish` body with
+  `DenoTasks.publish()` from `@zuke/deno`, which is `deno publish` and reads
+  your `jsr.json` (or `deno.json`), and bump `jsr.json` instead of
+  `package.json`. The example project below is this variation.
 - **A changelog file:** `GhTasks.releaseCreate` also takes `.notesFile(path)`,
   so a `CHANGELOG.md` section you maintain by hand becomes the release body.
 - **Fully automated:** `@zuke/release-please` wraps release-please, which opens
   a release pull request from your conventional commits, keeps the changelog,
   and cuts the GitHub release when the PR merges — the routine Zuke uses for its
-  own 70 packages (see [`RELEASING.md`](../../RELEASING.md)).
+  own 72 packages (see [`RELEASING.md`](../../RELEASING.md)).
 - **Secrets:** a token for `gh` or `npm` is a `parameter("…").secret()`, which
   Zuke masks in every log — see [Secrets](../secrets.md).
 

@@ -17,10 +17,11 @@ in `zuke.json`:
 }
 ```
 
-The `./zuke` launcher then runs `deno run -A jsr:@zuke/engine@1.0.0 <args>` from
-the project root, so the whole CLI — targets, `--list --json`, `graph`,
-`generate-ci`, `mcp`, `resume` — is the engine's, with the worker serving the
-bodies.
+The `./zuke` launcher then runs the standalone `zuke` release it pins
+(downloaded once, SHA-256-verified, and kept in `~/.zuke`), which carries this
+engine, from the project root, so the whole CLI — targets, `--list --json`,
+`graph`, `generate-ci`, `mcp`, `resume` — is the engine's, with the worker
+serving the bodies.
 
 The global `zuke` binary needs no Deno for this: it is compiled with this engine
 and every wrapper release inside it, and runs a hosted build on them. A `deno

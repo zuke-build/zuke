@@ -304,7 +304,8 @@ caret major — so the build can import them by bare specifier. An inline
 {
   "imports": {
     "@zuke/core": "jsr:@zuke/core@^1",
-    "@zuke/deno": "jsr:@zuke/deno@^1"
+    "@zuke/deno": "jsr:@zuke/deno@^1",
+    "@zuke/npm": "jsr:@zuke/npm@^1"
   }
 }
 ```

@@ -229,13 +229,16 @@ class CD extends Build {
 ```
 
 - Backends: `FileSystemStateStore(dir)` (single host, dev) and `HttpStateStore({
-  url, token? })` (hosted, production — see `docs/state-api.md`). Both
-  dependency-free and pluggable behind `StateStore`. A hosted backend is
-  verified with the **conformance kit** (`deno run -A jsr:@zuke/core/conformance
-  --url <base> [--token …]`, or `checkStateStore`/`checkBuildRegistry` from
-  `@zuke/core/conformance`) — it exercises CAS, listing, and TTL-lock semantics.
-  The HTTP clients stamp every request with `x-zuke-state-protocol: 1` and fail
-  loudly on a server-declared mismatch.
+  url, token? })` (hosted, production — see
+  [`docs/state-api.md`](https://github.com/zuke-build/zuke/blob/master/docs/state-api.md)).
+  Both dependency-free and pluggable behind `StateStore`. A hosted backend is
+  verified with the **conformance kit** (`ZUKE_STATE_TOKEN=…
+  ZUKE_REGISTRY_TOKEN=… deno run -A jsr:@zuke/core/conformance --url <base>`,
+  the tokens optional and never a `--token` argument, which is refused; or
+  `checkStateStore`/`checkBuildRegistry` from `@zuke/core/conformance`) — it
+  exercises CAS, listing, and TTL-lock semantics. The HTTP clients stamp every
+  request with `x-zuke-state-protocol: 1` and fail loudly on a server-declared
+  mismatch.
 - The run record holds status, the graph shape, resolved **non-secret**
   parameters, and per-target status/timing/metadata. Inspect it from the CLI
   with `zuke runs list [--status <s>] [--target <t>] [--since <iso>] [--limit
@@ -246,7 +249,8 @@ class CD extends Build {
   **terminal** runs matching neither rule (`--dry-run` to preview); a
   non-terminal run (suspended/running) is never pruned. The FS store owns
   pruning via the CLI; for the HTTP backend retention is the server's job (`GET
-  /runs` takes `limit`; `DELETE /runs/:id` is optional). See `docs/state.md`.
+  /runs` takes `limit`; `DELETE /runs/:id` is optional). See
+  [`docs/state.md`](https://github.com/zuke-build/zuke/blob/master/docs/state.md).
 - **Run leases and reaping.** A run that writes durable state takes a TTL lease
   on its own id and heartbeats it, so two processes cannot both believe they own
   one run — a resume that adopts a run whose lease has lapsed takes it over, and
@@ -289,7 +293,8 @@ class CD extends Build {
   `GITHUB_REPOSITORY` in a CronJob), using the same value everywhere that build
   runs. Alternatively give each build its own URL prefix on the shared service
   (`ZUKE_STATE_URL=https://state/svc-a`) and neither can see the other's runs at
-  all. See `docs/orchestration.md`.
+  all. See
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - **What a sweep counts as failed.** Not a race it lost: a run another process
   is already driving, one that process finished between the listing and the
   resume, and a run belonging to another build are all skipped and reported,
@@ -297,7 +302,8 @@ class CD extends Build {
   operator can decide whether its targets are safe to repeat.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
-  redactor, but treat state as a non-secret channel. See `docs/state.md`.
+  redactor, but treat state as a non-secret channel. See
+  [`docs/state.md`](https://github.com/zuke-build/zuke/blob/master/docs/state.md).
 
 ## Cross-run locks
 
@@ -330,7 +336,8 @@ class CD extends Build {
   only the backstop for a killed holder.
 - Needs a state store — a build using `.lock()` enables the `.zuke/runs`
   filesystem store by default; use the HTTP backend to share locks across
-  machines. See `docs/locks.md`.
+  machines. See
+  [`docs/locks.md`](https://github.com/zuke-build/zuke/blob/master/docs/locks.md).
 - `s.waitUpTo("30m")` queues for a held lock instead of failing at once, with
   `s.pollEvery("5s")` pacing the retries; the conflict is raised only once the
   wait is spent, and the run prints who holds the lock while it waits. This is a
@@ -398,7 +405,8 @@ class Deploy extends Build {
   `WaitContext` interface.
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
-  cross the boundary**. See `docs/orchestration.md`.
+  cross the boundary**. See
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - Continue a suspended run with `zuke resume <id> --signal <name> [--data
   <json>]` (or `zuke resume --check [<id>]` for predicate waits/timeouts).
   Resumption is **exactly-once** (concurrent resumers get `AlreadyResumedError`)
@@ -485,7 +493,8 @@ class CD extends Build {
 - A timed-out `.waitsFor()` can route here: `.onTimeout(() => "cancel-run")`
   cancels the run (running compensations); `.onTimeout(() => this.cleanup)` runs
   that target too. Needs a state store (a build with `.onCancel()` enables
-  `.zuke/runs` by default). See `docs/orchestration.md`.
+  `.zuke/runs` by default). See
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 
 ## Durable side effects — `.effect()`
 
@@ -712,7 +721,8 @@ shims on Windows, spawned as themselves) and falls back to `PATH` on a miss;
 `.fromPath()` forces `PATH`; and `ZUKE_TOOL_RESOLUTION=node_modules|path` flips
 every wrapper repo-wide without touching call sites (a per-call setting wins
 over it). An explicit `.toolPath(...)` always wins, so a `toolchain()` pin stays
-hermetic. `resolvedArgv()` shows what a run will spawn. See `docs/tools.md`.
+hermetic. `resolvedArgv()` shows what a run will spawn. See
+[`docs/tools.md`](https://github.com/zuke-build/zuke/blob/master/docs/tools.md).
 
 ## Tool wrappers — the settings-lambda style
 
@@ -727,7 +737,7 @@ above, for the full task list and settings methods of each):
 | `@zuke/engine`                                                                                                                                      | the engine for SDK-hosted builds                                                                                                                   | not a wrapper — runs the worker a project's `zuke.json` names under `sdk` (e.g. `{ "command": ["uv", "run", "build.py"] }`) on the core engine; the standalone `zuke` binary carries it, and a Python project's `./zuke` launcher downloads the pinned `zuke` release and runs that, so the project needs no Deno anywhere                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                                                                                                                     | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/qr`                                                                                                                                          | `QrTasks`                                                                                                                                          | `print`/`render`/`encode` a QR code for any data — URLs, Wi-Fi and login strings, tokens, JSON — as terminal output, text lines or the raw module matrix; no `qrencode` needed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `@zuke/deno`                                                                                                                                        | `DenoTasks`, `DenoDeployTasks`                                                                                                                     | `check`, `test`, `bench`, `fmt`, `lint`, `cache`, `clean`, `doc`, `run`, `serve`, `eval`, `task`, `compile`, `info`, `init`, `upgrade`, `add`, `remove`, `install`, `uninstall`, `outdated`, `why`, `ci`, `approveScripts`, `bumpVersion`, `publish`, `pack`, `coverage`; readers `moduleGraph`, `cacheInfo`; `DenoDeployTasks`: `deploy` (`.prod()`), `create`, `envList`/`envAdd` (`.secretValue()`)/`envUpdateValue`/`envUpdateContexts`/`envDelete`/`envLoad`, `logs` (`.once()`), `deploymentsList`, `appsList`, `appsGet`, `orgsList`, `whoami`; `.token()` rides `DENO_DEPLOY_TOKEN`, add `.nonInteractive()` in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `@zuke/deno`                                                                                                                                        | `DenoTasks`, `DenoDeployTasks`                                                                                                                     | `check`, `test`, `bench`, `fmt`, `lint`, `cache`, `clean`, `doc`, `run`, `serve`, `eval`, `task`, `compile`, `info`, `init`, `upgrade`, `add`, `remove`, `install`, `uninstall`, `outdated`, `why`, `ci`, `approveScripts`, `bumpVersion`, `publish`, `pack`, `coverage`; readers `moduleGraph`, `cacheInfo`; `DenoDeployTasks` (deprecated, with Deno: supported until October 2027): `deploy` (`.prod()`), `create`, `envList`/`envAdd` (`.secretValue()`)/`envUpdateValue`/`envUpdateContexts`/`envDelete`/`envLoad`, `logs` (`.once()`), `deploymentsList`, `appsList`, `appsGet`, `orgsList`, `whoami`; `.token()` rides `DENO_DEPLOY_TOKEN`, add `.nonInteractive()` in CI                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/docs`                                                                                                                                        | `DocsTasks`                                                                                                                                        | turn generated API docs into published output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...                                                                                                            | JS package managers + `npx` runner + `node`. `NpmTasks` covers npm's everyday surface — install/publish/registry/inspect — and hands back values from `outdatedEntries`, `auditSummary`, `pkgGet`, `whoamiName`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                                                                                                                         | `exec` — generic fallback for any CLI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -1640,7 +1650,8 @@ await run(MyBuild, {
   one trace** — the finishing process exports the complete, gap-spanning run.
 - **Inert with no endpoint** (safe to always register); **best-effort** (a dead
   collector never fails the build); the record is **secret-free**. No runtime
-  deps. See `docs/observability.md`.
+  deps. See
+  [`docs/observability.md`](https://github.com/zuke-build/zuke/blob/master/docs/observability.md).
 
 ## Prometheus — `@zuke/prometheus`
 
@@ -1738,7 +1749,8 @@ class Deploy extends Build {
   `abort` why it runs: fall back to a configured stable version only for
   `"hand-run"` — a `"rollback"` with empty state means nothing was staged.
 - Analyses are any `Validation`; a canary-aware one reads `ctx.step`,
-  `ctx.requested`, `ctx.exposure`. See `docs/canary.md`.
+  `ctx.requested`, `ctx.exposure`. See
+  [`docs/canary.md`](https://github.com/zuke-build/zuke/blob/master/docs/canary.md).
 - A managed Prometheus: `prometheus((p) => p.url(AMP).query(Q).max(0.01)
   .connection((c) => c.sigv4((a) => a.region("us-east-1"))))` — `connection`
   takes `@zuke/prometheus`'s settings (`google()`, `azure()`, `sigv4()`, …).
@@ -1959,13 +1971,16 @@ Copy the closest one instead of composing from primitives; each is a full
 `build.ts` with the commands to run it, and has a runnable twin under
 `examples/`:
 
-- **Replace a shell script** (`docs/recipes/replace-shell-scripts.md`,
+- **Replace a shell script**
+  ([`docs/recipes/replace-shell-scripts.md`](https://github.com/zuke-build/zuke/blob/master/docs/recipes/replace-shell-scripts.md),
   `examples/scripts-to-zuke`) — `$` from `@zuke/core/shell` with no `Build`
   class at all, then the same steps as targets.
-- **Generate the CI** (`docs/recipes/generate-ci.md`, `examples/ci-only`) —
-  `cicd({ provider, fanOut: true })` per provider, `generate-ci --check` as the
-  gate.
-- **Release a library** (`docs/recipes/release-a-library.md`,
+- **Generate the CI**
+  ([`docs/recipes/generate-ci.md`](https://github.com/zuke-build/zuke/blob/master/docs/recipes/generate-ci.md),
+  `examples/ci-only`) — `cicd({ provider, fanOut: true })` per provider,
+  `generate-ci --check` as the gate.
+- **Release a library**
+  ([`docs/recipes/release-a-library.md`](https://github.com/zuke-build/zuke/blob/master/docs/recipes/release-a-library.md),
   `examples/release-library`) — `parameter().required()` version, then
   `GitTasks.add/commit/tag/push` → `GhTasks.releaseCreate((s) =>
   s.generateNotes().latest())` → `DenoTasks.publish()`, one chain you can stop
@@ -2036,29 +2051,33 @@ zuke mcp --registry --max-concurrent-runs 4
                               # cap concurrent run-tool spawns (default 4)
 ```
 
-**MCP authorization** (`docs/mcp.md`): the two gates have deliberately different
-reach. `--allow-run=<globs>` is an **entry-point** control — it decides which
-targets a client may invoke, and invoking one runs its dependencies, so
-allow-listing `release` allows everything `release` does; scope it to entry
-points, not steps. The read tools narrow to match (the allow-listed targets plus
-their closure), so a target outside it is unreachable rather than merely
-undisplayed. `--protect <globs>` + `ZUKE_OPERATOR_TOKEN` is an **operation**
-control, enforced across a run's whole plan: a protected target reached as a
-dependency of an unprotected one still requires the token, and that run tool
-advertises `operatorToken` as required in its schema. Both fail closed — no
-configured token denies every protected target, and a plan that cannot be
-resolved (a run record whose root target was deleted) is denied rather than
-assumed harmless. The audit trail is operator-only: `show_run` refuses it and
-`list_runs` omits it, so the clients it audits cannot read who called what.
-`--confirm-destructive` adds a third tier: any target not marked `.readOnly()`
-returns its resolved plan until the call repeats with `confirm: true` (a
-`dryRun` is exempt) — so mark inspect-only targets `.readOnly()`, which also
-advertises MCP's `readOnlyHint` instead of `destructiveHint`.
+**MCP authorization**
+([`docs/mcp.md`](https://github.com/zuke-build/zuke/blob/master/docs/mcp.md)):
+the two gates have deliberately different reach. `--allow-run=<globs>` is an
+**entry-point** control — it decides which targets a client may invoke, and
+invoking one runs its dependencies, so allow-listing `release` allows everything
+`release` does; scope it to entry points, not steps. The read tools narrow to
+match (the allow-listed targets plus their closure), so a target outside it is
+unreachable rather than merely undisplayed. `--protect <globs>` +
+`ZUKE_OPERATOR_TOKEN` is an **operation** control, enforced across a run's whole
+plan: a protected target reached as a dependency of an unprotected one still
+requires the token, and that run tool advertises `operatorToken` as required in
+its schema. Both fail closed — no configured token denies every protected
+target, and a plan that cannot be resolved (a run record whose root target was
+deleted) is denied rather than assumed harmless. The audit trail is
+operator-only: `show_run` refuses it and `list_runs` omits it, so the clients it
+audits cannot read who called what. `--confirm-destructive` adds a third tier:
+any target not marked `.readOnly()` returns its resolved plan until the call
+repeats with `confirm: true` (a `dryRun` is exempt) — so mark inspect-only
+targets `.readOnly()`, which also advertises MCP's `readOnlyHint` instead of
+`destructiveHint`.
 
-**Build registry** (`docs/registry.md`): `zuke register` writes a secret-free
-descriptor of this build — its `describeCli()` surface (targets, params) plus a
-launch location — into a pluggable `BuildRegistry`. Resolved like the state
-store: `ZUKE_REGISTRY_URL`/`_TOKEN` (HTTP) or `ZUKE_REGISTRY_DIR` (files), a
+**Build registry**
+([`docs/registry.md`](https://github.com/zuke-build/zuke/blob/master/docs/registry.md)):
+`zuke register` writes a secret-free descriptor of this build — its
+`describeCli()` surface (targets, params) plus a launch location — into a
+pluggable `BuildRegistry`. Resolved like the state store:
+`ZUKE_REGISTRY_URL`/`_TOKEN` (HTTP) or `ZUKE_REGISTRY_DIR` (files), a
 `registry()` build override, else `.zuke/builds`. Separate from the run store;
 an HTTP backend shares the `/builds` REST contract beside `/runs`. **`zuke mcp
 --registry`** then serves the whole catalog — re-read live, so a build
@@ -2090,39 +2109,45 @@ server's own project root; `*` disables), compared after resolving symlinks —
 audited `launch_dir_not_allowed`. A server launching builds registered from
 other checkouts must list their roots.
 
-**Authorization by role** (`docs/mcp.md`): once the server authenticates its
-callers, `target().requiresRole("operator")` raises the bar for one target and
-`override mcpAuthorize(identity, call)` decides the rest, defaulting to
-`defaultMcpAuthorize`. Built-ins are ordered `read` < `run` < `operator`; any
-other name matches exactly, so an identity provider's group works with
-`requiresRole`. `run` is the floor for executing anything, so `requiresRole` can
-only raise. A run-scoped mutation needs the run's initiator or `operator`; a
-sweep over every run needs `operator`; a valid `ZUKE_OPERATOR_TOKEN` grants
-`operator` for that call. A server with **no** authenticator, or one whose
-authenticator never mentions `roles`, is not constrained by the policy at all —
-`--allow-run`/`--protect` remain its only gates.
+**Authorization by role**
+([`docs/mcp.md`](https://github.com/zuke-build/zuke/blob/master/docs/mcp.md)):
+once the server authenticates its callers, `target().requiresRole("operator")`
+raises the bar for one target and `override mcpAuthorize(identity, call)`
+decides the rest, defaulting to `defaultMcpAuthorize`. Built-ins are ordered
+`read` < `run` < `operator`; any other name matches exactly, so an identity
+provider's group works with `requiresRole`. `run` is the floor for executing
+anything, so `requiresRole` can only raise. A run-scoped mutation needs the
+run's initiator or `operator`; a sweep over every run needs `operator`; a valid
+`ZUKE_OPERATOR_TOKEN` grants `operator` for that call. A server with **no**
+authenticator, or one whose authenticator never mentions `roles`, is not
+constrained by the policy at all — `--allow-run`/`--protect` remain its only
+gates.
 
-**Forcing a target** (`docs/state.md`): `zuke force <run-id> <target> --outcome
-skipped|succeeded [--reason "…"]` settles one target of a live run **without
-running its body** — ahead of its `onlyWhen` conditions and its cache — and
-records who decided and why under `record.overrides`. A forced `succeeded` is
-compensated by a later cancel (its effects were asserted to exist); a forced
-`skipped` is not. Refused for a target that already settled, a terminal run, or
-one the build protects with `override unforceable() { return
-[this.applyProduction]; }` — target **references**, so a rename cannot silently
-empty the list. The MCP equivalent is the `force_target` tool.
+**Forcing a target**
+([`docs/state.md`](https://github.com/zuke-build/zuke/blob/master/docs/state.md)):
+`zuke force <run-id> <target> --outcome skipped|succeeded [--reason "…"]`
+settles one target of a live run **without running its body** — ahead of its
+`onlyWhen` conditions and its cache — and records who decided and why under
+`record.overrides`. A forced `succeeded` is compensated by a later cancel (its
+effects were asserted to exist); a forced `skipped` is not. Refused for a target
+that already settled, a terminal run, or one the build protects with `override
+unforceable() { return [this.applyProduction]; }` — target **references**, so a
+rename cannot silently empty the list. The MCP equivalent is the `force_target`
+tool.
 
-**Authentication** (`docs/mcp.md`): on a shared, multi-user endpoint, `override
-mcpAuth()` returns an `McpAuthenticator` — `{ authenticate: async (ctx) => … }`
-— that either resolves the caller (`{ actor, kind?, roles?, via? }`; `kind`
-defaults `"human"`, `roles` defaults none) or refuses with an `McpAuthReject`
-(`{ status, error, detail?, challenge? }`). `ctx` carries the request `headers`
-and, over HTTP, the `request` itself. `override mcpIdentity()` is the sugar for
-the proxy-header case — a sync hook `(ctx) => ({ actor, via? })` reading a
-header an authenticating reverse proxy injects
-(`ctx.headers.get("x-forwarded-user")`), where **any throw rejects the request**
-— adapted onto the same authenticator internally. Declare **one or the other**:
-a build declaring both makes `zuke mcp` exit 1.
+**Authentication**
+([`docs/mcp.md`](https://github.com/zuke-build/zuke/blob/master/docs/mcp.md)):
+on a shared, multi-user endpoint, `override mcpAuth()` returns an
+`McpAuthenticator` — `{ authenticate: async (ctx) => … }` — that either resolves
+the caller (`{ actor, kind?, roles?, via? }`; `kind` defaults `"human"`, `roles`
+defaults none) or refuses with an `McpAuthReject` (`{ status, error, detail?,
+challenge? }`). `ctx` carries the request `headers` and, over HTTP, the
+`request` itself. `override mcpIdentity()` is the sugar for the proxy-header
+case — a sync hook `(ctx) => ({ actor, via? })` reading a header an
+authenticating reverse proxy injects (`ctx.headers.get("x-forwarded-user")`),
+where **any throw rejects the request** — adapted onto the same authenticator
+internally. Declare **one or the other**: a build declaring both makes `zuke
+mcp` exit 1.
 
 Either runs once per request before any dispatch; the resolved actor overrides
 `--actor`/env/the client label and flows to the audit trail, run records, lock
@@ -2163,17 +2188,19 @@ link, so `.outputs("node_modules")` caches; a refused archive is a cache miss
 neither plant files nor halt the build. `--affected` limits a run to targets
 touched since a git base (great for CI job fan-out).
 
-**Telling a client where to authenticate** (`docs/mcp.md`): verifying a token
-only helps a caller that already has one. `override mcpProtectedResource()`
-returns `protectedResource(canonicalUri).authorizationServer(issuer)` (plus
-optional `.scopes(...)`, `.name(...)`, `.documentation(...)`), which makes `zuke
-mcp --http` an OAuth 2.0 **protected resource**: it publishes the RFC 9728
-metadata document and names it in every `WWW-Authenticate` challenge, so `claude
-mcp add --transport http <url>` can discover the identity provider and
-authenticate in a browser. Zuke issues no tokens and hosts no `/authorize`,
-`/token` or `/register` — those belong to the provider named here, and
-`mcpAuth()` verifies what it mints. Dynamic client registration is **not**
-required (deprecated in the MCP spec; a pre-registered client id works).
+**Telling a client where to authenticate**
+([`docs/mcp.md`](https://github.com/zuke-build/zuke/blob/master/docs/mcp.md)):
+verifying a token only helps a caller that already has one. `override
+mcpProtectedResource()` returns
+`protectedResource(canonicalUri).authorizationServer(issuer)` (plus optional
+`.scopes(...)`, `.name(...)`, `.documentation(...)`), which makes `zuke mcp
+--http` an OAuth 2.0 **protected resource**: it publishes the RFC 9728 metadata
+document and names it in every `WWW-Authenticate` challenge, so `claude mcp add
+--transport http <url>` can discover the identity provider and authenticate in a
+browser. Zuke issues no tokens and hosts no `/authorize`, `/token` or
+`/register` — those belong to the provider named here, and `mcpAuth()` verifies
+what it mints. Dynamic client registration is **not** required (deprecated in
+the MCP spec; a pre-registered client id works).
 
 Three strings must agree byte for byte or every token fails validation: the
 `resource` you declare, the `resource` parameter the client sends, and the

@@ -99,7 +99,7 @@ workflow handing the credentials to both jobs with egress blocked.
 <!-- check -->
 
 ```ts
-import { Build, parameter, run, target } from "@zuke/core";
+import { Build, EnvTasks, parameter, run, target } from "@zuke/core";
 import {
   aiReviewWorkflow,
   budget,
@@ -138,7 +138,7 @@ class CI extends Build {
     r.provider("openai").apiKey(this.openaiKey).budget(this.aiBudget)
       .skipIfKeyMissing()
       .comment("append").commentToken(this.botToken)
-      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/main"))
+      .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/main"))
       .maxDiffTokens(20_000)
       .fileContext()
       .verify()
@@ -151,7 +151,7 @@ class CI extends Build {
     r.provider("openai").apiKey(this.openaiKey).budget(this.aiBudget)
       .skipIfKeyMissing()
       .comment("append").commentToken(this.botToken)
-      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/main"))
+      .diff((d) => d.base(EnvTasks.get("ZUKE_REVIEW_BASE") ?? "origin/main"))
       .maxDiffTokens(20_000)
       .fileContext()
       .verify()
@@ -177,9 +177,8 @@ class CI extends Build {
     // adds itself.
     egress: "block",
     allowedEndpoints: [
-      "deno.land:443",
-      "dl.deno.land:443",
-      "jsr.io:443",
+      "nodejs.org:443",
+      "registry.npmjs.org:443", // cspell:ignore npmjs
       "github.com:443",
       "api.github.com:443",
       "codeload.github.com:443",
@@ -191,6 +190,9 @@ class CI extends Build {
 
 await run(CI);
 ```
+
+A Deno project lists `deno.land:443`, `dl.deno.land:443` and `jsr.io:443` in
+place of the two npm hosts.
 
 Four things to adapt: the App's name in `commands(...)`, the repository in
 `.repository(...)`, the base branch, and the model key. The command job needs no
@@ -215,7 +217,9 @@ credentials, so:
   about, with the summary comment carrying the Commands panel;
 - a maintainer who replies in a thread, or comments `@acme-bot accept <id>
   reason`, gets the answer on the next run — a push, or `@acme-bot review`,
-  which the App reacts 👍 to before it starts;
+  which gets a 👍 before it starts (from the App when the command job reviews
+  itself, from `github-actions[bot]` when it re-runs the pull request's own
+  review);
 - a finding the reviewer dismisses, accepts or marks fixed gets its thread
   **resolved**, which is the part `GITHUB_TOKEN` cannot do.
 
@@ -229,13 +233,9 @@ To check the identity took, look at the author of the summary comment: it is
   repository where everyone with push access is a maintainer, that is the right
   trade: it is what closes threads on ordinary pushes. Where it is not, put the
   credentials on `command: (c) => c.secrets(this.appId, this.appKey)` instead,
-  so only the comment-started job — which runs the default branch's build, never
-  the pull request's — holds them; push runs then post as `github-actions[bot]`
-  and leave threads for the next command run to resolve. Because the command's
-  review then holds credentials the push job lacks, the command reviews in its
-  own job on every pull request: the generated command job re-runs the pull
-  request's own `AI review` run (and is granted `actions: write`) only when
-  every secret the command names is also on the pull-request job.
+  so only the comment-started job holds them. The trade-offs, including why such
+  a command reviews in its own job, are in
+  [Who the reviews post as](./ai-review.md#who-the-reviews-post-as).
 - **Forks.** A fork's pull request receives no secrets from GitHub at all, and
   the pull-request job's gate skips it besides. The command job covers forks
   safely because the pull request is fetched as data and never executed.
@@ -254,4 +254,4 @@ To check the identity took, look at the author of the summary comment: it is
 | Reviews post as `github-actions[bot]`                                                  | The credentials did not reach the job or did not mint. Check the job log for `gh: could not mint the app token (…)` — a `401` means the id or key is wrong or the PEM was pasted incompletely; `is the app installed on …` means step 2 was skipped; `pinned to …` means `.repository(...)` names another repository. |
 | Replies land but threads stay open, Notes say `Resource not accessible by integration` | The token lacks `contents: write`: either the App was not granted Contents read and write in step 1, or the build's `.permission(...)` list omits it.                                                                                                                                                                 |
 | `@acme-bot review` does nothing                                                        | The commenter is below the command's role floor (push access by default), the comment does not _start_ with the mention, or the author is a bot account. The gate step's log says which; `command: (c) => c.role(...)` or `.users(...)` widens it.                                                                    |
-| No 👍 on the command comment                                                           | Issues read and write is missing on the App. Harmless — the review still runs — but it is the one visible sign the command was picked up.                                                                                                                                                                             |
+| No 👍 on the command comment                                                           | When the command job reviews itself, the App reacts, and Issues read and write is missing on the App; when it re-runs the pull request's own review, `GITHUB_TOKEN` reacts, so it is the re-run that did not start. Harmless — the review still runs — but it is the one visible sign the command was picked up.      |

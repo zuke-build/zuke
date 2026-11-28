@@ -1,10 +1,10 @@
 # Releasing
 
-Zuke publishes 72 packages to [JSR](https://jsr.io/@zuke) from a single
-workspace — `@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd`
-fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
-`@zuke/ai`, …). Releases are automated end to end; you only ever merge a pull
-request.
+Zuke publishes 72 packages to [JSR](https://jsr.io/@zuke), and all but
+`@zuke/engine` to npm as `@zuke-build/<name>`, from a single workspace —
+`@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd` fallback, and 50+
+typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`, `@zuke/ai`, …).
+Releases are automated end to end; you only ever merge a pull request.
 
 ## How it works
 
@@ -157,12 +157,13 @@ in `build/cli_*.ts`):
    published `SHA256SUMS` with the real `choco` on Windows and runs it.
 7. `cliChocolatey` pushes the package to the community repository with
    `CHOCOLATEY_API_KEY`, held in the `chocolatey` environment. The Windows
-   executable is not Authenticode-signed yet (#793). The push runs only while
-   the repository variable `CHOCOLATEY_PUSH` is `enabled`. It is paused while
-   the package's first version waits in community moderation, because until that
-   version is approved a new push is refused with a 403 that would fail every
-   release (#855). The package is still built and verified on every release.
-   Once the moderators approve it, set the variable under Settings → Secrets and
+   executable ships unsigned: SignPath declined a free license, so Windows
+   signing is skipped for now (#793). The push runs only while the repository
+   variable `CHOCOLATEY_PUSH` is `enabled`. It is paused while the package's
+   first version waits in community moderation, because until that version is
+   approved a new push is refused with a 403 that would fail every release
+   (#855). The package is still built and verified on every release. Once the
+   moderators approve it, set the variable under Settings → Secrets and
    variables → Actions → Variables, and the next release pushes whatever version
    is owed.
 8. `pythonSync`, once this run has published a CLI release, starts
@@ -283,7 +284,8 @@ targets skip it.
 The same targets the workflows use are runnable locally:
 
 ```sh
-deno task zuke ci      # the full gate CI runs
-deno task zuke test    # type-check + tests
-deno task zuke --list  # every target
+node build.ts ci        # the full gate CI runs
+node build.ts test      # type-check + tests
+node build.ts --list    # every target
+deno task zuke ci       # the same targets in the Deno lane
 ```

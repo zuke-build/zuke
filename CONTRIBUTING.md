@@ -1,14 +1,14 @@
 # Contributing to Zuke
 
 Thanks for your interest in improving Zuke! This project is a code-first,
-strongly-typed build automation system for Deno & TypeScript, and contributions
-of all kinds — bug reports, docs, tests, and code — are welcome.
+strongly-typed build automation system for TypeScript, on Node or Deno, and
+contributions of all kinds — bug reports, docs, tests, and code — are welcome.
 
 By participating, you agree to abide by our
 [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 > [!NOTE]
-> Every Zuke package is `1.x` on full semver — see
+> Every Zuke package is at 1.0 or later on full semver — see
 > [Versioning & compatibility](./docs/versioning.md) for the compatibility
 > promise, the `@zuke/core` floor, and pinning guidance.
 
@@ -22,19 +22,20 @@ By participating, you agree to abide by our
 
 ## Prerequisites
 
-- [Deno](https://deno.com/) 2.x — the test runner, linter, type-checker and
-  coverage tooling are all the built-in `deno` CLI.
-- [Node](https://nodejs.org/) with npm, for the formatter,
-  [dprint](https://dprint.dev/), and the gate's second linter,
-  [Oxlint](https://oxc.rs/). Both are pinned in `package.json`; `npm ci`
-  installs them, and the gate does so itself.
+- [Node](https://nodejs.org/) with npm — the gate runs on Node, with the
+  formatter [dprint](https://dprint.dev/), the linter [Oxlint](https://oxc.rs/)
+  and `tsc`, all pinned in `package.json`; `npm ci` installs them.
+- [Deno](https://deno.com/) 2.x, for the Deno lane (`deno task ...`): the
+  built-in `deno` test runner, linter, type-checker and coverage tooling. The
+  build fetches the pinned Deno it needs itself.
 
 ## Getting started
 
 ```sh
 git clone https://github.com/zuke-build/zuke.git
 cd zuke
-deno task ci   # run the full gate to confirm a clean baseline
+npm ci
+node build.ts ci   # run the full gate to confirm a clean baseline
 ```
 
 ## Development workflow
@@ -50,13 +51,13 @@ deno task ci   # run the full gate to confirm a clean baseline
 | Spell-check                   | `deno task spell`                       |
 | Full pre-commit / CI gate     | `deno task ci` / `./zuke ci`            |
 
-**Run `deno task ci` before opening a pull request — it must be green.** `deno
-task ci` is `deno run -A --frozen build.ts ci`, the same gate CI's `ci` job runs
-(see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so a green
-`deno task ci` locally means a green CI run. CI runs it on Node, as `npm ci`
-then `node build.ts ci`, and runs the suite on Deno too. If you change a public
-API, regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
-`apiDocsCheck`, which fails on stale generated docs.
+The `deno task` commands above are the Deno lane. **Run `npm ci` and then `node
+build.ts ci` before opening a pull request — it must be green.** That is the
+gate CI's `ci` job runs (see [`AGENTS.md`](./AGENTS.md#commands) for the full
+check list); `deno task ci` / `./zuke ci` runs the same targets on Deno, and CI
+runs the suite on Deno too. If you change a public API, regenerate the docs in
+the same change (`./zuke apiDocs`) — `ci` includes `apiDocsCheck`, which fails
+on stale generated docs.
 
 ## Coding standards (non-negotiable)
 
@@ -70,14 +71,14 @@ code in this repo is written (`CLAUDE.md` is a one-line pointer to it):
    that deliberately exercises a runtime guard against type-unsafe input, with a
    comment explaining why. Do not use it in `src/`.
 2. **Everything must pass.** Linting, formatting, type-checking, and tests are
-   all enforced by `deno task ci`.
+   all enforced by `node build.ts ci`.
 3. **Keep coverage at 95%+** (lines and branches) at all times. New code needs
    new tests in the same change.
 4. **Document the public API.** Every exported symbol carries a JSDoc comment;
    match the existing density and tone.
 5. **Tests are hermetic and fast.** No network and no reliance on ambient tools.
-   When a test needs a subprocess, invoke `Deno.execPath()` (the running
-   `deno`), which is always present and shell-free.
+   When a test needs a subprocess, invoke `RuntimeTasks.execPath()` (the running
+   runtime), which is always present and shell-free.
 6. **No dead code.** Remove unreachable branches, unused helpers, and fallbacks
    that can never fire — tighten the types so the impossible state is
    unrepresentable rather than guarding it with an arm that never runs.

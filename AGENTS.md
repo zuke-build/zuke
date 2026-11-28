@@ -2,8 +2,8 @@
 
 Guidance for working in this repository. Read this before making changes.
 
-Zuke is a code-first, strongly-typed build automation system for
-Deno/TypeScript.
+Zuke is a code-first, strongly-typed build automation system for TypeScript, on
+Node or Deno.
 
 > This file, `AGENTS.md`, is the single source of truth for both humans and
 > agents. `CLAUDE.md` is a thin pointer whose entire content is `@AGENTS.md`, so
@@ -56,15 +56,20 @@ The mental model:
   it** (fields initialise top-to-bottom).
 - Make the file runnable with **`await run(MyBuild)`** at the bottom — no `if
   (import.meta.main)` guard; `run` no-ops when the module is imported.
-- **Import `@zuke/*` by bare specifier, declaring it in `deno.json`** — `import
-  { DenoTasks } from "@zuke/deno";` with `"@zuke/deno": "jsr:@zuke/deno@^1"` in
-  the `imports` block, which is what `deno add jsr:@zuke/deno` writes for you.
-  Never inline the `jsr:` specifier in the import statement: Deno's default lint
-  set (the one that applies when `deno.json` configures no `lint.rules`, which
-  is what `zuke setup` scaffolds) rejects it under `no-import-prefix`, so an
-  inlined one fails the project's own `deno task lint`. The caret major is
-  pinned in the map instead, so a future `@zuke` major cannot land unannounced.
-  A subpath such as `@zuke/core/shell` resolves through the same entry.
+- **Import `@zuke/*` by bare specifier, declaring it in `package.json` (Node,
+  the default) or `deno.json` (Deno)** — `import { DenoTasks } from
+  "@zuke/deno";` with the alias `"@zuke/deno": "npm:@zuke-build/deno@^1"` in
+  `package.json`'s `dependencies` (what `npm install
+  @zuke/deno@npm:@zuke-build/deno` writes), or on Deno `"@zuke/deno":
+  "jsr:@zuke/deno@^1"` in the `imports` block, which is what `deno add
+  jsr:@zuke/deno` writes for you. The launchers bootstrap the project's runtime.
+  On Deno, never inline the `jsr:` specifier in the import statement: Deno's
+  default lint set (the one that applies when `deno.json` configures no
+  `lint.rules`, which is what `zuke setup` scaffolds) rejects it under
+  `no-import-prefix`, so an inlined one fails the project's own `deno task
+  lint`. The caret major is pinned in the map instead, so a future `@zuke` major
+  cannot land unannounced. A subpath such as `@zuke/core/shell` resolves through
+  the same entry.
 - **Every external tool is a namespaced `*Tasks` object** (`DenoTasks`,
   `NpmTasks`, `DockerTasks`, `GitTasks`, …) configured with a **settings
   lambda** that mirrors the real CLI's flags:
@@ -93,25 +98,26 @@ regenerate them in the same PR.
 
 ## Tech stack
 
-- **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). The test runner,
-  linter, type-checker and coverage are the built-in `deno` CLI. Formatting is
+- **Runtime & toolchain:** [Node](https://nodejs.org/) runs the gate (`node
+  build.ts ci`); [Deno](https://deno.com/) (2.x) is the second lane, with its
+  test runner, type-checker and coverage, and its `deno lint`. Formatting is
   [dprint](https://dprint.dev/) (`dprint.json`), and the gate also lints with
   [Oxlint](https://oxc.rs/) (`.oxlintrc.json`) and type-checks with `tsc`
   (`tsconfig.json`); all three are pinned in the npm workspace (`package.json`),
-  which the gate's `npmInstall` target installs, so they need Node. `npmBuild`
-  also uses npm, to install `tsc` and compile the packages for npm. The steps
-  that still run Deno itself (`apiDocs`, `docLint`, `apiReference` and
-  `publishJsr`) use the Deno release the launchers pin, which the build
-  installs, checksum-verified, into `.zuke/tools` (`build/deno_tool.ts`).
-- **Language:** TypeScript, strict mode (Deno's default).
+  which the gate's `npmInstall` target installs. `npmBuild` also uses npm, to
+  install `tsc` and compile the packages for npm. The steps that still run Deno
+  itself (`apiDocs`, `docLint`, `apiReference` and `publishJsr`) use the Deno
+  release the launchers pin, which the build installs, checksum-verified, into
+  `.zuke/tools` (`build/deno_tool.ts`).
+- **Language:** TypeScript, strict mode.
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 72 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
   `./render`, `./conformance`) plus the `@zuke/cli` command, a generic
   `@zuke/cmd` fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`,
-  `@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …). Every package is also published
-  to npm as `@zuke-build/<name>` (compiled by `npmBuild`, published by
-  `publishNpm`; see `RELEASING.md`) and consumed there through an alias as
-  `@zuke/<name>`.
+  `@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …). Every package except
+  `@zuke/engine` is also published to npm as `@zuke-build/<name>` (compiled by
+  `npmBuild`, published by `publishNpm`; see `RELEASING.md`) and consumed there
+  through an alias as `@zuke/<name>`.
 - **No runtime dependencies.** The library is dependency-free; tests use a local
   assertion helper (`tests/_assert.ts`) rather than a third-party assert library
   so the suite runs with zero network access. This is a claim about the
@@ -182,8 +188,8 @@ every SDK, and every change must keep it:
      deliberately exercises a runtime guard against type-unsafe input, with a
      comment explaining why. Do not use it in `src/`.
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
-   `deno task ci` (which delegates to `./zuke ci`, the same gate CI runs) before
-   committing; it must be green.
+   `npm ci` then `node build.ts ci` (the same gate CI runs; `deno task ci` /
+   `./zuke ci` is the Deno lane) before committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced
    twice in CI, on Linux, where the whole suite runs: the gate's `nodeTest`
    target runs the suite on Vitest with the thresholds in `vitest.config.ts`,
@@ -371,9 +377,9 @@ flow mechanism, or anything with cross-process or cross-OS behaviour) also adds
 an **e2e** test. All three obey guideline 5: hermetic and fast, no network, no
 ambient tools.
 
-The gate's `test` target splits the `*_test.ts` files across one `deno test`
-process per CPU (`build/test_shards.ts`), so **files run concurrently with each
-other** in separate processes, while the tests inside one file still run in
+The Deno lane's `test` target splits the `*_test.ts` files across one `deno
+test` process per CPU (`build/test_shards.ts`), so **files run concurrently with
+each other** in separate processes, while the tests inside one file still run in
 order. A test may set the environment or change the working directory, which
 only affect its own process, but it must not write to a fixed path that another
 file could also use: work in a `withTemp` directory instead. Name every test
@@ -463,34 +469,35 @@ the three test layers above and the "read every reviewer comment" rule below.
 
 ## Commands
 
-| Task                          | Command                                 |
-| ----------------------------- | --------------------------------------- |
-| Run tests                     | `deno task test`                        |
-| Coverage + gate (95%)         | `deno task cov`                         |
-| Human-readable coverage table | `deno task cov:report`                  |
-| Type-check everything         | `deno task check`                       |
-| Format / check formatting     | `deno task fmt` / `deno task fmt:check` |
-| Lint                          | `deno task lint`                        |
-| Spell-check                   | `deno task spell`                       |
-| Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`            |
-| Regenerate `deno.lock`        | `deno task lock`                        |
-| Verify declared core floors   | `./zuke coreFloorCheck` (needs network) |
+| Task                          | Command                                        |
+| ----------------------------- | ---------------------------------------------- |
+| Run tests                     | `deno task test`                               |
+| Coverage + gate (95%)         | `deno task cov`                                |
+| Human-readable coverage table | `deno task cov:report`                         |
+| Type-check everything         | `deno task check`                              |
+| Format / check formatting     | `deno task fmt` / `deno task fmt:check`        |
+| Lint                          | `deno task lint`                               |
+| Spell-check                   | `deno task spell`                              |
+| Pre-commit gate (same as CI)  | `node build.ts ci` (Deno lane: `deno task ci`) |
+| Regenerate `deno.lock`        | `deno task lock`                               |
+| Verify declared core floors   | `./zuke coreFloorCheck` (needs network)        |
 
-`deno task ci` is `deno run -A --frozen build.ts ci` — the exact gate the `ci`
-job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
-can drift from it. CI runs that gate on Node (#993), on all three OSes, after
-`npm ci` installs the workspace: `node build.ts ci`. Its Deno steps fetch the
-pinned Deno themselves (`build/deno_tool.ts`), and the `Tests` jobs are the Deno
-lane: `deno check` and the whole suite on Deno on the same three OSes, with
-Deno's coverage gate on Linux (`./zuke coverage`). `build.ts`'s `ci` target
-depends on: `format` (`dprint check`), `lint` (`deno lint`), `oxlint`, `tsc`,
-`spell` (cspell), `nodeTest` (the suite on Vitest with the 95% coverage gate),
-`coverageUpload` (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`,
-`docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
-`launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`,
-`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `build.ts`'s
-`ci` target for the current, authoritative list — this is a snapshot, not a
-second source of truth.
+`node build.ts ci` is the exact gate the `ci` job in `ci.yml` runs, so there is
+one gate, not a hand-maintained subset that can drift from it. CI runs it on
+Node (#993), on all three OSes, after `npm ci` installs the workspace. `deno
+task ci` (`deno run -A --frozen build.ts ci`) is the same gate on Deno. Its Deno
+steps fetch the pinned Deno themselves (`build/deno_tool.ts`), and the `Tests`
+jobs are the Deno lane: `deno check` and the whole suite on Deno on the same
+three OSes, with Deno's coverage gate on Linux (`./zuke coverage`). `build.ts`'s
+`ci` target depends on: `format` (`dprint check`), `lint` (`deno lint`),
+`oxlint`, `tsc`, `spell` (cspell), `nodeTest` (the suite on Vitest with the 95%
+coverage gate), `coverageUpload` (skips locally without a `CODECOV_TOKEN`),
+`apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`,
+`pluginSyncCheck`, `launcherSyncCheck`, `packageJsonSyncCheck`, `skillsCheck`,
+`graphDocCheck`, `toolSpecCheck`, `pluginVersionCheck`, `prBodyLint`,
+`actionPinCheck`, `npmSmoke`, `npmSigstoreCheck`, `security`, and `lockCheck`.
+Read `build.ts`'s `ci` target for the current, authoritative list — this is a
+snapshot, not a second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `build.ts` — both
 launchers (once a `deno.lock` exists, which in this repository is always) and
@@ -520,7 +527,7 @@ tests/
 examples/                 # cloneable mini projects, type-checked and listed by `examplesCheck`
 build.ts                  # Zuke's own build (runnable example); zuke.json names it
 build/                    # reusable helpers behind build.ts's targets (docs, publish, snippets, …)
-zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build) — GENERATED from packages/cli/src/launcher.ts by `./zuke launcherSync`; zuke.json names the build class
+zuke, zuke.ps1            # bootstrap launchers (install the project's runtime, run the build) — GENERATED from packages/cli/src/launcher.ts by `./zuke launcherSync`; zuke.json names the build class
 docs/                     # long-form guides (linked from the README)
 skills/                   # agent skills: zuke-write-build, zuke-setup
 plugins/zuke/             # Claude Code + Codex plugin wrapping the skills
@@ -618,10 +625,10 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   `1.1.0`, and `1.0.0` never exists. At `0.0.0` the first release is `1.0.0`,
   and `publishJsr` skips the package until then. `tests/release_config_test.ts`
   fails on a package with no `CHANGELOG.md` that is not at `0.0.0`. Omitting
-  `build.ts` means the package is released but never published; omitting the
-  `README.md` table means it is invisible to anyone browsing the repo; omitting
-  `build/website_tools.ts` fails the gate, because the website's package grid is
-  generated from it by `syncWebsite`.
+  `build/packages.ts` means the package is released but never published;
+  omitting the `README.md` table means it is invisible to anyone browsing the
+  repo; omitting `build/website_tools.ts` fails the gate, because the website's
+  package grid is generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`

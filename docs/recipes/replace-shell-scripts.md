@@ -22,7 +22,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-deno test -A
+npm test
 git tag -a "v$VERSION" -m "Release $VERSION"
 git push origin --follow-tags
 ```
@@ -35,19 +35,19 @@ project without `set -e`, or the `$(...)` quoting is one level off.
 <!-- check -->
 
 ```ts
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env node
 import { $ } from "@zuke/core/shell";
 
-const [version, flag] = Deno.args;
+const [version, flag] = process.argv.slice(2);
 if (version === undefined) {
-  console.error("usage: deno run -A scripts/release.ts <version> [--dry-run]");
-  Deno.exit(2);
+  console.error("usage: node scripts/release.ts <version> [--dry-run]");
+  process.exit(2);
 }
 
 const dirty = await $`git status --porcelain`.quiet().text();
 if (dirty !== "") throw new Error("release: the working tree is not clean");
 
-await $`deno test -A`;
+await $`npm test`;
 
 if (flag === "--dry-run") {
   console.log(`dry run: would tag v${version} and push`);
@@ -58,8 +58,8 @@ if (flag === "--dry-run") {
 ```
 
 ```sh
-deno run -A scripts/release.ts 1.1.0 --dry-run
-deno run -A scripts/release.ts 1.1.0
+node scripts/release.ts 1.1.0 --dry-run
+node scripts/release.ts 1.1.0
 ```
 
 ## What you gained

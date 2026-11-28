@@ -6,7 +6,7 @@ the primary concern, and this document describes how the project is hardened and
 how to report problems.
 
 > Zuke is largely AI-written (see the README). Review before you rely on it.
-> Every package is `1.x` on full semver; depend on the caret range
+> Every package is at 1.0 or later on full semver; depend on the caret range
 > (`jsr:@zuke/core@^1`) rather than an exact version, so patch fixes reach you —
 > see [Versioning & compatibility](./docs/versioning.md).
 
@@ -46,11 +46,15 @@ boundaries, and the design-principle arguments behind the list below:
   binaries (the Codecov CLI, zizmor, actionlint, gitleaks) provisioned by the
   build's `toolchain()`. All of it is dev/release-time only.
 - **Injection-free command execution.** All process execution goes through
-  `Deno.Command` with a discrete argv array — there is no shell string, so
-  interpolated values can never be reinterpreted as shell syntax.
+  `Deno.Command` on Deno and `node:child_process` on Node, with a discrete argv
+  array — there is no shell string, so interpolated values can never be
+  reinterpreted as shell syntax.
 - **Trusted publishing via OIDC.** Packages publish to JSR with a short-lived
-  OIDC token (`id-token: write`); no long-lived registry tokens or secrets are
-  stored. JSR records build **provenance** for each published version.
+  OIDC token (`id-token: write`); no long-lived JSR token exists. The npm
+  release, as `@zuke-build/<name>`, authenticates with an `NPM_TOKEN` secret
+  that only the `publishNpm` job's `npm` environment holds, and signs each
+  version's provenance with the job's OIDC identity. JSR and npm record build
+  **provenance** for each published version.
 - **Least-privilege CI.** The default workflow token is `contents: read`. The
   release pipeline is split so the `release` job (`contents` / `pull-requests:
   write`) and the `publishJsr` job (`id-token: write`) never hold each other's
@@ -61,12 +65,14 @@ boundaries, and the design-principle arguments behind the list below:
   block` allowlist, so outbound access is enforced rather than merely audited.
   The `test` job in `ci.yml` is the exception: it holds no token and only runs
   the test suite.
-- **Pinned toolchain.** The `./zuke` launcher bootstraps a **pinned** Deno
-  version, so CI and local builds install a known version rather than a moving
-  `latest`. Dependencies are resolved against a committed `deno.lock`, enforced
-  with `--frozen`. The scanner CLIs are pinned and checksum-verified in
-  `build/scanners.ts` and provisioned by the build itself, so the security
-  workflow needs no install step and nothing has to be present on `PATH`.
+- **Pinned toolchain.** The `./zuke` launcher bootstraps a **pinned** Node (or,
+  for a Deno project, Deno) version, so CI and local builds install a known
+  version rather than a moving `latest`. Dependencies are resolved against a
+  committed `package-lock.json` (installed with `npm ci`) on Node, or
+  `deno.lock` enforced with `--frozen` on Deno. The scanner CLIs are pinned and
+  checksum-verified in `build/scanners.ts` and provisioned by the build itself,
+  so the security workflow needs no install step and nothing has to be present
+  on `PATH`.
 - **Scanning via Zuke.** The supply-chain scanners run as a typed Zuke build
   target — `./zuke security` drives zizmor (Actions SAST), actionlint, and
   gitleaks (secrets) through [`@zuke/security`](./packages/security), failing
@@ -80,13 +86,15 @@ boundaries, and the design-principle arguments behind the list below:
 
 ### Known trade-offs
 
-- **Bootstrap launchers.** `./zuke` and `./zuke.ps1` install Deno on first use
-  by downloading the pinned release archive from GitHub and verifying it against
-  a per-platform SHA-256 baked into the launcher. No install script is fetched
-  or executed. `DENO_VERSION=latest` is **refused** — a moving target has no
-  checksum to pin — and overriding the version requires supplying a matching
+- **Bootstrap launchers.** `./zuke` and `./zuke.ps1` install the project's
+  runtime (Node, or Deno for a Deno project) on first use by downloading the
+  pinned release archive from GitHub and verifying it against a per-platform
+  SHA-256 baked into the launcher. No install script is fetched or executed. On
+  Deno, `DENO_VERSION=latest` is **refused** — a moving target has no checksum
+  to pin — and overriding the version requires supplying a matching
   `DENO_SHA256`, so the launcher never runs an unverified binary. To skip the
-  bootstrap entirely, install Deno yourself so the launcher finds it on `PATH`.
+  bootstrap entirely, install the runtime yourself so the launcher finds it on
+  `PATH`.
 - **`deno publish --allow-dirty`.** The publish step currently allows a dirty
   tree as a backstop. The merged release tree should already be clean; once a
   real release confirms this, drop the flag for the strongest "published ==
@@ -229,9 +237,9 @@ download. [Installing](./docs/install.md#verifying-a-download) has the commands.
 _Proves_ the archive was built by this repository's release workflow and is the
 one the release lists. _Does not prove_ the source is sound.
 
-- **Launcher downloads.** The `./zuke` / `zuke.ps1` launchers verify the Deno
-  archive they bootstrap against a per-platform SHA-256 baked into the launcher,
-  as described under "Known trade-offs".
+- **Launcher downloads.** The `./zuke` / `zuke.ps1` launchers verify the Node or
+  Deno archive they bootstrap against a per-platform SHA-256 baked into the
+  launcher, as described under "Known trade-offs".
 
 Git tags are created by release-please through the GitHub API and are **not**
 GPG-signed; the provenance attestation above is the release signature to rely
@@ -269,6 +277,6 @@ These cannot be set from files in the repo; configure them in GitHub settings:
   GitHub-managed **Code Quality** analysis is a separate feature and can stay
   enabled alongside it.
 - **Enable secret scanning and push protection** (free for public repos).
-- **Require 2FA** for all maintainers, on both GitHub and JSR.
+- **Require 2FA** for all maintainers, on GitHub, JSR and npm.
 - **Scope the JSR ↔ repo OIDC link** so publishing is allowed only from this
   repository's release workflow.

@@ -71,8 +71,8 @@ Node or Deno up front**, exactly as the Homebrew binary does. Upgrade with
 for the same reason as from Homebrew.
 
 > [!IMPORTANT]
-> `zuke.exe` is **not Authenticode-signed yet**, so Windows SmartScreen may warn
-> the first time it runs. Signing is on its way (see the
+> `zuke.exe` is **not Authenticode-signed**, so Windows SmartScreen may warn the
+> first time it runs. Signing is skipped for now (see the
 > [code signing policy](#code-signing-policy)). Until then, the checksum and the
 > build-provenance attestation in [Verifying a download](#verifying-a-download)
 > are what prove the binary is the one Zuke's release built. If you would rather
@@ -167,12 +167,10 @@ formula and the package are published — is in
 
 ## Code signing policy
 
-The Windows binary is **not Authenticode-signed yet**. Zuke has applied to the
-[SignPath Foundation](https://signpath.org)'s programme for open-source
-projects, which provides free code signing through
-[SignPath.io](https://about.signpath.io). Until a signing service is in place,
-`zuke.exe` ships unsigned, and the checksum and build-provenance attestation
-above are what vouch for it.
+The Windows binary is **not Authenticode-signed**. The
+[SignPath Foundation](https://signpath.org) declined Zuke a free license, so
+signing is skipped for now and `zuke.exe` ships unsigned. The checksum and
+build-provenance attestation above are what vouch for it.
 
 Once signing is in place, the policy is this: only the release workflow on
 `master` submits a signing request, and the signing service checks that the
@@ -191,5 +189,5 @@ Privacy: this program will not transfer any information to other networked
 systems unless specifically requested by the user or the person installing or
 operating it. The `zuke` CLI collects no telemetry. It reaches the network only
 for what you ask of it: `zuke upgrade` reads the latest release from JSR, and a
-build downloads Deno and the packages it imports, plus whatever its own targets
-call.
+build downloads Node, or Deno for a Deno project, and the packages it imports,
+plus whatever its own targets call.

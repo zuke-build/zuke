@@ -12,17 +12,17 @@ the committed copy drifts.
 
 ```ts
 import { Build, cicd, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class MyBuild extends Build {
   // one line → .github/workflows/ci.yml, one job per target
   ci = cicd({ provider: "github", fanOut: true });
 
-  lint = target().executes(() => DenoTasks.lint());
+  lint = target().executes(() => NpmTasks.run((s) => s.script("lint")));
 
   test = target()
     .dependsOn(this.lint)
-    .executes(() => DenoTasks.test((s) => s.allowAll()));
+    .executes(() => NpmTasks.test());
 }
 
 await run(MyBuild);
@@ -96,7 +96,7 @@ targets; the default path follows the provider:
 
 ```ts
 import { Build, cicd, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class Pipeline extends Build {
   ci = cicd({ provider: "github", fanOut: true }); // .github/workflows/ci.yml
@@ -104,7 +104,7 @@ class Pipeline extends Build {
   azure = cicd({ provider: "azure" }); // azure-pipelines.yml
   bitbucket = cicd({ provider: "bitbucket" }); // bitbucket-pipelines.yml
 
-  test = target().executes(() => DenoTasks.test((s) => s.allowAll()));
+  test = target().executes(() => NpmTasks.test());
 }
 
 await run(Pipeline);

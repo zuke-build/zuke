@@ -33,14 +33,14 @@ Adversaries considered, and the assets they target:
 | Malicious contributor (fork PR)              | CI secrets, write token         | Fork PRs run with a read-only token and no secrets; `pull_request` (never `pull_request_target`) triggers. The one job that runs with secrets for a fork PR — the AI review a maintainer's `@zuke-build review` comment starts — runs `master`'s code and fetches the PR as data, never executing it                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Compromised third-party action               | CI secrets, published artifacts | Every action pinned to a full commit SHA; Dependabot bumps pins; zizmor audits workflows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Compromised build-time dependency            | Release credentials, egress     | `--frozen` lockfile; zero runtime dependencies; egress **blocked** to an allowlist on every job holding a write-scoped token                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Registry-level attacker                      | Consumers of `@zuke/*`          | OIDC trusted publishing; Sigstore provenance per version; no long-lived registry tokens exist                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Network attacker (MITM) on bootstrap         | Developer/CI machines           | Launcher downloads the pinned Deno release over HTTPS and verifies a per-platform SHA-256 baked into the launcher; `DENO_VERSION=latest` is refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Registry-level attacker                      | Consumers of `@zuke/*`          | OIDC trusted publishing to JSR, with no long-lived JSR token; npm publishes with a token only its `npm` environment holds; Sigstore provenance per version on both                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Network attacker (MITM) on bootstrap         | Developer/CI machines           | Launcher downloads the pinned Node or Deno release over HTTPS and verifies a per-platform SHA-256 baked into the launcher; `DENO_VERSION=latest` is refused, and a `NODE_VERSION` override needs `NODE_SHA256`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Careless or compromised insider              | Repository history              | gitleaks scans full history on schedule and pushes; PR-scoped scans on every pull request; secret parameters are redacted from output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Contributor with write access (same-repo PR) | CI secrets, write token         | Not defended against, by design: the lint fixer pushes fixes and Codecov uploads from pull-request runs, so same-repo PRs carry `OPENAI_API_KEY`, `CODECOV_TOKEN` and a write-scoped token, and the AI review job carries the `zuke-build` App's credentials so the token it mints can resolve the review threads it answers, which the Actions token is refused. Write access is held only by maintainers, whose own secrets these are, and every repository secret is readable from any branch a maintainer pushes regardless of which job names it; the residual is a compromised maintainer account yielding an OpenAI key, an upload-only Codecov token, and the App key, whose blast radius egress blocking on that job bounds to GitHub and the model provider |
 
-Out of scope: vulnerabilities in GitHub, JSR, or Deno themselves (they are the
-trusted computing base — see the boundaries below), and denial of service
-against public CI.
+Out of scope: vulnerabilities in GitHub, JSR, npm, Node, or Deno themselves
+(they are the trusted computing base — see the boundaries below), and denial of
+service against public CI.
 
 ## Trust boundaries
 
@@ -67,11 +67,11 @@ against public CI.
    with the token.
 5. **Repository → third-party code.** Actions cross the boundary only at pinned
    commit SHAs; scanner binaries only with verified checksums
-   (`build/scanners.ts`); modules only through the committed, frozen
-   `deno.lock`.
+   (`build/scanners.ts`); modules only through the committed, frozen `deno.lock`
+   and, for the Node gate, `package-lock.json`.
 6. **Trusted computing base.** GitHub (repository, Actions, OIDC issuer), JSR
-   (registry, provenance), and the pinned Deno runtime are trusted. Attacks on
-   them are acknowledged as out of scope above.
+   and npm (registries, provenance), and the pinned Node and Deno runtimes are
+   trusted. Attacks on them are acknowledged as out of scope above.
 
 ## Secure design principles
 
@@ -81,7 +81,7 @@ against public CI.
   as a trade-off in `SECURITY.md`, and is inert for fork PRs.
 - **Fail-safe defaults.** The lockfile is enforced with `--frozen`, so a missing
   resolution fails the run instead of being healed silently. The launcher
-  refuses a Deno version it cannot verify against a pinned checksum. The
+  refuses a Node or Deno version it cannot verify against a pinned checksum. The
   coverage gate fails the build below threshold rather than warning.
 - **Complete mediation.** One gate (`./zuke ci`) stands in front of every merge
   — the same gate locally and in CI, so there is no unchecked path to `master`;
@@ -89,9 +89,9 @@ against public CI.
   sync and tap targets refuse any other ref. That refusal guards against a
   mistaken dispatch of `release.yml`, not against a write-access account, whose
   branch runs its own copy of the build.
-- **Economy of mechanism.** Zero runtime dependencies and a single toolchain
-  (Deno) keep the attack surface enumerable: what ships is only this
-  repository's source.
+- **Economy of mechanism.** Zero runtime dependencies and a small toolchain
+  (Node and npm for the gate, Deno for the packages' own checks) keep the attack
+  surface enumerable: what ships is only this repository's source.
 - **Open design.** The build, the workflows (generated from
   `build/workflows.ts`), the scanners, and this assurance case are all public;
   nothing relies on secrecy.
@@ -106,7 +106,8 @@ against public CI.
 
 - **Command injection** (the classic build-tool weakness): the `$` shell
   tokenises interpolated values into discrete argv entries and all process
-  execution goes through `Deno.Command` — there is no shell-string concatenation
+  execution goes through the runtime's process API (`node:child_process` on
+  Node, `Deno.Command` on Deno) — there is no shell-string concatenation
   anywhere to inject into.
 - **Type confusion / unsafe casts:** strict TypeScript with `any`, forced `as`
   casts, and non-null `!` assertions banned by policy and lint; runtime guards

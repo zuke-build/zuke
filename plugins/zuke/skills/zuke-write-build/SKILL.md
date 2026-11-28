@@ -10,7 +10,9 @@ created with `target()` and made runnable with `await run(MyBuild)` at the
 bottom of `build.ts` (no `import.meta.main` guard — `run` no-ops on import). The
 build runs on Node, the default for a new project, or on Deno: `zuke.json`'s
 `"runtime"` field says which (`"node"`, or none for Deno). Builds on Deno are
-supported until October 2027; `docs/moving-to-node.md` moves one.
+supported until October 2027;
+[`docs/moving-to-node.md`](https://github.com/zuke-build/zuke/blob/master/docs/moving-to-node.md)
+moves one.
 
 <!-- check -->
 
@@ -223,7 +225,8 @@ Packages` list or the cheatsheet table below) can.
   `ctx.signals`) and `resumeWhen(predicate)`. Continue it with `zuke resume <id>
   --signal <name> [--data <json>]` (or `--check` for predicate waits/timeouts) —
   exactly-once, re-running only the not-yet-succeeded targets. Needs a state
-  store. See the cheatsheet / `docs/orchestration.md`.
+  store. See the cheatsheet /
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - **Cancellation & compensation:** `.onCancel(() => this.rollback)` registers a
   compensation that runs **iff this target succeeded** when the run is later
   cancelled — compensations run in reverse order, and the compensation body's
@@ -234,7 +237,8 @@ Packages` list or the cheatsheet table below) can.
   check: `.onFailure(() => "cancel-run")` turns that target's final failure into
   a cancellation, so a bad health check unwinds through the same rollback (a
   named target runs first, with the failed target's state). Needs a state store.
-  See `docs/orchestration.md`.
+  See
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - **Durable side effects:** `.effect(name, fn)` records the intent to run `fn`
   before it runs, so a resume re-drives an effect a dead process left owed.
   Effects run after the body, in declaration order; a target may declare effects
@@ -242,7 +246,8 @@ Packages` list or the cheatsheet table below) can.
   a repeat (an upsert, not an append), and read what the effect acts on from
   `ctx.state` rather than looking up "the current value" — a re-drive happens
   later, against a world that moved on. Needs a state store (enabled
-  automatically). See the cheatsheet / `docs/orchestration.md`.
+  automatically). See the cheatsheet /
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - **Fan-out over a list:** `.forEach(() => this.repos.value, (repo) => ({
   checks: target()…, deploy: target()… }), (s) =>
   s.concurrency(3).continueOnItemFailure())` runs the same pipeline over a
@@ -250,7 +255,8 @@ Packages` list or the cheatsheet table below) can.
   are materialised at run time (`parent[item].stage`), each a first-class row in
   the summary and the run record; `continueOnItemFailure()` isolates a failed
   item. An `.onCancel(...)` on a fan-out stage runs per item on cancel
-  (item-scoped `ctx.state`, reverse order). See `docs/orchestration.md`.
+  (item-scoped `ctx.state`, reverse order). See
+  [`docs/orchestration.md`](https://github.com/zuke-build/zuke/blob/master/docs/orchestration.md).
 - **Typed inputs:** `parameter("...")` (with `.number()` / `.boolean()` /
   `.options(...)` / `.secret()` / `.required()`), read as `this.x.value`, gated
   with `.requires(this.x)`. `.array()` composes and comes **last**:
@@ -275,7 +281,7 @@ Packages` list or the cheatsheet table below) can.
   `.fromNodeModules()` on the settings (or `ZUKE_TOOL_RESOLUTION=node_modules`
   repo-wide) walks up for the local shim and falls back to PATH; `.fromPath()`
   forces PATH and an explicit `.toolPath(...)` always wins. See the cheatsheet /
-  `docs/tools.md`.
+  [`docs/tools.md`](https://github.com/zuke-build/zuke/blob/master/docs/tools.md).
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
   workflow YAML from the build — deploy jobs included: `environment`, `outputs`,
   sparse `matrixInclude`/`matrixExclude` and per-event
@@ -475,7 +481,8 @@ Packages` list or the cheatsheet table below) can.
   unlocks and imports into a throwaway keychain and always deletes it and
   restores the search list, even when the callback throws. Passwords are masked
   in every rendering and error. See the cheatsheet.
-- **Deno Deploy (`@zuke/deno`):** `DenoDeployTasks.deploy((s) =>
+- **Deno Deploy (`@zuke/deno`, deprecated, with Deno: supported until October
+  2027):** `DenoDeployTasks.deploy((s) =>
   s.token(t).org(o).app(a).prod().json().nonInteractive())`; `create`, the
   `env*` tasks (`envAdd((s) => s.variable("K").secretValue(v))`), `logs`
   (`.once()`), `deploymentsList`, `appsGet`, `whoami`. The token goes in

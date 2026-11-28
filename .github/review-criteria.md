@@ -17,9 +17,10 @@ go and disagree with it there rather than here.
 ## The global `zuke` command forwards to the project's build (#578)
 
 The global `zuke` command (`@zuke/cli`) forwards every command that is not its
-own (`setup`, `import`, `doc`, `--help`, `--version`) to the nearest `zuke.json`
-above the working directory and runs the `build.ts` beside it with `deno run
--A`, exactly as the `./zuke` launcher does.
+own (`setup`, `import`, `doc`, `upgrade`, `--help`, `--version`) to the nearest
+`zuke.json` above the working directory and runs the build file beside it with
+`node`, or `deno run -A` for a Deno project (per `zuke.json`), exactly as the
+`./zuke` launcher does.
 
 That walk-up discovery is the accepted design: it is how npm, Deno and git find
 `package.json`, `deno.json` and `.git`, and it is gated like git's
@@ -27,15 +28,15 @@ That walk-up discovery is the accepted design: it is how npm, Deno and git find
 Deno would read must belong to the caller, and the root must not be
 world-writable.
 
-Do not report the forwarding, the ancestor walk, the `-A` run of the caller's
-own build, or the absence of an opt-in flag as findings. Review the gate's
-implementation for concrete bypasses instead.
+Do not report the forwarding, the ancestor walk, the `node` or `-A` run of the
+caller's own build, or the absence of an opt-in flag as findings. Review the
+gate's implementation for concrete bypasses instead.
 
 ## A compiled binary resolves a real Deno (#586)
 
-When the CLI is a `deno compile` binary it cannot spawn its own executable as
-Deno, so it resolves one: whatever `PATH` gives, then
-`${DENO_INSTALL:-~/.deno}/bin/deno`.
+The CLI is a standalone binary (a Node single executable), so it cannot spawn
+its own executable as Deno; for a Deno project it resolves one: whatever `PATH`
+gives, then `${DENO_INSTALL:-~/.deno}/bin/deno`.
 
 That order is the accepted design. It is byte-for-byte the order the generated
 launchers already use in bash and PowerShell; the bootstrap directory is their

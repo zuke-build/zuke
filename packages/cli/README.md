@@ -4,9 +4,10 @@ The `zuke` command-line tool — scaffold
 [Zuke](https://github.com/zuke-build/zuke#readme) into any project.
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli
-zuke setup
-zuke setup --runtime node  # a Node project: package.json and Node launchers, no Deno
+npm install -g @zuke-build/cli
+# or, on Deno: deno install -A -g -n zuke jsr:@zuke/cli
+zuke setup                # a Node project (default)
+zuke setup --runtime deno # a Deno project
 zuke setup --sdk python   # a build.py, with launchers that run the zuke binary: no Deno
 zuke upgrade              # later: move the installed CLI to the latest release
 zuke upgrade --engine     # or move a Python project to the latest zuke release
