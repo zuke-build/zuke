@@ -158,7 +158,8 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   },
   {
     name: OUTDATED_COMMAND,
-    description: "Report JSR packages the lock resolves behind their latest",
+    description:
+      "Report JSR packages the deno.lock resolves behind their latest (Deno builds)",
     usage: ["outdated [--update [<package>...]] [--exit-code]"],
     detail:
       "Compares what the lock resolves against each package's latest release, and with --update moves them up.\n\nIt needs the network, which is why it is a command rather than a line in --list: those stay offline and instant. It exists because a build whose specifiers are written inline, such as jsr:@zuke/git@^1, gets no signal from deno outdated at all — that reads manifests, and an inline specifier is in no manifest.",
@@ -380,7 +381,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "With outdated --update, another module graph sharing the lock",
     command: "outdated",
     detail:
-      "Re-resolve this file's module graph too, alongside the build's own; repeat it for each. A lock that also serves other entrypoints (a workspace member's own zuke.ts, say) is only fully rewritten when every graph is re-resolved, so name them all. Without it, an update that would leave another graph's records short is refused and the lock restored.",
+      "Re-resolve this file's module graph too, alongside the build's own; repeat it for each. A lock that also serves other entrypoints (a workspace member's own build file, say) is only fully rewritten when every graph is re-resolved, so name them all. Without it, an update that would leave another graph's records short is refused and the lock restored.",
   },
   {
     name: "--exit-code",

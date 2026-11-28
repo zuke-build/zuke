@@ -295,6 +295,34 @@ test("a run tool spawns the descriptor's module location", async () => {
   ]);
 });
 
+test("a module registered from Node is launched with Node, as a path", async () => {
+  const registry = new FakeRegistry();
+  const cwd = RuntimeTasks.cwd();
+  // Forward slashes on every OS, so C:\repo becomes file:///C:/repo/Api.ts.
+  const posix = cwd.replaceAll("\\", "/");
+  const rooted = posix.startsWith("/") ? posix : `/${posix}`;
+  registry.add(descriptor("Api", ["deploy"], {
+    kind: "module",
+    module: new URL(`file://${rooted}/Api.ts`).href,
+    cwd,
+    runtime: "node",
+  }));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+
+  assertEquals((await call(server, "run:Api:deploy")).isError, false);
+  assertEquals(calls.length, 1);
+  // node <path> deploy: no deno run, and the file: URL becomes the native path
+  // Node reads, compared with its separators normalised.
+  const [entry, ...rest] = calls[0].argv.slice(1);
+  assertEquals(entry?.replaceAll("\\", "/"), `${posix}/Api.ts`);
+  assertEquals(rest, ["deploy"]);
+  assertEquals(
+    calls[0].argv[0],
+    RuntimeTasks.facts().name === "node" ? RuntimeTasks.execPath() : "node",
+  );
+});
+
 test("a non-zero exit is reported as an error", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));

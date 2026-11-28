@@ -35,7 +35,7 @@ const { optionalStr, str, strArray } = fields("registry: descriptor field");
 
 /**
  * Where a registered build lives, so a runner can launch it. Two forms: a
- * `module` (the entry file `deno run` executes — the form `zuke register`
+ * `module` (the entry file its runtime executes — the form `zuke register`
  * writes) or an explicit `command` (a launch argv, for a build fronted by a
  * wrapper script). Both carry the working directory and, in CI, the repository.
  */
@@ -43,8 +43,14 @@ export type BuildLocation =
   | {
     /** A build launched by running its entry module. */
     kind: "module";
-    /** The entry module `deno run` executes (a `file:`/`https:` URL or path). */
+    /** The entry module the runtime executes (a `file:`/`https:` URL or path). */
     module: string;
+    /**
+     * The runtime the build was registered from, which launches it again:
+     * `node <module>` or `deno run -A <module>`. A descriptor written before
+     * the field existed has none, and runs on Deno as it always did.
+     */
+    runtime?: BuildRuntime;
     /** The working directory the build expects to run in. */
     cwd: string;
     /** The `owner/name` repository slug, when known (from `GITHUB_REPOSITORY`). */
@@ -60,6 +66,9 @@ export type BuildLocation =
     /** The `owner/name` repository slug, when known. */
     repo?: string;
   };
+
+/** The runtimes a registered {@link BuildLocation} module can launch on. */
+export type BuildRuntime = "deno" | "node";
 
 /**
  * A versioned snapshot of one registered build. Persisted as JSON; a registry's
@@ -327,10 +336,22 @@ function parseBuildLocation(value: unknown): BuildLocation {
       : { kind: "command", command, cwd, repo };
   }
   if (object.kind === "module") {
-    const module = str(object, "module");
-    return repo === undefined
-      ? { kind: "module", module, cwd }
-      : { kind: "module", module, cwd, repo };
+    const location: BuildLocation = {
+      kind: "module",
+      module: str(object, "module"),
+      cwd,
+    };
+    const runtime = optionalStr(object, "runtime");
+    if (runtime !== undefined) {
+      if (runtime !== "deno" && runtime !== "node") {
+        throw new Error(
+          `registry: descriptor field "runtime" must be "deno" or "node", not "${runtime}"`,
+        );
+      }
+      location.runtime = runtime;
+    }
+    if (repo !== undefined) location.repo = repo;
+    return location;
   }
   throw new Error(
     `registry: unknown location kind "${String(object.kind)}"`,

@@ -228,7 +228,7 @@ test("gitlab: defaults to the include-snippet path and an MR-only job", () => {
   // Single review job on the Deno image with our timeout.
   assertStringIncludes(yaml, "review:\n  stage: build");
   // The image string has a colon, so YAML emits it quoted.
-  assertStringIncludes(yaml, 'image: "denoland/deno:latest"');
+  assertStringIncludes(yaml, 'image: "node:26"');
   assertStringIncludes(yaml, "timeout: 15 minutes");
   assertStringIncludes(yaml, "script:\n    - ./zuke review");
   // GitLab variables flow in from project settings — no env: block in YAML.
@@ -340,7 +340,7 @@ test("bitbucket: defaults to bitbucket-pipelines.yml with a pull-requests step",
   assertStringIncludes(yaml, '"**":'); // every branch's PRs
   assertStringIncludes(yaml, "- step:");
   assertStringIncludes(yaml, "name: AI review");
-  assertStringIncludes(yaml, 'image: "denoland/deno:latest"');
+  assertStringIncludes(yaml, 'image: "node:26"');
   assertStringIncludes(yaml, "max-time: 15");
   assertStringIncludes(yaml, "- ./zuke review");
   // Like GitLab, repo variables flow in automatically — no env block.

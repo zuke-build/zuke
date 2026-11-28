@@ -10,7 +10,7 @@
       "name": "zuke",
       "source": "./plugins/zuke",
       "description": "Agent skills for Zuke — scaffold Zuke into a project (zuke-setup), write or edit a build.ts build (zuke-write-build), and run, inspect and troubleshoot it (zuke-run-build).",
-      "version": "0.125.0",
+      "version": "0.125.1",
       "author": {
         "name": "Zuke",
         "email": "contact@zuke.build",

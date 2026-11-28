@@ -166,11 +166,11 @@ export class DenoNotFoundError extends Error {
    */
   constructor(tried: readonly string[]) {
     super(
-      `zuke: running a build needs Deno, and none was found — tried ` +
+      `zuke: this needs Deno, and none was found — tried ` +
         `${
           tried.join(", ")
-        }. Install Deno (${DENO_INSTALL_DOCS}), or run the ` +
-        `project's own ./zuke launcher, which installs a pinned Deno itself.`,
+        }. Install Deno (${DENO_INSTALL_DOCS}); a Deno project's own ./zuke ` +
+        `launcher installs a pinned Deno itself.`,
     );
     this.tried = tried;
   }

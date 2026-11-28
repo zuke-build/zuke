@@ -212,9 +212,10 @@ in the Python section.
   is the build file while `deno.json` is not written.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
-- **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching `deno run -A
-  build.ts mcp` (plus `--allow-run` when asked). Merged around any other servers
-  already in the file; an existing `zuke` entry is kept unless `--force` is set.
+- **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching `node build.ts
+  mcp`, or `deno run -A build.ts mcp` on Deno (plus `--allow-run` when asked).
+  Merged around any other servers already in the file; an existing `zuke` entry
+  is kept unless `--force` is set.
 
 ## Running the build
 

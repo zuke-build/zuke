@@ -50,8 +50,8 @@ methods of each):
   `fmt`, `lint`, `cache`, `clean`, `doc`, `run`, `serve`, `eval`, `task`,
   `compile`, `info`, `init`, `upgrade`, `add`, `remove`, `install`, `uninstall`,
   `outdated`, `why`, `ci`, `approveScripts`, `bumpVersion`, `publish`, `pack`,
-  `coverage`; readers `moduleGraph`, `cacheInfo`; `DenoDeployTasks` (deprecated,
-  with Deno: supported until October 2027): `deploy` (`.prod()`), `create`,
+  `coverage`; readers `moduleGraph`, `cacheInfo`; `DenoDeployTasks` (until Deno
+  Deploy closes, about April 2027): `deploy` (`.prod()`), `create`,
   `envList`/`envAdd`
   (`.secretValue()`)/`envUpdateValue`/`envUpdateContexts`/`envDelete`/`envLoad`,
   `logs` (`.once()`), `deploymentsList`, `appsList`, `appsGet`, `orgsList`,

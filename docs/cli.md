@@ -169,28 +169,28 @@ rename one, rename the file, set `build` in `zuke.json`, and re-run `zuke setup
 `deno.json`. A file of the chosen name that is already there and is not a Zuke
 build is never taken over: the wizard asks for another name, and `--yes` fails
 saying to pass `--build-file`. `--mcp` which also writes a `.mcp.json`
-registering the build's own [MCP server](./mcp.md) (`deno run -A build.ts mcp`)
-so an agent client picks the build up from the first commit; `--allow-run`
-registers it with execution enabled and implies `--mcp`. An existing `.mcp.json`
-is merged around its other servers, and an existing `zuke` entry is kept unless
-`--force` is set. Both also ask which launchers to write — `--bootstrap` (the
-default, and what `--yes` takes) scaffolds launchers that download their pinned,
-checksum-verified runtime when it is missing: Deno for a `build.ts` build, the
-`zuke` binary for a Python one. A checkout needs nothing installed up front.
-`--no-bootstrap` scaffolds launchers that require that runtime on `PATH` and
-fail closed without it, for a project that must never download a tool from its
-build entry point. `--bootstrap-deno` and `--no-bootstrap-deno` are the older
-spellings of the same two flags. `--sdk python` scaffolds a `build.py`, a
-`zuke.json` and launchers that run the `zuke` binary. `--zuke <version>` names
-the release those launchers pin (default: the running `zuke`'s own), and
-`zuke.json` pins the engine inside it. `--launcher-name <name>` (for when a
-`zuke/` directory already occupies the launcher's name) and `--sdk python` apply
-to `setup` only; `import` additionally takes `--from
-<package.json|makefile|pyproject>` to pin the source instead of auto-detecting
-it (in that order: `package.json`, then a `Makefile`, then `pyproject.toml`).
-Both finish by scaffolding the launchers (and, for a `build.ts` build,
-`package.json` on Node or `deno.json` on Deno), so the very next command you run
-can be your build's own CLI: `zuke`.
+registering the build's own [MCP server](./mcp.md) (`node build.ts mcp`, or
+`deno run -A build.ts mcp` on Deno) so an agent client picks the build up from
+the first commit; `--allow-run` registers it with execution enabled and implies
+`--mcp`. An existing `.mcp.json` is merged around its other servers, and an
+existing `zuke` entry is kept unless `--force` is set. Both also ask which
+launchers to write — `--bootstrap` (the default, and what `--yes` takes)
+scaffolds launchers that download their pinned, checksum-verified runtime when
+it is missing: Deno for a `build.ts` build, the `zuke` binary for a Python one.
+A checkout needs nothing installed up front. `--no-bootstrap` scaffolds
+launchers that require that runtime on `PATH` and fail closed without it, for a
+project that must never download a tool from its build entry point.
+`--bootstrap-deno` and `--no-bootstrap-deno` are the older spellings of the same
+two flags. `--sdk python` scaffolds a `build.py`, a `zuke.json` and launchers
+that run the `zuke` binary. `--zuke <version>` names the release those launchers
+pin (default: the running `zuke`'s own), and `zuke.json` pins the engine inside
+it. `--launcher-name <name>` (for when a `zuke/` directory already occupies the
+launcher's name) and `--sdk python` apply to `setup` only; `import` additionally
+takes `--from <package.json|makefile|pyproject>` to pin the source instead of
+auto-detecting it (in that order: `package.json`, then a `Makefile`, then
+`pyproject.toml`). Both finish by scaffolding the launchers (and, for a
+`build.ts` build, `package.json` on Node or `deno.json` on Deno), so the very
+next command you run can be your build's own CLI: `zuke`.
 
 A build on Deno says where it stands on every run: its launchers, and `zuke`
 when it runs the build without one or through one written before they did, print

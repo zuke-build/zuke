@@ -438,7 +438,7 @@ function printBanner(host: SetupHost): void {
  *
  * Headed so a reader can tell it apart from the build's half, which is printed
  * after it when there is a project here. The two are different surfaces — this
- * one is the installed `zuke`, that one is whatever `zuke.ts` declares — and
+ * one is the installed `zuke`, that one is whatever the build file declares — and
  * showing them unlabelled under one heading was what made them look like one
  * inconsistent command.
  */
@@ -452,12 +452,13 @@ Usage:
 Zuke commands (available anywhere):
   setup [options]         Scaffold Zuke into a directory
   import [options]        Generate a build from package.json scripts, a Makefile or pyproject.toml tasks
-  doc <package>           Show a @zuke/* package's API docs (isolated resolution)
-  upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
-                          (Homebrew installs: brew upgrade zuke)
+  doc <package>           Show a @zuke/* package's API docs (runs deno doc, so needs Deno)
+  upgrade [<version>]     Reinstall a JSR-installed CLI at the latest (or given) release
+                          (npm: npm install -g @zuke-build/cli; Homebrew: brew upgrade zuke)
   upgrade --engine [<v>]  Move a Python project's launchers to the latest (or given) zuke release
-  add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
-  remove <package...>     Remove packages from this project's deno.json
+  add <package...>        Add packages to this project's package.json, or deno.json on Deno
+                          (docker = @zuke/docker)
+  remove <package...>     Remove packages from this project's package.json, or deno.json on Deno
   cache [<entry>...]      Fetch everything the build imports, keeping the lock
   relock [<entry>...]     Regenerate this project's lock from scratch
   --help                  Show this help
@@ -475,7 +476,7 @@ Setup options:
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --bootstrap             Launchers download their pinned, checksum-verified runtime when missing (default):
-                          Deno for a zuke.ts build, the zuke binary for a Python one
+                          Node or Deno for a TypeScript build, the zuke binary for a Python one
   --no-bootstrap          Launchers require that runtime on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
@@ -485,11 +486,11 @@ Import options:
   --name <Class>          Build class name (default: MyBuild)
   --from <source>         Force a source: package.json, makefile or pyproject (default: auto-detect)
   --zuke <version>        The zuke release a pyproject.toml import's launchers run (default: this one)
-  --runtime deno|node     Runtime of a generated zuke.ts (default: node, or the project's own)
+  --runtime deno|node     Runtime of a generated build file (default: node, or the project's own)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --bootstrap             Launchers download their pinned, checksum-verified runtime when missing (default):
-                          Deno for a zuke.ts build, the zuke binary for a Python one
+                          Node or Deno for a TypeScript build, the zuke binary for a Python one
   --no-bootstrap          Launchers require that runtime on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
@@ -543,7 +544,7 @@ function buildHelpHeading(
  * found but did not describe itself — it failed to spawn, or its own `--help`
  * exited non-zero. The heading is already printed by then (the build inherits
  * stdio, so there is nothing to buffer and inspect first), which would
- * otherwise leave a heading over an empty section with only Deno's own error
+ * otherwise leave a heading over an empty section with only the runtime's own error
  * to explain it. Named on stderr so stdout stays the help.
  */
 const BUILD_HELP_FAILED =
@@ -554,7 +555,7 @@ const BUILD_HELP_FAILED =
 const BUILD_VERSION_FAILED =
   "The build was found but could not report its version: a build on " +
   "@zuke/core older than 1.60.0 cannot answer --version, and this project " +
-  "has no deno.lock naming its core to read instead. The CLI's own version " +
+  "has no lockfile naming its core to read instead. The CLI's own version " +
   "above is unaffected.";
 
 /** What to say where the build's half would be, when there is no project. */
@@ -899,11 +900,11 @@ async function forwardToBuild(
       output.error(DENO_SUPPORT_NOTICE);
     }
     // Only the bare `deno run` a launcher stands in for is this notice's.
-    // A hosted build has no Deno config for Deno to write a lock into, so
-    // the launchers say nothing there, and neither does this.
+    // A hosted build has no Deno config for Deno to write a lock into, and a
+    // Node build never writes a deno.lock, so neither is told.
     if (
       location.launcher === null && !location.frozen &&
-      location.engine === null
+      location.engine === null && location.runtime === "deno"
     ) {
       output.error(NO_LOCK_NOTICE);
     }
