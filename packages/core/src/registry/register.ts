@@ -16,7 +16,7 @@
  * @module
  */
 
-import { mainModule } from "../runtime.ts";
+import { mainModule, runtimeFacts } from "../runtime.ts";
 import process from "node:process";
 import type { Build } from "../build.ts";
 import { defaultReadEnv } from "../internal.ts";
@@ -103,6 +103,7 @@ function deriveLocation(
     kind: "module",
     module: redactModuleUrl(mainModule()),
     cwd: process.cwd(),
+    runtime: runtimeFacts().name,
   };
   if (repo !== undefined && repo !== "") location.repo = repo;
   return location;

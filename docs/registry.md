@@ -50,12 +50,13 @@ excludes secrets by construction.
 
 The **location** is one of two forms:
 
-- `{ kind: "module", module, cwd, repo? }` — the entry module `deno run`
-  executes (a `file:`/`https:` URL or path), the working directory, and — in CI
-  — the `owner/name` repo slug. This is what `zuke register` writes, derived
-  from the running module, `process.cwd()`, and `GITHUB_REPOSITORY`. The runner
-  launches a module with `deno run -A` even when the build runs on Node, so a
-  Node build registers an explicit command such as `node build.ts` instead.
+- `{ kind: "module", module, cwd, runtime?, repo? }` — the entry module (a
+  `file:`/`https:` URL or path), the working directory, the runtime it was
+  registered from (`node` or `deno`), and — in CI — the `owner/name` repo slug.
+  This is what `zuke register` writes, derived from the running module,
+  `process.cwd()`, the running runtime and `GITHUB_REPOSITORY`. The runner
+  launches it on that runtime: `node <module>`, or `deno run -A <module>`. A
+  descriptor with no `runtime`, written before the field existed, runs on Deno.
 - `{ kind: "command", command, cwd, repo? }` — an explicit tokenised launch argv
   (for a build fronted by a wrapper script). Hand-authored or produced by a
   custom registry; the runner honours it in the same way.

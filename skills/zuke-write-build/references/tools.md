@@ -22,8 +22,8 @@ Deno wrappers.
   repo-wide) walks up for the local shim and falls back to PATH; `.fromPath()`
   forces PATH and an explicit `.toolPath(...)` always wins. Detail below, or
   [`docs/tools.md`](https://github.com/zuke-build/zuke/blob/master/docs/tools.md).
-- **Deno Deploy (`@zuke/deno`, deprecated, with Deno: supported until October
-  2027):** `DenoDeployTasks.deploy((s) =>
+- **Deno Deploy (`@zuke/deno`, until the service closes, about April 2027):**
+  `DenoDeployTasks.deploy((s) =>
   s.token(t).org(o).app(a).prod().json().nonInteractive())`; `create`, the
   `env*` tasks (`envAdd((s) => s.variable("K").secretValue(v))`), `logs`
   (`.once()`), `deploymentsList`, `appsGet`, `whoami`. The token goes in

@@ -13,6 +13,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../../tests/_assert.ts";
+import { RuntimeTasks } from "../src/runtime_tasks.ts";
 import { Build } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
@@ -215,6 +216,11 @@ test("registerCommand derives a module location with the CI repo", async () => {
   const location = registry.builds.get("Sample")?.descriptor.location;
   assertEquals(location?.kind, "module");
   assertEquals(location?.repo, "acme/app");
+  // The runtime it ran on is recorded, so the registry relaunches it there.
+  assertEquals(
+    location?.kind === "module" ? location.runtime : undefined,
+    RuntimeTasks.facts().name,
+  );
 });
 
 test("registerCommand throws after repeated registry conflicts", async () => {

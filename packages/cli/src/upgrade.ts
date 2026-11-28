@@ -374,8 +374,9 @@ export async function runUpgrade(
       `zuke upgrade: this zuke is a standalone binary (${source.location}), ` +
         "so reinstalling from JSR would not update it. Replace it with the " +
         `binary from ${RELEASES_URL}, or install with Homebrew (brew install ` +
-        "zuke-build/tap/zuke), with Chocolatey (choco install zuke) or from " +
-        `JSR (deno install -A -g -n zuke ${PACKAGE}).`,
+        "zuke-build/tap/zuke), with Chocolatey (choco install zuke), from npm " +
+        "(npm install -g @zuke-build/cli) or from JSR " +
+        `(deno install -A -g -n zuke ${PACKAGE}).`,
     );
   }
   if (source.kind === "npm") {

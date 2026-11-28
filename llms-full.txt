@@ -6079,11 +6079,14 @@ type Architecture = "x86_64" | "aarch64"
 type ArchiveFormat = "tar.gz" | "tar.xz" | "zip"
   A packed download format, unpacked after the checksum is verified.
 
-type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
+type BuildLocation = { kind: "module"; module: string; runtime?: BuildRuntime; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
   Where a registered build lives, so a runner can launch it. Two forms: a
-  `module` (the entry file `deno run` executes — the form `zuke register`
+  `module` (the entry file its runtime executes — the form `zuke register`
   writes) or an explicit `command` (a launch argv, for a build fronted by a
   wrapper script). Both carry the working directory and, in CI, the repository.
+
+type BuildRuntime = "deno" | "node"
+  The runtimes a registered {@link BuildLocation} module can launch on.
 
 type ChallengeError = "invalid_token" | "insufficient_scope"
   How a bearer challenge names the failure, when there is one to name.

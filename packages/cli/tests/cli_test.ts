@@ -959,8 +959,9 @@ test("main runs a build file on Node with node when zuke.json names that runtime
     );
   });
   assertEquals(code, 0);
-  // A build on Node is told nothing about Deno's support.
-  assertEquals(err.includes(DENO_SUPPORT_NOTICE), false);
+  // A build on Node is told nothing about Deno: not its support, nor a
+  // deno.lock it would never write.
+  assertEquals(err, []);
   assertEquals(seen, [
     RuntimeTasks.cwd().replaceAll("\\", "/"),
     ["zuke.ts", "ci"],

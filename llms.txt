@@ -51,7 +51,7 @@ Reserved commands:
 - `force` — Force a target of a run to skipped or succeeded
 - `register` — Register this build in the build registry
 - `doc` — Print a package's API docs (deno doc), isolated from the repo
-- `outdated` — Report JSR packages the lock resolves behind their latest
+- `outdated` — Report JSR packages the deno.lock resolves behind their latest (Deno builds)
 
 Option flags:
 

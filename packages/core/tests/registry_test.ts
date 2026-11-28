@@ -174,6 +174,17 @@ test("parseBuildDescriptor validates surface and location shapes", () => {
     Error,
     "not a string",
   );
+  // A module location naming a runtime that cannot launch it.
+  assertThrows(
+    () =>
+      parseBuildDescriptor(
+        mangled({
+          location: { kind: "module", module: "m", cwd: "/c", runtime: "bun" },
+        }),
+      ),
+    Error,
+    'must be "deno" or "node"',
+  );
   // A surface whose collections are the wrong shape.
   const surface = (over: Record<string, unknown>) =>
     mangled({

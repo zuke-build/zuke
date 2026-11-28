@@ -239,6 +239,7 @@ export {
   type BuildDescriptor,
   type BuildLocation,
   type BuildQuery,
+  type BuildRuntime,
   type BuildSummary,
 } from "./src/registry/descriptor.ts";
 export {

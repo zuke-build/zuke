@@ -32,7 +32,9 @@
 
 import process from "node:process";
 import { runProcess } from "../process.ts";
+import { fileURLToPath } from "node:url";
 import { denoExecutable } from "../host.ts";
+import { runtimeFacts } from "../runtime.ts";
 import { absolutePath } from "../path.ts";
 import { resolveActor } from "../state/record.ts";
 import type { RunEvent, RunEventOutcome } from "../state/types.ts";
@@ -848,9 +850,11 @@ export class RegistryMcpServer {
   /**
    * Build the launch argv and working directory for a target's location.
    *
-   * A registered module is run with Deno, which {@link denoExecutable} names —
-   * the running Deno, or a real one on `PATH` when this server is itself a
-   * compiled binary and so is not Deno.
+   * A registered module runs on the runtime it was registered from: Node
+   * ({@link nodeExecutable}), or Deno, which {@link denoExecutable} names — the
+   * running Deno, or a real one on `PATH` when this server is itself a
+   * compiled binary and so is not Deno. A descriptor that names no runtime
+   * predates the field and runs on Deno.
    */
   #launch(
     location: BuildLocation,
@@ -865,10 +869,10 @@ export class RegistryMcpServer {
       if (location.command.length === 0) return { argv: [], cwd: location.cwd };
       return { argv: [...location.command, ...trailing], cwd: location.cwd };
     }
-    return {
-      argv: [denoExecutable(), "run", "-A", location.module, ...trailing],
-      cwd: absolutePath(location.cwd).path,
-    };
+    const argv = location.runtime === "node"
+      ? [nodeExecutable(), nodeEntry(location.module), ...trailing]
+      : [denoExecutable(), "run", "-A", location.module, ...trailing];
+    return { argv, cwd: absolutePath(location.cwd).path };
   }
 
   /**
@@ -964,4 +968,19 @@ function auditArgs(
     out[key] = auditText(value);
   }
   return out;
+}
+
+/**
+ * The Node to launch a registered Node build with: this process's own when the
+ * server runs on Node as a script, else `node` on `PATH` — on Deno, or in a
+ * compiled binary, whose executable would re-enter itself.
+ */
+function nodeExecutable(): string {
+  const facts = runtimeFacts();
+  return facts.name === "node" && !facts.standalone ? process.execPath : "node";
+}
+
+/** A module as Node's command line takes it: a `file:` URL as its path. */
+function nodeEntry(module: string): string {
+  return module.startsWith("file:") ? fileURLToPath(module) : module;
 }

@@ -103,8 +103,13 @@ export const RERUN_SCRIPT = [
   'gh api -X POST "repos/$GITHUB_REPOSITORY/issues/comments/$ZUKE_REVIEW_COMMENT/reactions" -f content=+1 --silent || true',
 ].join("\n");
 
-/** The Docker image used for the GitLab job — the official Deno image. */
-const DENO_IMAGE = "denoland/deno:latest";
+/**
+ * The Docker image the GitLab and Bitbucket jobs run in: the official Node
+ * image, at the Node major the `./zuke` launchers pin, so a Node build runs on
+ * the Node already there. A Deno or Python project's launcher bootstraps its
+ * own runtime inside it.
+ */
+const REVIEW_IMAGE = "node:26";
 
 /** The conventional workflow name shown in each host's UI. */
 const DEFAULT_NAME = "AI Review";
@@ -927,7 +932,7 @@ class AiReviewWorkflow extends CiFile {
       jobs: [{
         id: "review",
         name: "AI review",
-        runsOn: DENO_IMAGE,
+        runsOn: REVIEW_IMAGE,
         timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
         steps: [{ name: "AI review with Zuke", run: `./zuke ${target}` }],
       }],
@@ -936,7 +941,7 @@ class AiReviewWorkflow extends CiFile {
 
   /**
    * Bitbucket Pipelines: a `bitbucket-pipelines.yml` whose `pull-requests`
-   * section runs the review on the Deno image. Like GitLab, repository and
+   * section runs the review on the Node image. Like GitLab, repository and
    * workspace variables flow into the step as env automatically, so no `env:`
    * block is emitted — set the API keys and `BITBUCKET_TOKEN` in repository
    * settings. Bitbucket has no `include`, so this must live at the repo root.
@@ -949,7 +954,7 @@ class AiReviewWorkflow extends CiFile {
       jobs: [{
         id: "review",
         name: "AI review",
-        runsOn: DENO_IMAGE, // the official Deno image works on Bitbucket too
+        runsOn: REVIEW_IMAGE,
         timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
         steps: [{ name: "AI review with Zuke", run: `./zuke ${target}` }],
       }],
