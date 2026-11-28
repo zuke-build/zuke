@@ -1,15 +1,13 @@
 # Recipe: know when your dependencies fall behind
 
-A build that pins its tools inline — `jsr:@zuke/git@^1` in `build.ts` and its
-helper modules, rather than in a `deno.json` imports map — has no manifest for
-`deno outdated` to read. The lock keeps resolving the versions recorded when the
-build was written, and `--frozen` is perfectly content with that, because a
-stale-but-valid lock is exactly what `--frozen` is for.
+This recipe is for **Deno** projects: `zuke outdated` reads `deno.lock`. A Node
+project uses `npm outdated`.
 
-Nothing fails. The build stays green for months while a wrapper it depends on
-grows the typed command the build is still hand-rolling. `zuke outdated` is the
-signal that nothing else gives you; this recipe wires it up so it arrives on its
-own schedule instead of when someone remembers to look.
+On Deno, a build that pins its tools inline has no manifest for `deno outdated`
+to read, so nothing fails while the lock goes stale; the reason is explained
+under [`zuke outdated`](../cli.md#zuke-outdated). It is the signal that nothing
+else gives you; this recipe wires it up so it arrives on its own schedule
+instead of when someone remembers to look.
 
 ## Do not put it in the gate
 

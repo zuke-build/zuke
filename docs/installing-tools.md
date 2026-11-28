@@ -211,7 +211,7 @@ and returns a `Map<name, AbsolutePath>` (a tree's entry is its extracted root
 directory).
 
 ```ts
-import { Build, target, toolchain } from "@zuke/core";
+import { Build, hostPlatform, target, toolchain } from "@zuke/core";
 import { HelmTasks } from "@zuke/helm";
 import { KubectlTasks } from "@zuke/kubectl";
 
@@ -224,7 +224,7 @@ class Deploy extends Build {
         s
           .name("helm")
           .archive("tar.gz")
-          .binaryPath(`linux-${arches[Deno.build.arch]}/helm`)
+          .binaryPath(`linux-${arches[hostPlatform().arch]}/helm`)
           .checksum(helmSum)
           .url(({ arch }) =>
             `https://get.helm.sh/helm-v3.15.2-linux-${arches[arch]}.tar.gz`
@@ -341,8 +341,8 @@ catalog and `defineTool`.
 
 The `.url(...)` (and `.checksum(...)`) callback receives a `Platform`. Its `os`
 is a **Zuke `OperatingSystem`** — the union `"linux" | "macos" | "windows"`,
-normalised from Deno's raw values (`darwin` → `macos`) — so the common case
-needs no mapping at all. `osLabel`/`archLabel` remain for tools that spell
+normalised from the runtime's raw values (`darwin` → `macos`) — so the common
+case needs no mapping at all. `osLabel`/`archLabel` remain for tools that spell
 things differently, and there's no `os === "darwin" ? …` ternary in sight:
 
 <!-- check -->
@@ -389,22 +389,23 @@ const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
 
 ## On CI
 
-The [`./zuke` launcher](./getting-started.md) bootstraps Deno, and the build
-fetches its tools on demand inside the target that needs them — so a CI job
-needs no "set up tool X" step:
+The [`./zuke` launcher](./getting-started.md) bootstraps the project's runtime
+(Node, or Deno on an older project), and the build fetches its tools on demand
+inside the target that needs them — so a CI job needs no "set up tool X" step:
 
-- **The bootstrap itself is checksum-verified.** `./zuke`/`zuke.ps1` download
-  the pinned Deno release (`DEFAULT_DENO_VERSION`/`$DefaultDenoVersion`) as a
-  zip and verify it against a hardcoded per-platform SHA-256 before unpacking it
-  — the same pin-and-verify model as `installRelease` below, applied to Deno
-  itself. The pin lives in one place, `@zuke/cli`'s `deno_pin.ts`: the launchers
-  `zuke setup` scaffolds and this repository's own are rendered from the same
-  template (`./zuke launcherSync` regenerates them), so bumping Deno is a change
-  to that file, not to two shell scripts. `DENO_VERSION` can still request a
-  different release — an exact release tag (`v2.9.0`), never `latest`, which has
-  no fixed hash to pin — but the launcher then requires `DENO_SHA256` (the
+- **The bootstrap itself is checksum-verified.** On Node, `./zuke`/`zuke.ps1`
+  download the pinned Node release (`DEFAULT_NODE_VERSION`) and verify it
+  against a hardcoded per-platform SHA-256 before unpacking it — the same
+  pin-and-verify model as `installRelease` below, applied to Node itself. The
+  pin lives in one place, `@zuke/cli`'s `node_pin.ts`, and the launchers `zuke
+  setup` scaffolds are rendered from the same template as this repository's own
+  (`./zuke launcherSync` regenerates them). `NODE_VERSION` can still request a
+  different exact release, but the launcher then requires `NODE_SHA256` (the
   expected hash for the current platform) too; it never installs an unverified
-  binary.
+  binary. The Deno launchers work the same way: they pin a Deno release in
+  `deno_pin.ts` (`DEFAULT_DENO_VERSION`/`$DefaultDenoVersion`), and
+  `DENO_VERSION` (an exact tag such as `v2.9.0`, never `latest`) requires
+  `DENO_SHA256`.
 
 ```yaml
 steps:
@@ -413,7 +414,7 @@ steps:
 ```
 
 - **Egress.** If the runner restricts network egress, allow the tools' download
-  hosts (e.g. `get.helm.sh`, `dl.k8s.io`) alongside Deno's.
+  hosts (e.g. `get.helm.sh`, `dl.k8s.io`) alongside the runtime's.
 - **Re-downloads.** An ephemeral runner starts with an empty `.zuke/`, so tools
   are fetched each run — safe and verified thanks to the checksum. To skip the
   download, persist the install directory between runs (e.g. `actions/cache`

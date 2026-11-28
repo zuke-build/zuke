@@ -17,17 +17,17 @@ kill it (which never happens when the tests fail).
 ```ts
 import { Build, run, service, target, tcpReachable } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
-import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
 
 class E2E extends Build {
   api = service()
     .description("API under test")
-    .start(() => $`deno run -A server.ts`.spawn()) // spawn; don't await
+    .start(() => $`node server.ts`.spawn()) // spawn; don't await
     .readyWhen(() => tcpReachable("localhost:8080")); // polled until ready
 
   test = target()
     .dependsOn(this.api) // api is started + ready before this runs
-    .executes(() => DenoTasks.test((s) => s.allowAll()));
+    .executes(() => NpmTasks.run((s) => s.script("test")));
 }
 
 await run(E2E);
@@ -68,8 +68,8 @@ something that shuts it down:
 
 ```ts
 .start(() => {
-  const server = Deno.serve({ port: 8080 }, handler);
-  return { stop: () => server.shutdown() };
+  const server = createServer(handler).listen(8080); // from node:http
+  return { stop: () => server.close() };
 })
 ```
 

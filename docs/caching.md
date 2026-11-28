@@ -26,10 +26,10 @@ reported `cached`. Otherwise it runs and its fingerprint is refreshed.
 
 ```ts
 compile = target()
-  .inputs("src", "deno.json") // re-run only when these change…
+  .inputs("src", "package.json") // re-run only when these change…
   .outputs("dist") // …or when dist is missing
   .executes(async () => {
-    await DenoTasks.run((s) => s.script("build.ts"));
+    await NpmTasks.run((s) => s.script("build"));
   });
 ```
 
@@ -67,7 +67,7 @@ when that value changes. The function may be async and is repeatable.
 compile = target()
   .inputs("src")
   .cacheKey(() => this.configuration.value) // rebuild when the config flips
-  .cacheKey(() => Deno.version.deno) // …or the toolchain moves
+  .cacheKey(() => RuntimeTasks.facts().version) // …or the toolchain moves
   .executes(/* … */);
 ```
 
@@ -429,10 +429,11 @@ from public inputs, so it is no secret.
   streamed to a temporary file, bounded as it arrives, and the restore reads
   that file twice — once to validate every entry, once to write — holding one
   file at a time; the temporary file is deleted afterwards. The filesystem store
-  streams uploads too; the HTTP, S3 and GitHub Actions stores hold the
-  compressed archive while uploading it, because S3 and Azure Blob refuse a
-  streamed upload without a known length. Because a tar entry costs at least its
-  512-byte header, bounding bytes bounds entry count too.
+  streams uploads too; the S3, GitHub Actions and Azure Blob SAS stores upload
+  in 8 MiB parts. Only an `HttpCacheStore` talking to another server holds the
+  whole compressed archive, since such a server may refuse a body of unknown
+  length. Because a tar entry costs at least its 512-byte header, bounding bytes
+  bounds entry count too.
 - **A refused archive is a cache miss, not a build failure.** The target
   rebuilds and the refusal is reported as a warning — so whoever can write the
   store cannot halt every build that reads it. That covers every refusal above,

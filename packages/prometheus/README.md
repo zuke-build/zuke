@@ -205,10 +205,10 @@ plain-http address (`http://172.x.x.x:8081/msi/token`), may also be plaintext
 when its host is loopback, link-local or an RFC 1918 private IPv4 address — and
 only when `IDENTITY_HEADER` is set.
 
-**Proxies.** Deno's `fetch` honours `HTTP_PROXY` / `HTTPS_PROXY`, so on a runner
-with a proxy configured, add the metadata hosts above to `NO_PROXY` — a metadata
-service answers only the machine itself, and a proxy would either fail the
-request or see the token.
+**Proxies.** Deno's `fetch` honours `HTTP_PROXY` / `HTTPS_PROXY`, and Node's
+does with `NODE_USE_ENV_PROXY=1`, so on a runner with a proxy configured, add
+the metadata hosts above to `NO_PROXY` — a metadata service answers only the
+machine itself, and a proxy would either fail the request or see the token.
 
 **Form POSTs.** `query`, `queryRange`, `series` and `labels` are sent as a form
 `POST`. If a managed endpoint refuses that, `httpMethod("GET")` sends the

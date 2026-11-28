@@ -1,9 +1,9 @@
 # Versioning & compatibility
 
-Zuke publishes 72 independent JSR packages from one workspace. They don't all
-move at the same speed, and knowing which promise each package makes — and how
-they interlock — is what keeps an upgrade from surprising you at runtime instead
-of at `deno check` time.
+Zuke publishes 72 independent packages from one workspace, to JSR and npm. They
+don't all move at the same speed, and knowing which promise each package makes —
+and how they interlock — is what keeps an upgrade from surprising you at runtime
+instead of at `deno check` time.
 
 ## One tier: every package follows full semver
 
@@ -11,8 +11,9 @@ of at `deno check` time.
 command, and every tool wrapper make the same promise: within a major, a release
 never breaks a public symbol, so a minor or patch upgrade is safe to take
 without reading the diff, and a breaking change bumps the **major** version.
-Depend on the caret of the major you use — `jsr:@zuke/core@^1`,
-`jsr:@zuke/cli@^2`, `jsr:@zuke/deno@^1`, … — and let minors resolve.
+Depend on the caret of the major you use — `npm:@zuke-build/core@^1` on Node,
+`jsr:@zuke/core@^1`, `jsr:@zuke/cli@^2`, `jsr:@zuke/deno@^1`, … on Deno — and
+let minors resolve.
 
 `release-please`'s `bump-minor-pre-major` is off, so nothing silently ships a
 breaking change under a minor bump. Read a package's `CHANGELOG.md` when its
@@ -25,9 +26,8 @@ changes, the wrapper keeps the old method working (deprecated) or bumps its
 major — the promise is about the wrapper's own typed surface, not about
 upstream's stability.
 
-Check a specific package's current version from its badge on the
-[Packages table](../README.md#packages) or its JSR page — score and version are
-both visible there.
+Check a specific package's current version from its badge in the
+[packages table](./packages.md) or its JSR or npm page.
 
 ## Every wrapper declares a `@zuke/core` floor
 
@@ -125,18 +125,20 @@ stays runnable offline.
 
 ## Pinning guidance
 
-- Depend on the caret range, not an exact version: `jsr:@zuke/core@^1` (or a
-  wrapper's own `jsr:@zuke/<tool>@^1`) so patch and non-breaking minor releases
-  resolve automatically.
-- **Always commit `deno.lock`.** It is what pins the exact resolved version of
-  every package (core included) that your build actually runs against — the
-  caret range in `deno.json` only bounds what's _allowed_, the lockfile fixes
-  what's _used_. Regenerate it (`deno install` or a fresh `deno.lock` write)
-  whenever you deliberately take an upgrade, and review the diff. In this repo
-  that is `deno task lock`, and the gate enforces it: every entrypoint that
-  loads `build.ts` runs `--frozen`, and the `lockCheck` target fails if a run
-  modified the lock — so a stale lock is caught before it reaches CI rather than
-  being silently healed on the machine that happened to run the gate.
+- Depend on the caret range, not an exact version: `npm:@zuke-build/core@^1` on
+  Node or `jsr:@zuke/core@^1` on Deno (or a wrapper's own
+  `npm:@zuke-build/<tool>@^1` / `jsr:@zuke/<tool>@^1`) so patch and non-breaking
+  minor releases resolve automatically.
+- **Always commit `package-lock.json` (Node) or `deno.lock` (Deno).** It is what
+  pins the exact resolved version of every package (core included) that your
+  build actually runs against — the caret range in `package.json` or `deno.json`
+  only bounds what's _allowed_, the lockfile fixes what's _used_. Regenerate it
+  (`npm install`, `deno install` or a fresh `deno.lock` write) whenever you
+  deliberately take an upgrade, and review the diff. In this repo that is `deno
+  task lock`, and the gate enforces it: every entrypoint that loads `build.ts`
+  runs `--frozen`, and the `lockCheck` target fails if a run modified the lock —
+  so a stale lock is caught before it reaches CI rather than being silently
+  healed on the machine that happened to run the gate.
 
 ## Upgrade notes
 

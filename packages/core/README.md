@@ -1,8 +1,8 @@
 # @zuke/core
 
-Code-first, strongly-typed build automation for Deno. Define builds as
-TypeScript classes; each target is a field wired to others by reference, forming
-a dependency graph that Zuke sorts and runs.
+Code-first, strongly-typed build automation for TypeScript, on Node or Deno.
+Define builds as TypeScript classes; each target is a field wired to others by
+reference, forming a dependency graph that Zuke sorts and runs.
 
 ```ts
 import { Build, run, target } from "@zuke/core";
@@ -16,8 +16,12 @@ class MyBuild extends Build {
 await run(MyBuild);
 ```
 
-Also exports `jsr:@zuke/core/shell` (the injection-safe `$` runner) and
-`jsr:@zuke/core/tooling` (the base for typed tool wrappers).
+Also exports `@zuke/core/shell` (the injection-safe `$` runner) and
+`@zuke/core/tooling` (the base for typed tool wrappers).
+
+Install it with `zuke add`, or declare `"@zuke/core": "npm:@zuke-build/core@^1"`
+in `package.json` (Node) or `"@zuke/core": "jsr:@zuke/core@^1"` in `deno.json`
+(Deno).
 
 See [Zuke](https://github.com/zuke-build/zuke#readme) for the full guide.
 

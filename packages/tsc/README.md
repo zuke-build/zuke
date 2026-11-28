@@ -16,11 +16,6 @@ await TscTasks.tsc((s) =>
 await TscTasks.build((s) => s.projects("packages/a", "packages/b").verbose());
 ```
 
-> [!NOTE]
-> Within this repo, `deno check` remains the authoritative type-checker — see
-> [`CLAUDE.md`](../../CLAUDE.md). This wrapper is for projects that drive `tsc`
-> directly.
-
 ## Paths
 
 Every path argument accepts either a string or an `AbsolutePath` from

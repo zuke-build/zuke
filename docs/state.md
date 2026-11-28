@@ -300,9 +300,8 @@ Talks to an HTTP service you host, using ETags for optimistic concurrency. This
 is the production path: point several machines (CI, developers) at one service
 and they share run state. The one-page contract is in
 [the state HTTP API](./state-api.md), and the
-[conformance kit](./state-api.md#notes-for-implementers) (`deno run -A
-jsr:@zuke/core/conformance --url …`) verifies your backend against it — don't
-re-derive correctness from the prose.
+[conformance kit](./state-api.md#notes-for-implementers) verifies your backend
+against it — don't re-derive correctness from the prose.
 
 ```ts
 import { HttpStateStore } from "@zuke/core";

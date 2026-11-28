@@ -85,13 +85,13 @@ Now `npm run build` runs the default pipeline, `npm run build -- test` runs one
 target, and `npm run build -- --list` / `-- graph` show what the build can do —
 no one has to learn Deno commands.
 
-> **`zuke` command note.** The [`zuke` command](./install.md) runs the `zuke.ts`
-> beside the project's `zuke.json` marker at the repo root, as does the
-> bootstrap launcher (`./zuke` / `zuke.ps1`) it stands in for — neither knows
-> about a `build/` subdirectory. With this layout, invoke the build directly
-> with `deno run -A build/zuke.ts` (or the `npm run build` script above), not
-> `zuke`. If you'd rather use `zuke`, put `zuke.ts` at the repo root instead of
-> under `build/` — the layout `zuke setup` scaffolds.
+> **`zuke` command note.** The [`zuke` command](./install.md) runs the build
+> file that the project's `zuke.json` names (`build.ts` by default) at the repo
+> root, as does the bootstrap launcher (`./zuke` / `zuke.ps1`) it stands in for
+> — neither knows about a `build/` subdirectory. With this layout, invoke the
+> build directly with `deno run -A build/zuke.ts` (or the `npm run build` script
+> above), not `zuke`. If you'd rather use `zuke`, put the build file at the repo
+> root instead of under `build/` — the layout `zuke setup` scaffolds.
 
 ## Other package managers
 

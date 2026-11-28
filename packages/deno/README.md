@@ -52,11 +52,11 @@ Every path argument accepts either a string or an `AbsolutePath` from
 
 ## Deno Deploy
 
-`DenoDeployTasks` wraps `deno deploy` for
-[Deno Deploy](https://deno.com/deploy): `deploy` and `create`, the `env`
-subcommands (`envList`, `envAdd`, `envUpdateValue`, `envUpdateContexts`,
-`envDelete`, `envLoad`), and the read-only `logs`, `deploymentsList`,
-`appsList`, `appsGet`, `orgsList` and `whoami`.
+`DenoDeployTasks` wraps `deno deploy` for [Deno Deploy](https://deno.com/deploy)
+(deprecated, with Deno: supported until October 2027): `deploy` and `create`,
+the `env` subcommands (`envList`, `envAdd`, `envUpdateValue`,
+`envUpdateContexts`, `envDelete`, `envLoad`), and the read-only `logs`,
+`deploymentsList`, `appsList`, `appsGet`, `orgsList` and `whoami`.
 
 ```ts
 import { DenoDeployTasks } from "@zuke/deno";

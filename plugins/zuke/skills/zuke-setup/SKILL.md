@@ -135,8 +135,8 @@ zuke import --from makefile   # or pin the source (package.json | makefile | pyp
 
 Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`
 — a **placeholder**, not the destination: before accepting it, check the package
-catalogue (`llms.txt`'s `## Packages` list, or the table in
-[`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md))
+catalogue (`llms.txt`'s `## Packages` list, or
+[`zuke-write-build`'s catalogue](../zuke-write-build/references/catalogue.md))
 for a `@zuke/<tool>` wrapper matching that command and replace the placeholder
 with it — leaving `CmdTasks.exec` in place for a tool that has a typed wrapper
 is a bug, not a shortcut. An `&&` chain becomes sequential steps, a
@@ -218,67 +218,9 @@ in the Python section.
 
 ## Running the build
 
-Run the build with the global `zuke` command, from any directory inside the
-project. If `zuke` is not on `PATH`, install it first with `npm install -g
-@zuke-build/cli`, or run the project's `./zuke` launcher instead.
-
-```sh
-zuke                      # run the default target
-zuke <target>             # run a specific target
-zuke --list               # list every target
-zuke --list --json        # the whole build surface (commands, flags, targets) as JSON
-zuke <target> --dry-run   # print the plan without executing
-zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
-zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
-```
-
-Every run opens with a banner: the Zuke wordmark, then `zuke <version> ·
-<runtime> <version> · <platform>` and `run <id> · <cwd>`. On CI the wordmark is
-dropped — the identifying lines are what a runner log wants, six lines of ASCII
-are not — and the detected host is appended to the first line. `--no-banner` or
-`ZUKE_NO_BANNER` turns it off entirely. On an interactive terminal `--version`,
-`--help`, `--list` and `graph` print a rich, coloured form; `--plain` or
-`ZUKE_PLAIN=1` asks for plain output everywhere (no banner or colour,
-undecorated informational commands), and output is plain automatically on CI and
-through a pipe, so `zuke -- --version | …` is always the bare version of Zuke
-the build runs on (`zuke --version` alone also reports the CLI's).
-
-The bare `zuke` works from anywhere inside the project: `zuke <target>`, `zuke
---list`, `zuke graph`, `zuke mcp`, bare `zuke` for the default target — every
-command that is not the CLI's own (`setup`, `import`, `doc`) is forwarded to the
-nearest `build.ts`. `--help` and `--version` show both surfaces, the CLI's and
-then the build's, each labelled; `zuke -- --help` is the build's own usage
-alone, and `zuke -- <target>` reaches a target that shares one of those names.
-It walks up to the `zuke.json` that marks the repository root and runs the
-executable `./zuke <args>` launcher there, so a project's customised launcher
-(pinned Deno, exported env, a lock outside the repo) applies to `zuke` too. With
-no executable launcher (and on Windows) it runs `node build.ts <args>` for a
-Node project, and `deno run -A build.ts <args>` for a Deno one, with `--frozen`
-once a `deno.lock` exists. Outside a project, `zuke <target>` reports the
-unknown command and the missing `zuke.json`, and a bare `zuke` prints the usage.
-The forwarding refuses a project whose root directory is owned by another user
-or is world-writable, and one where an ancestor `deno.json`, `deno.jsonc` or
-`package.json` Deno would read is owned by another user (the `safe.directory`
-rule git applies, since discovery runs code the caller never named); the error
-names what was refused and the fix — run that project's own `./zuke` there, or
-fix the ownership. On Windows the gate is inert.
-
-The CLI is self-describing: `zuke --help` prints the usage grammar plus the
-build's live targets and parameters, so an agent discovers the real command
-surface instead of guessing. For an AI client to operate the build through typed
-calls, `zuke mcp` runs a Model Context Protocol server over it (register with
-`claude mcp add zuke -- node build.ts mcp`, or `-- deno run -A build.ts mcp` on
-Deno; add `--allow-run` to let the agent execute targets, not just inspect
-them).
-
-A Deno project's scaffolded `deno.json` also carries a `zuke` task (`deno task
-zuke <target>`), but it is not quite equivalent: it deliberately omits
-`--frozen`, so it may heal a stale lockfile where `zuke` would fail on it.
-Prefer `zuke`.
-
-On a machine without the CLI — a CI runner — the committed `./zuke` launcher
-(`zuke.ps1` on Windows) installs Node (or Deno) and runs the build, which is why
-generated CI workflows call `./zuke <target>`.
+Run it with `zuke` (or the project's `./zuke` launcher): `zuke` for the default
+target, `zuke <target>` for one, `zuke --list` for every target. Running,
+inspecting and debugging a build is the `zuke-run-build` skill.
 
 ## Manual setup (without `zuke setup`)
 
@@ -304,7 +246,8 @@ caret major — so the build can import them by bare specifier. An inline
 {
   "imports": {
     "@zuke/core": "jsr:@zuke/core@^1",
-    "@zuke/deno": "jsr:@zuke/deno@^1"
+    "@zuke/deno": "jsr:@zuke/deno@^1",
+    "@zuke/npm": "jsr:@zuke/npm@^1"
   }
 }
 ```
@@ -338,10 +281,10 @@ setup`, which drops them in for you.)
 
 Every external tool has a typed `*Tasks` wrapper; **do not fall back to
 `Deno.Command`, `node:child_process` or hand-rolled shell.** First confirm a
-wrapper exists at all — `llms.txt`'s `## Packages` catalogue or the table in
-[`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md)
-is the only way to answer that; a package's own docs need its name, so they
-cannot reveal that one exists. Once you know the package name, get its exact
+wrapper exists at all — `llms.txt`'s `## Packages` catalogue or
+[`zuke-write-build`'s catalogue](../zuke-write-build/references/catalogue.md) is
+the only way to answer that; a package's own docs need its name, so they cannot
+reveal that one exists. Once you know the package name, get its exact
 signatures:
 
 - A single package, in the version the project actually has installed — prefer

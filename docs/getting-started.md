@@ -137,8 +137,9 @@ TypeScript one, from anywhere inside the project and with no launcher: `zuke
 <target>`, `zuke --list`, `zuke graph`, `zuke generate-ci`, `zuke mcp`, and
 `zuke --version`, which names the `zuke.json` and the engine release it runs.
 The launchers are for a machine without the CLI, such as a CI runner. `zuke
-add`, `remove`, `cache` and `relock` work on a project's own Deno code, so they
-refuse a Python build: its tool wrappers come with the SDK, as `zuke.tools`.
+add`, `remove`, `cache` and `relock` work on a TypeScript project's own
+dependencies, so they refuse a Python build: its tool wrappers come with the
+SDK, as `zuke.tools`.
 
 ## Migrate an existing project with `zuke import`
 
@@ -179,28 +180,29 @@ Or write the build file by hand: put a `build.ts` in your project root beside a
 zuke <target>
 ```
 
-With no launcher in the root, `zuke` runs the build as `deno run -A build.ts`:
-the `-A` grants permissions (your targets typically run processes, read/write
-files, etc.).
+With no launcher in the root, `zuke` runs the build as `node build.ts` on a Node
+project, whose launchers bootstrap Node; Node strips the types itself. On a Deno
+project it runs `deno run -A build.ts`: the `-A` grants permissions (your
+targets typically run processes, read/write files, etc.).
 
-## `./zuke` launcher (no Deno required up front)
+## `./zuke` launcher (no runtime required up front)
 
 On a machine without the CLI — a CI runner — the committed launchers run the
 build: [`zuke`](../zuke) (bash) and [`zuke.ps1`](../zuke.ps1) (PowerShell),
 which `zuke setup` and `zuke import` write into your repo root. They locate the
-project, **install Deno on first use if it's missing** (pinned by default, and
-verified against a per-platform SHA-256; override with `DENO_VERSION` plus its
-`DENO_SHA256`), then run `build.ts` — so a fresh checkout needs nothing but the
-script:
+project, **install the project's runtime on first use if it's missing** (Node by
+default; Deno for a Deno project, pinned and verified against a per-platform
+SHA-256, which `DENO_VERSION` plus `DENO_SHA256` override), then run `build.ts`
+— so a fresh checkout needs nothing but the script:
 
 ```sh
 ./zuke ci          # full gate          (Windows: .\zuke.ps1 ci)
 ./zuke test        # type-check + tests  (Windows: .\zuke.ps1 test)
 ```
 
-`--no-bootstrap` scaffolds launchers that use the Deno on `PATH` instead and
-fail closed without it. If you already have Deno, `deno task zuke <target>` (via
-the `zuke` task in `deno.json`) does the same thing.
+`--no-bootstrap` scaffolds launchers that use the runtime on `PATH` instead and
+fail closed without it. On a Deno project, `deno task zuke <target>` (via the
+`zuke` task in `deno.json`) does the same thing.
 
 Day to day you don't call the launcher yourself: `zuke <target>`, from anywhere
 inside the project, forwards to it (the [CLI reference](./cli.md) has the
@@ -215,34 +217,34 @@ of the line.
 
 ```ts
 // build.ts
-import { Build, run, target } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { Build, FileTasks, run, target } from "@zuke/core";
+import { NpmTasks } from "@zuke/npm";
 
 class MyBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
     .executes(async () => {
-      await Deno.remove("dist", { recursive: true }).catch(() => {});
+      await FileTasks.remove("dist", { recursive: true });
     });
 
   restore = target()
-    .description("Cache dependencies")
+    .description("Install dependencies")
     .executes(async () => {
-      await DenoTasks.cache((s) => s.paths("mod.ts"));
+      await NpmTasks.ci();
     });
 
   compile = target()
     .description("Type-check and build")
     .dependsOn(this.clean, this.restore)
     .executes(async () => {
-      await DenoTasks.check((s) => s.paths("mod.ts"));
+      await NpmTasks.run((s) => s.script("build"));
     });
 
   test = target()
     .description("Run the test suite")
     .dependsOn(this.compile)
     .executes(async () => {
-      await DenoTasks.test((s) => s.allowAll());
+      await NpmTasks.test();
     });
 
   // Optional: runs when you invoke `./zuke` with no target.
@@ -364,11 +366,12 @@ actually enforce, run once on `audit`, take the endpoint list from the run's
 insights, and then set both:
 
 ```yaml
+# cspell:ignore npmjs
 - uses: zuke-build/zuke@<40-character-sha> # v1.0.0
   with:
     target: ci
     egress-policy: block
-    allowed-endpoints: "jsr.io:443 deno.land:443 dl.deno.land:443"
+    allowed-endpoints: "registry.npmjs.org:443 nodejs.org:443 jsr.io:443 deno.land:443 dl.deno.land:443"
 ```
 
 One caveat worth confirming before you rely on it: harden-runner's blocking

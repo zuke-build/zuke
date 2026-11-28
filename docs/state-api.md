@@ -239,6 +239,10 @@ client validates every summary and does not re-sort.
   readable by every local process and lands in the transcript of whatever
   invoked the kit.
 
+  On Node, call `checkStateStore` and `checkBuildRegistry` from
+  `@zuke/core/conformance` in a test instead; the command above is the Deno
+  form.
+
   It exits `0` when every scenario passes and `1` (naming the failures) when one
   does not. A backend that passes is compatible with `HttpStateStore` /
   `HttpBuildRegistry`; one that violates CAS fails loudly.

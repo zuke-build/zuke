@@ -5,7 +5,7 @@ document: it is revisited at least yearly and adjusted as the project learns.
 Dates are deliberately absent; items ship when they meet the bar in
 [`AGENTS.md`](./AGENTS.md), not when a calendar says so.
 
-Last reviewed: **2026-08**.
+Last reviewed: **2026-11**.
 
 ## Near term
 
@@ -29,10 +29,6 @@ Last reviewed: **2026-08**.
   lambdas mirroring the real CLI, pure `buildArgs()`, wrapper conformance
   tests). Quality over count: a wrapper ships when it covers its tool's everyday
   surface, not before.
-- **npm distribution.** The `@zuke-build` npm organization is reserved for a 1:1
-  mapping of the JSR packages. Publishing begins once the Node/npm consumption
-  story (module resolution, launcher behaviour outside Deno) is designed and
-  tested — not before.
 - **TypeScript 7 / native type-checking.** Adopt `deno check`'s native (`tsgo`)
   compiler for the repository's own gate as soon as Deno declares it stable.
   Until then the default checker stays authoritative; the unstable flag is not
@@ -44,9 +40,10 @@ Last reviewed: **2026-08**.
 - **No runtime dependencies.** The published packages stay dependency-free
   (`@zuke/core` as the only internal exception). Features that would require
   shipping a third-party runtime dependency are rejected or redesigned.
-- **No second toolchain.** Deno remains the only required tool. No Node, npm, or
-  external build system is needed to develop or use Zuke, even after npm
-  distribution exists for consumers.
+- **Each SDK runs on its own stack.** A Zuke build in one language never needs
+  another language's toolchain: a Python build needs no Deno, and a TypeScript
+  build needs no Python. See
+  [`AGENTS.md`](./AGENTS.md#each-sdk-runs-on-its-own-stack-hard-requirement).
 - **No weakening of the gate.** The 95% coverage threshold, the frozen lockfile,
   pinned actions, and the adversarial-review practice are floors, not
   aspirations; roadmap work does not trade them away for speed.

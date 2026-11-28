@@ -195,10 +195,10 @@ exists. Otherwise it runs and refreshes the fingerprint.
 
 ```ts
 compile = target()
-  .inputs("src", "deno.json") // re-run only when these change…
+  .inputs("src", "package.json") // re-run only when these change…
   .outputs("dist") // …or when dist is missing
   .executes(async () => {
-    await DenoTasks.run((s) => s.script("build.ts"));
+    await NpmTasks.run((s) => s.script("build"));
   });
 ```
 
@@ -343,9 +343,9 @@ async `assertFileExists(path)` / `assertDirectoryExists(path)` check the
 filesystem. All throw an `AssertionError`.
 
 ```ts
-import { assert, assertExists, assertFileExists } from "@zuke/core";
+import { assert, assertExists, assertFileExists, EnvTasks } from "@zuke/core";
 
-const token = assertExists(Deno.env.get("TOKEN"), "TOKEN is required");
+const token = assertExists(EnvTasks.get("TOKEN"), "TOKEN is required");
 assert(this.environment.value !== "", "environment must be set");
 await assertFileExists("dist/app.js");
 ```
@@ -622,8 +622,8 @@ generate-ci` writes it on demand.
 The provider is the only required field. `cicd({ provider: "github" })` declares
 a workflow at `.github/workflows/ci.yml` that, on push/PR to `main`, runs a
 single `build` job whose one step invokes the build through the `./zuke`
-launcher (which bootstraps Deno itself — no separate setup step). Override only
-what else you need:
+launcher (which bootstraps the project's pinned runtime, Node or Deno, itself —
+no separate setup step). Override only what else you need:
 
 <!-- check -->
 
@@ -979,9 +979,9 @@ run(
 ```
 
 Instantiates the build, discovers targets, validates the graph, parses CLI
-arguments (`options.args`, defaulting to `Deno.args`), dispatches to the
-executor with any registered `options.plugins` and `options.renderer` (see
-[Console output](./console.md)), and calls `Deno.exit` with `0` on success or
+arguments (`options.args`, defaulting to the process arguments), dispatches to
+the executor with any registered `options.plugins` and `options.renderer` (see
+[Console output](./console.md)), and exits the process with `0` on success or
 `1` on failure. This is the standard entry point at the bottom of `build.ts`.
 See [Extending Zuke](./extending.md) for the plugin contract.
 

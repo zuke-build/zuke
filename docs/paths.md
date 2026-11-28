@@ -19,7 +19,7 @@ main.parent(); // AbsolutePath → /app/src
 main.relativeTo(root); // "src/main.ts"
 main.equals("/app/lib/../src/main.ts"); // true
 
-await $`deno run ${main}`; // toString() → drops straight into $`` and args()
+await $`node ${main}`; // toString() → drops straight into $`` and args()
 ```
 
 Paths are immutable and normalised (forward slashes, `.`/`..` resolved; a

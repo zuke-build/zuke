@@ -30,7 +30,8 @@ this PR. See AGENTS.md. -->
 - [ ] The PR title is a
       [Conventional Commit](https://www.conventionalcommits.org/) (`type(scope):
       summary`).
-- [ ] `deno task ci` passes locally (lint, fmt, type-check, tests, spell).
+- [ ] `npm ci` then `node build.ts ci` passes locally (lint, fmt, type-check,
+      tests, spell).
 - [ ] Tests were added or updated; coverage stays at 95%+ (lines and branches).
 - [ ] Docs updated in the same PR (`README.md`, JSDoc, `docs/`) when behaviour
       changed.

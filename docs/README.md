@@ -32,16 +32,16 @@
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
-- [Packages](./packages.md) — the full package matrix with JSR badges.
+- [Packages](./packages.md) — the full package matrix with JSR and npm badges.
 - Recipes — the things a small project wants first:
   [replace your shell scripts](./recipes/replace-shell-scripts.md) with the `$`
   shell, [generate your CI](./recipes/generate-ci.md) and stop editing YAML,
   [know when your dependencies fall behind](./recipes/keep-dependencies-current.md),
   and [release a small library](./recipes/release-a-library.md) as one chain of
   targets.
-- [Examples](../examples/README.md) — five cloneable mini projects: a Deno
-  library gate, generated CI, a Node app, a library release, and shell scripts
-  to targets.
+- [Examples](../examples/README.md) — six cloneable mini projects: a Deno
+  library gate, generated CI, a Node app, a library release, a canary release,
+  and shell scripts to targets.
 - [Tools](./tools.md) — the typed tool-wrapper packages and their tasks.
 - [Installing tools](./installing-tools.md) — fetch pinned, checksum-verified
   CLIs from a build with `installRelease()` and `toolchain()`.
@@ -55,8 +55,8 @@
   suspend/resume.
 - [MCP server](./mcp.md) — `zuke mcp` exposes the build to AI agents as typed
   tools over the Model Context Protocol.
-- [Agent skills](./agent-skills.md) — install `zuke-setup` and
-  `zuke-write-build` into Claude Code, OpenAI Codex, or Gemini CLI.
+- [Agent skills](./agent-skills.md) — install `zuke-setup`, `zuke-write-build`
+  and `zuke-run-build` into Claude Code, OpenAI Codex, or Gemini CLI.
 - [AI review](./ai-review.md) — model-assessed review gates as build
   validations.
 - [Running the AI review as your own GitHub App](./ai-review-github-app.md) —
@@ -64,8 +64,8 @@
   reviews post as `<your-app>[bot]` and close the threads they settle.
 - [Self-healing builds](./self-healing.md) — hand a failure to an AI fixer that
   re-runs the command to verify.
-- [Using Zuke in a Node/npm project](./node-projects.md) — drive a Node build
-  with Deno.
+- [Using Zuke in a Node/npm project](./node-projects.md) — a Node build in the
+  project, or a separate Deno build folder beside it.
 - [Scheduled runs](./schedules.md) — `triggers.schedule` (`{ cron, tz }`)
   compiled to UTC cron with a daylight-saving wall-clock guard.
 - [CLI reference](./cli.md) — commands and flags.
