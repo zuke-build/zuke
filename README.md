@@ -343,9 +343,9 @@ test = target()
 
 ## Agent skills
 
-Two skills — `zuke-setup` and `zuke-write-build` — teach an AI coding assistant
-to scaffold Zuke and write a `build.ts` using the typed wrappers instead of
-guessing the API. Authored once as portable
+Three skills — `zuke-setup`, `zuke-write-build` and `zuke-run-build` — teach an
+AI coding assistant to scaffold Zuke, write a `build.ts`, and run and debug it
+using the typed wrappers instead of guessing the API. Authored once as portable
 [Agent Skills](https://agentskills.io) under [`skills/`](./skills), and
 installable into every harness:
 

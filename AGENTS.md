@@ -18,8 +18,8 @@ exact signatures are published — read them:
 - **Check the package catalogue before writing any command.** `llms.txt`'s `##
   Packages` catalogue (raw:
   <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
-  grouped table in
-  [`skills/zuke-write-build/references/cheatsheet.md`](./skills/zuke-write-build/references/cheatsheet.md)
+  grouped list in
+  [`skills/zuke-write-build/references/catalogue.md`](./skills/zuke-write-build/references/catalogue.md)
   are the only ways to answer "does a `@zuke/<tool>` wrapper exist for this
   CLI?" — per-package `deno doc jsr:@zuke/<package>` can only describe a package
   whose name you already know; it cannot reveal that a package _exists_.
@@ -529,7 +529,7 @@ build.ts                  # Zuke's own build (runnable example); zuke.json names
 build/                    # reusable helpers behind build.ts's targets (docs, publish, snippets, …)
 zuke, zuke.ps1            # bootstrap launchers (install the project's runtime, run the build) — GENERATED from packages/cli/src/launcher.ts by `./zuke launcherSync`; zuke.json names the build class
 docs/                     # long-form guides (linked from the README)
-skills/                   # agent skills: zuke-write-build, zuke-setup
+skills/                   # agent skills: zuke-setup, zuke-write-build, zuke-run-build
 plugins/zuke/             # Claude Code + Codex plugin wrapping the skills
 gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 .agents/plugins/          # Codex-native marketplace catalog
@@ -632,9 +632,9 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`
-  is the source of truth for `zuke-write-build` and `zuke-setup`, published to
-  three harnesses: `plugins/zuke/` is the Claude Code plugin (whose manifests
-  Codex also reads, alongside the Codex-native
+  is the source of truth for `zuke-setup`, `zuke-write-build` and
+  `zuke-run-build`, published to three harnesses: `plugins/zuke/` is the Claude
+  Code plugin (whose manifests Codex also reads, alongside the Codex-native
   `plugins/zuke/.codex-plugin/plugin.json` and
   `.agents/plugins/marketplace.json`), and the root `gemini-extension.json`
   makes the repo a Gemini CLI extension that auto-discovers `skills/`. The
@@ -642,11 +642,13 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   (frontmatter `name` must match the folder), since Codex and Gemini load those
   folders directly. Any change to the authoring surface or to a documented
   guarantee — a new `target()` method, a new `Build` override, changed CLI or
-  authorization semantics — must be reflected in
-  `skills/zuke-write-build/SKILL.md` and
-  `skills/zuke-write-build/references/cheatsheet.md` **in the same PR**. The
-  cheatsheet is one of the two canonical answers to "does a wrapper exist?", so
-  a new package belongs in its catalogue table as well. Then, in order:
+  authorization semantics — must be reflected in the skill it concerns **in the
+  same PR**: `skills/zuke-write-build/SKILL.md` and the matching file under
+  `skills/zuke-write-build/references/` for the authoring surface,
+  `skills/zuke-run-build/` for CLI, run and MCP semantics. Keep each `SKILL.md`
+  short and put detail in a reference file an agent reads only when it needs it.
+  `references/catalogue.md` is one of the two canonical answers to "does a
+  wrapper exist?", so a new package belongs in it as well. Then, in order:
   1. Run `./zuke pluginSync` to regenerate `plugins/zuke/skills/`. Never
      hand-edit the copies — `pluginSyncCheck` fails on drift.
   2. **Bump the plugin version by hand, in all four manifests**:

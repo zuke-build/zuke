@@ -2,13 +2,14 @@
 
 Zuke ships **agent skills** so AI coding assistants set up and author builds the
 right way — using the typed `*Tasks` wrappers instead of guessing the API or
-shelling out. Two skills, authored once as portable
+shelling out. Three skills, authored once as portable
 [`SKILL.md`](https://agentskills.io) folders under [`skills/`](../skills):
 
-| Skill              | Use it to                                                                                     |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).            |
-| `zuke-write-build` | Write or edit a `build.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
+| Skill              | Use it to                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).                                |
+| `zuke-write-build` | Write or edit a `build.ts` — add targets, wire dependencies, call tool wrappers, generate CI.                     |
+| `zuke-run-build`   | Run, inspect and troubleshoot a build — targets and flags, run records, resume and cancel, MCP, fixing a failure. |
 
 ## Claude Code
 
@@ -20,9 +21,10 @@ marketplace. In Claude Code:
 /plugin install zuke@zuke
 ```
 
-That makes `zuke-setup` and `zuke-write-build` available — they trigger
-automatically when you ask Claude to add Zuke to a project or write a build, and
-can be invoked explicitly as `/zuke:zuke-setup` and `/zuke:zuke-write-build`.
+That makes `zuke-setup`, `zuke-write-build` and `zuke-run-build` available —
+they trigger automatically when you ask Claude to add Zuke to a project, write a
+build, or run and debug one, and can be invoked explicitly as
+`/zuke:zuke-setup`, `/zuke:zuke-write-build` and `/zuke:zuke-run-build`.
 
 ## OpenAI Codex
 

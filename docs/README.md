@@ -55,8 +55,8 @@
   suspend/resume.
 - [MCP server](./mcp.md) — `zuke mcp` exposes the build to AI agents as typed
   tools over the Model Context Protocol.
-- [Agent skills](./agent-skills.md) — install `zuke-setup` and
-  `zuke-write-build` into Claude Code, OpenAI Codex, or Gemini CLI.
+- [Agent skills](./agent-skills.md) — install `zuke-setup`, `zuke-write-build`
+  and `zuke-run-build` into Claude Code, OpenAI Codex, or Gemini CLI.
 - [AI review](./ai-review.md) — model-assessed review gates as build
   validations.
 - [Running the AI review as your own GitHub App](./ai-review-github-app.md) —
